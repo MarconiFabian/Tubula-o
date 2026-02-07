@@ -2,7 +2,7 @@ import React, { useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { ThreeEvent } from '@react-three/fiber';
 import { PipeSegment } from '../../types';
-import { STATUS_COLORS } from '../../constants';
+import { STATUS_COLORS, INSULATION_COLORS } from '../../constants';
 
 interface PipeMeshProps {
   data: PipeSegment;
@@ -51,7 +51,10 @@ const PipeMesh: React.FC<PipeMeshProps> = ({ data, isSelected, onSelect, trimSta
     };
   }, [data.start, data.end, trimStart, trimEnd]);
 
-  const color = STATUS_COLORS[data.status];
+  const color = (STATUS_COLORS && STATUS_COLORS[data.status]) || '#888888';
+  
+  const hasInsulation = data.insulationStatus && data.insulationStatus !== 'NONE';
+  const insulationColor = hasInsulation ? (INSULATION_COLORS[data.insulationStatus!] || '#e2e8f0') : 'transparent';
 
   const handleClick = (e: ThreeEvent<MouseEvent>) => {
     e.stopPropagation();
@@ -60,23 +63,46 @@ const PipeMesh: React.FC<PipeMeshProps> = ({ data, isSelected, onSelect, trimSta
 
   return (
     <group>
-      {/* The Pipe Cylinder */}
+      {/* The Main Pipe Cylinder */}
       {geometryLength > 0.01 && (
-        <mesh
-            ref={meshRef}
-            position={position}
-            rotation={rotation}
-            onClick={handleClick}
-        >
-            <cylinderGeometry args={[data.diameter / 2, data.diameter / 2, geometryLength, 32]} />
-            <meshStandardMaterial
-            color={color}
-            roughness={0.3}
-            metalness={0.6}
-            emissive={isSelected ? color : '#000000'}
-            emissiveIntensity={isSelected ? 0.5 : 0}
-            />
-        </mesh>
+        <>
+            <mesh
+                ref={meshRef}
+                position={position}
+                rotation={rotation}
+                onClick={handleClick}
+            >
+                <cylinderGeometry args={[data.diameter / 2, data.diameter / 2, geometryLength, 32]} />
+                <meshStandardMaterial
+                    color={color}
+                    roughness={0.3}
+                    metalness={0.6}
+                    emissive={isSelected ? color : '#000000'}
+                    emissiveIntensity={isSelected ? 0.5 : 0}
+                />
+            </mesh>
+            
+            {/* Thermal Protection Layer (Transparent Glass/Gel Shell) */}
+            {hasInsulation && (
+                 <mesh
+                    position={position}
+                    rotation={rotation}
+                    onClick={handleClick} // Pass click through
+                 >
+                    {/* Radius slightly larger (+0.08) for layering effect */}
+                    <cylinderGeometry args={[data.diameter / 2 + 0.08, data.diameter / 2 + 0.08, geometryLength, 32]} />
+                    <meshStandardMaterial
+                        color={insulationColor}
+                        transparent
+                        opacity={0.3} // Low opacity to see the pipe status inside clearly
+                        roughness={0.1} // Smooth/Shiny surface for glass effect
+                        metalness={0.1}
+                        side={THREE.DoubleSide}
+                        depthWrite={false} // Important for transparency sorting
+                    />
+                 </mesh>
+            )}
+        </>
       )}
     </group>
   );

@@ -5,6 +5,13 @@ export enum PipeStatus {
   HYDROTEST = 'HYDROTEST'    // Blue: Teste Hidrostático aprovado
 }
 
+export enum InsulationStatus {
+  NONE = 'NONE',             // Sem isolamento
+  PENDING = 'PENDING',       // Pendente (Ex: Vermelho claro/Rosa)
+  INSTALLING = 'INSTALLING', // Em instalação (Ex: Amarelo/Laranja)
+  FINISHED = 'FINISHED'      // Finalizado (Ex: Prata/Alumínio)
+}
+
 export interface Coordinates {
   x: number;
   y: number;
@@ -28,6 +35,7 @@ export interface PipeSegment {
   welderInfo?: WelderInfo;
   testPackId?: string;
   length: number; // Calculated automatically
+  insulationStatus?: InsulationStatus; // Updated from boolean to Enum
 }
 
 export interface ProjectStats {

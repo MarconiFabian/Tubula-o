@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import Scene from './components/3d/Scene';
 import Dashboard from './components/Dashboard';
 import Sidebar from './components/Sidebar';
-import { INITIAL_PIPES } from './constants';
+import { INITIAL_PIPES, STATUS_LABELS, STATUS_COLORS } from './constants';
 import { PipeSegment, PipeStatus } from './types';
 import { LayoutDashboard, Cuboid, PenTool, XCircle } from 'lucide-react';
 
@@ -35,11 +35,11 @@ export default function App() {
     
     const newPipe: PipeSegment = {
         id: `P-${Math.floor(Math.random() * 10000)}`,
-        name: `New Line ${pipes.length + 1}`,
+        name: `Nova Linha ${pipes.length + 1}`,
         start,
         end,
         diameter: 0.3, // Default diameter
-        status: PipeStatus.PENDING,
+        status: 'PENDING' as PipeStatus, // Use string literal cast to avoid runtime enum usage
         length: length
     };
 
@@ -74,6 +74,16 @@ export default function App() {
     }
   };
 
+  // Safe getter for status color
+  const getStatusColor = (status: string) => {
+      return STATUS_COLORS[status] || '#94a3b8';
+  };
+
+  // Safe getter for status label
+  const getStatusLabel = (status: string) => {
+      return STATUS_LABELS[status] || status;
+  };
+
   return (
     <div className="h-screen w-screen bg-slate-50 dark:bg-slate-950 flex flex-col text-slate-900 dark:text-slate-100 overflow-hidden font-sans">
       
@@ -85,7 +95,7 @@ export default function App() {
           </div>
           <div>
             <h1 className="text-xl font-bold tracking-tight">PipeFlow Manager</h1>
-            <p className="text-xs text-slate-500 dark:text-slate-400">Visual Database & Tracking System</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">Banco de Dados Visual e Rastreamento</p>
           </div>
         </div>
 
@@ -94,13 +104,13 @@ export default function App() {
             onClick={() => { setViewMode('3d'); setIsDrawing(false); }}
             className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-2 ${viewMode === '3d' && !isDrawing ? 'bg-white dark:bg-slate-700 shadow text-blue-600 dark:text-blue-400' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}`}
           >
-            <Cuboid size={16} /> 3D View
+            <Cuboid size={16} /> Visualização 3D
           </button>
           <button 
             onClick={() => { setViewMode('dashboard'); setIsDrawing(false); }}
             className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-2 ${viewMode === 'dashboard' ? 'bg-white dark:bg-slate-700 shadow text-blue-600 dark:text-blue-400' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}`}
           >
-            <LayoutDashboard size={16} /> Dashboard
+            <LayoutDashboard size={16} /> Painel de Controle
           </button>
         </nav>
       </header>
@@ -122,10 +132,10 @@ export default function App() {
                             <thead className="bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">
                                 <tr>
                                     <th className="p-3">ID</th>
-                                    <th className="p-3">Name</th>
-                                    <th className="p-3">Length</th>
+                                    <th className="p-3">Nome da Linha</th>
+                                    <th className="p-3">Comprimento</th>
                                     <th className="p-3">Status</th>
-                                    <th className="p-3">Welder</th>
+                                    <th className="p-3">Soldador</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -135,9 +145,9 @@ export default function App() {
                                         <td className="p-3">{pipe.name}</td>
                                         <td className="p-3">{pipe.length.toFixed(2)}m</td>
                                         <td className="p-3">
-                                            <span className="px-2 py-1 rounded-full text-xs font-bold text-white" 
-                                                  style={{backgroundColor: {PENDING: '#ef4444', MOUNTED: '#eab308', WELDED: '#22c55e', HYDROTEST: '#3b82f6'}[pipe.status]}}>
-                                                {pipe.status}
+                                            <span className="px-2 py-1 rounded-full text-xs font-bold text-white shadow-sm" 
+                                                  style={{backgroundColor: getStatusColor(pipe.status)}}>
+                                                {getStatusLabel(pipe.status)}
                                             </span>
                                         </td>
                                         <td className="p-3">{pipe.welderInfo?.welderId || '-'}</td>
@@ -162,14 +172,14 @@ export default function App() {
                                 `}
                              >
                                 {isDrawing ? (
-                                    <><XCircle size={18} /> Stop Drawing</>
+                                    <><XCircle size={18} /> Parar Desenho</>
                                 ) : (
-                                    <><PenTool size={18} /> Draw Piping</>
+                                    <><PenTool size={18} /> Desenhar Tubulação</>
                                 )}
                              </button>
                              {isDrawing && (
                                 <span className="text-sm text-slate-500 animate-pulse">
-                                    Click points on grid. Hold SHIFT for vertical.
+                                    Clique na grade. Segure SHIFT para vertical.
                                 </span>
                              )}
                         </div>

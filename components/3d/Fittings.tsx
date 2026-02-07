@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import * as THREE from 'three';
 import { PipeSegment, PipeStatus } from '../../types';
-import { STATUS_COLORS } from '../../constants';
+import { STATUS_COLORS, INSULATION_COLORS } from '../../constants';
 
 interface FittingsProps {
   pipes: PipeSegment[];
@@ -19,20 +19,19 @@ export interface ConnectionNode {
   }[];
 }
 
-// Helper to determine status level
-const getStatusLevel = (status: PipeStatus): number => {
-  switch (status) {
-    case PipeStatus.PENDING: return 0;
-    case PipeStatus.MOUNTED: return 1;
-    case PipeStatus.WELDED: return 2;
-    case PipeStatus.HYDROTEST: return 3;
-    default: return 0;
-  }
+// Helper to determine status level safely without relying on enum runtime object
+const getStatusLevel = (status: PipeStatus | string): number => {
+  const s = String(status);
+  if (s === 'PENDING') return 0;
+  if (s === 'MOUNTED') return 1;
+  if (s === 'WELDED') return 2;
+  if (s === 'HYDROTEST') return 3;
+  return 0;
 }
 
-// Helper to get color based on status level
-const getColorForStatus = (status: PipeStatus) => {
-    return STATUS_COLORS[status];
+// Helper to get color based on status level safely
+const getColorForStatus = (status: PipeStatus | string) => {
+    return STATUS_COLORS[String(status)] || '#888888';
 };
 
 export const Fittings: React.FC<FittingsProps> = ({ pipes, connections, onSelect, selectedId }) => {
@@ -42,7 +41,10 @@ export const Fittings: React.FC<FittingsProps> = ({ pipes, connections, onSelect
     // Safety check for undefined connections
     if (!connections) return items;
 
-    Object.entries(connections).forEach(([key, node]) => {
+    Object.entries(connections).forEach(([key, rawNode]) => {
+      // Fix: Explicitly cast to ConnectionNode to avoid 'unknown' type errors
+      const node = rawNode as ConnectionNode;
+
       // 1. End Cap / Open End (1 pipe)
       if (node.connectedPipes.length < 2) return;
 
@@ -65,15 +67,15 @@ export const Fittings: React.FC<FittingsProps> = ({ pipes, connections, onSelect
         if (isStraight) {
           // --- STRAIGHT JOINT (Junta Reta) ---
           
-          let weldColor = STATUS_COLORS[PipeStatus.PENDING];
+          let weldColor = STATUS_COLORS['PENDING'] || '#888888';
           
           // Logic: Combined status for butt weld. Both sides need to be ready.
           if (level1 >= 3 && level2 >= 3) {
-            weldColor = STATUS_COLORS[PipeStatus.HYDROTEST];
+            weldColor = STATUS_COLORS['HYDROTEST'] || '#3b82f6';
           } else if (level1 >= 2 && level2 >= 2) {
-            weldColor = STATUS_COLORS[PipeStatus.WELDED];
+            weldColor = STATUS_COLORS['WELDED'] || '#22c55e';
           } else if (level1 >= 1 && level2 >= 1) {
-            weldColor = STATUS_COLORS[PipeStatus.MOUNTED];
+            weldColor = STATUS_COLORS['MOUNTED'] || '#eab308';
           }
 
           const up = new THREE.Vector3(0, 1, 0);
@@ -108,7 +110,15 @@ export const Fittings: React.FC<FittingsProps> = ({ pipes, connections, onSelect
           
           // Elbow Body Color: Warns about the lowest status (Bottleneck visualization)
           const bodyStatus = level1 < level2 ? p1.pipe.status : p2.pipe.status;
-          const bodyColor = STATUS_COLORS[bodyStatus];
+          const bodyColor = getColorForStatus(bodyStatus);
+
+          // INSULATION LOGIC FOR ELBOW
+          // If the "Smart Selected" pipe has insulation, the elbow gets it.
+          // Or if *any* pipe has it. Let's use the property of the smartSelectId pipe.
+          const mainPipe = pipes.find(p => p.id === smartSelectId);
+          const hasInsulation = mainPipe?.insulationStatus && mainPipe.insulationStatus !== 'NONE';
+          const insulationColor = hasInsulation ? (INSULATION_COLORS[mainPipe?.insulationStatus!] || '#e2e8f0') : 'transparent';
+
 
           // Independent Weld Colors
           const weld1Color = getColorForStatus(p1.pipe.status);
@@ -140,6 +150,23 @@ export const Fittings: React.FC<FittingsProps> = ({ pipes, connections, onSelect
                   emissiveIntensity={isSelected ? 0.4 : 0}
                 />
               </mesh>
+
+              {/* Elbow Insulation Shell (Transparent Solid) */}
+              {hasInsulation && (
+                  <mesh>
+                    {/* Radius +0.08 */}
+                    <tubeGeometry args={[curve, 10, p1.pipe.diameter / 2 + 0.08, 16, false]} />
+                    <meshStandardMaterial 
+                        color={insulationColor}
+                        transparent
+                        opacity={0.3} // Glass-like transparency
+                        roughness={0.1}
+                        metalness={0.1}
+                        depthWrite={false}
+                        side={THREE.DoubleSide}
+                    />
+                  </mesh>
+              )}
 
               {/* Weld 1: Connecting Pipe 1 to Elbow */}
               <group position={startPt} quaternion={new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0), p1.vector)}>

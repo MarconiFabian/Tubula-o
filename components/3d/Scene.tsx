@@ -6,12 +6,20 @@ import PipeMesh from './PipeMesh';
 import { PipeDrawer } from './PipeDrawer';
 import { Fittings, ConnectionNode } from './Fittings';
 import { PipeSegment, PipeStatus } from '../../types';
-import { STATUS_COLORS } from '../../constants';
+import { 
+  STATUS_COLORS, 
+  INSULATION_COLORS, 
+  STATUS_LABELS, 
+  INSULATION_LABELS, 
+  ALL_STATUSES, 
+  ALL_INSULATION_STATUSES 
+} from '../../constants';
 import { 
   MoveHorizontal, 
   MoveVertical, 
   MoveDiagonal, 
-  X as XIcon 
+  X as XIcon,
+  Shield
 } from 'lucide-react';
 
 interface SceneProps {
@@ -22,9 +30,10 @@ interface SceneProps {
   onAddPipe: (start: {x:number, y:number, z:number}, end: {x:number, y:number, z:number}) => void;
   onUpdatePipe: (pipe: PipeSegment) => void;
   onCancelDraw: () => void;
+  fixedLength?: boolean;
 }
 
-// ... KeyboardManager remains same ...
+// Inverted Logic for more natural isometric feel
 const KeyboardManager = ({ selectedId, pipes, onUpdatePipe }: { selectedId: string | null, pipes: PipeSegment[], onUpdatePipe: (p: PipeSegment) => void }) => {
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
@@ -36,10 +45,13 @@ const KeyboardManager = ({ selectedId, pipes, onUpdatePipe }: { selectedId: stri
             const delta = { x: 0, y: 0, z: 0 };
             let moved = false;
 
-            if (e.key === 'ArrowUp') { delta.z = -step; moved = true; }
-            if (e.key === 'ArrowDown') { delta.z = step; moved = true; }
-            if (e.key === 'ArrowLeft') { delta.x = -step; moved = true; }
-            if (e.key === 'ArrowRight') { delta.x = step; moved = true; }
+            // INVERTED CONTROLS for intuitive isometric movement
+            if (e.key === 'ArrowUp') { delta.z = -step; moved = true; }   // Moves "Into" the screen (North)
+            if (e.key === 'ArrowDown') { delta.z = step; moved = true; }  // Moves "Out" of the screen (South)
+            if (e.key === 'ArrowLeft') { delta.x = -step; moved = true; } // Moves Left
+            if (e.key === 'ArrowRight') { delta.x = step; moved = true; } // Moves Right
+            
+            // Vertical movement
             if (e.key === 'PageUp') { delta.y = step; moved = true; }
             if (e.key === 'PageDown') { delta.y = -step; moved = true; }
 
@@ -61,9 +73,9 @@ const KeyboardManager = ({ selectedId, pipes, onUpdatePipe }: { selectedId: stri
 };
 
 const SceneContent: React.FC<SceneProps & { lockedAxis: 'x'|'y'|'z'|null }> = ({ 
-  pipes, selectedId, onSelectPipe, isDrawing, onAddPipe, onUpdatePipe, onCancelDraw, lockedAxis
+  pipes, selectedId, onSelectPipe, isDrawing, onAddPipe, onUpdatePipe, onCancelDraw, lockedAxis, fixedLength
 }) => {
-    const { camera } = useThree();
+    const { camera, gl } = useThree();
     const [isDragging, setIsDragging] = useState(false);
     
     // --- TOPOLOGY CALCULATION ---
@@ -195,6 +207,9 @@ const SceneContent: React.FC<SceneProps & { lockedAxis: 'x'|'y'|'z'|null }> = ({
                         const midY = (pipe.start.y + pipe.end.y) / 2;
                         const midZ = (pipe.start.z + pipe.end.z) / 2;
 
+                        const hasInsulation = pipe.insulationStatus && pipe.insulationStatus !== 'NONE';
+                        const insColor = hasInsulation ? INSULATION_COLORS[pipe.insulationStatus!] : 'transparent';
+
                         return (
                             <group key={pipe.id}>
                                 <TransformControls 
@@ -223,32 +238,35 @@ const SceneContent: React.FC<SceneProps & { lockedAxis: 'x'|'y'|'z'|null }> = ({
                                         onPointerDown={(e) => e.stopPropagation()} 
                                         onClick={(e) => e.stopPropagation()}
                                     >
-                                        <div className="text-xs font-bold text-slate-300 whitespace-nowrap px-1">
-                                            {pipe.name}
+                                        <div className="flex items-center gap-1.5 px-1">
+                                            {hasInsulation && <Shield size={12} style={{ color: insColor }} />}
+                                            <div className="text-xs font-bold text-slate-300 whitespace-nowrap">
+                                                {pipe.name}
+                                            </div>
                                         </div>
                                         <div className="flex gap-2 bg-slate-800 p-1.5 rounded-lg">
                                              <button 
-                                                onClick={(e) => { e.preventDefault(); e.stopPropagation(); onUpdatePipe({...pipe, status: PipeStatus.PENDING})}}
-                                                className={`w-6 h-6 rounded-full border-2 shadow-sm ${pipe.status === PipeStatus.PENDING ? 'border-white scale-110 ring-2 ring-red-500/50' : 'border-transparent hover:scale-110 opacity-70 hover:opacity-100'} transition-all`}
-                                                style={{backgroundColor: STATUS_COLORS[PipeStatus.PENDING]}}
+                                                onClick={(e) => { e.preventDefault(); e.stopPropagation(); onUpdatePipe({...pipe, status: 'PENDING' as PipeStatus})}}
+                                                className={`w-6 h-6 rounded-full border-2 shadow-sm ${pipe.status === 'PENDING' ? 'border-white scale-110 ring-2 ring-red-500/50' : 'border-transparent hover:scale-110 opacity-70 hover:opacity-100'} transition-all`}
+                                                style={{backgroundColor: STATUS_COLORS['PENDING']}}
                                                 title="Pendente"
                                              />
                                              <button 
-                                                onClick={(e) => { e.preventDefault(); e.stopPropagation(); onUpdatePipe({...pipe, status: PipeStatus.MOUNTED})}}
-                                                className={`w-6 h-6 rounded-full border-2 shadow-sm ${pipe.status === PipeStatus.MOUNTED ? 'border-white scale-110 ring-2 ring-yellow-500/50' : 'border-transparent hover:scale-110 opacity-70 hover:opacity-100'} transition-all`}
-                                                style={{backgroundColor: STATUS_COLORS[PipeStatus.MOUNTED]}}
+                                                onClick={(e) => { e.preventDefault(); e.stopPropagation(); onUpdatePipe({...pipe, status: 'MOUNTED' as PipeStatus})}}
+                                                className={`w-6 h-6 rounded-full border-2 shadow-sm ${pipe.status === 'MOUNTED' ? 'border-white scale-110 ring-2 ring-yellow-500/50' : 'border-transparent hover:scale-110 opacity-70 hover:opacity-100'} transition-all`}
+                                                style={{backgroundColor: STATUS_COLORS['MOUNTED']}}
                                                 title="Montado"
                                              />
                                              <button 
-                                                onClick={(e) => { e.preventDefault(); e.stopPropagation(); onUpdatePipe({...pipe, status: PipeStatus.WELDED})}}
-                                                className={`w-6 h-6 rounded-full border-2 shadow-sm ${pipe.status === PipeStatus.WELDED ? 'border-white scale-110 ring-2 ring-green-500/50' : 'border-transparent hover:scale-110 opacity-70 hover:opacity-100'} transition-all`}
-                                                style={{backgroundColor: STATUS_COLORS[PipeStatus.WELDED]}}
+                                                onClick={(e) => { e.preventDefault(); e.stopPropagation(); onUpdatePipe({...pipe, status: 'WELDED' as PipeStatus})}}
+                                                className={`w-6 h-6 rounded-full border-2 shadow-sm ${pipe.status === 'WELDED' ? 'border-white scale-110 ring-2 ring-green-500/50' : 'border-transparent hover:scale-110 opacity-70 hover:opacity-100'} transition-all`}
+                                                style={{backgroundColor: STATUS_COLORS['WELDED']}}
                                                 title="Soldado"
                                              />
                                              <button 
-                                                onClick={(e) => { e.preventDefault(); e.stopPropagation(); onUpdatePipe({...pipe, status: PipeStatus.HYDROTEST})}}
-                                                className={`w-6 h-6 rounded-full border-2 shadow-sm ${pipe.status === PipeStatus.HYDROTEST ? 'border-white scale-110 ring-2 ring-blue-500/50' : 'border-transparent hover:scale-110 opacity-70 hover:opacity-100'} transition-all`}
-                                                style={{backgroundColor: STATUS_COLORS[PipeStatus.HYDROTEST]}}
+                                                onClick={(e) => { e.preventDefault(); e.stopPropagation(); onUpdatePipe({...pipe, status: 'HYDROTEST' as PipeStatus})}}
+                                                className={`w-6 h-6 rounded-full border-2 shadow-sm ${pipe.status === 'HYDROTEST' ? 'border-white scale-110 ring-2 ring-blue-500/50' : 'border-transparent hover:scale-110 opacity-70 hover:opacity-100'} transition-all`}
+                                                style={{backgroundColor: STATUS_COLORS['HYDROTEST']}}
                                                 title="Testado"
                                              />
                                         </div>
@@ -277,6 +295,7 @@ const SceneContent: React.FC<SceneProps & { lockedAxis: 'x'|'y'|'z'|null }> = ({
                 onCancel={onCancelDraw} 
                 pipes={pipes}
                 lockedAxis={lockedAxis}
+                fixedLength={fixedLength}
             />
             
             <KeyboardManager selectedId={selectedId} pipes={pipes} onUpdatePipe={onUpdatePipe} />
@@ -284,7 +303,7 @@ const SceneContent: React.FC<SceneProps & { lockedAxis: 'x'|'y'|'z'|null }> = ({
     );
 }
 
-const Scene: React.FC<SceneProps> = (props) => {
+const Scene: React.FC<SceneProps & { fixedLength?: boolean }> = (props) => {
   // ... Wrapper remains same ...
   const [lockedAxis, setLockedAxis] = useState<'x'|'y'|'z'|null>(null);
 
@@ -313,6 +332,7 @@ const Scene: React.FC<SceneProps> = (props) => {
 
   return (
     <div className="w-full h-full bg-slate-900 relative rounded-lg overflow-hidden border border-slate-700 shadow-2xl flex flex-col">
+      {/* Instructions Overlay */}
       <div className="absolute top-4 left-4 z-10 pointer-events-none">
           <div className="bg-black/60 text-white p-3 rounded-lg backdrop-blur-sm text-xs border border-white/10 select-none mb-2 pointer-events-auto">
             {!props.isDrawing ? (
@@ -321,11 +341,17 @@ const Scene: React.FC<SceneProps> = (props) => {
                     <p>🖱️ Clique no Tubo: Selecionar</p>
                     <p>🖱️ Clique Central: Rotacionar</p>
                     <p>🖱️ Arrastar Esq/Dir: Mover</p>
+                    <p>⌨️ Setas: Mover Tubo</p>
                     <p>⌨️ Del: Excluir Tubo</p>
                 </>
             ) : (
                 <>
                     <p className="font-bold mb-1 text-blue-400">✏️ Modo de Desenho</p>
+                    <p className="border-b border-white/10 pb-1 mb-1">
+                        Modo Atual: <span className={props.fixedLength ? "text-purple-400 font-bold" : "text-green-400 font-bold"}>
+                            {props.fixedLength ? "Fixo (6m)" : "Livre"}
+                        </span>
+                    </p>
                     <p>🖱️ Clique Esq: Adicionar Ponto</p>
                     <p>🖱️ Clique Central: Rotacionar Vista</p>
                     <p>⌨️ <strong>Z, X, C</strong>: Travar Eixo</p>
@@ -369,11 +395,50 @@ const Scene: React.FC<SceneProps> = (props) => {
               </div>
           )}
       </div>
+
+      {/* Legend Overlay (Top Right) */}
+      <div className="absolute top-4 right-4 z-10 pointer-events-none">
+          <div className="bg-slate-900/80 text-white p-3 rounded-lg backdrop-blur-md border border-slate-700 shadow-xl pointer-events-auto w-40">
+            <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 border-b border-slate-700 pb-1">Legenda</h3>
+            
+            <div className="mb-3">
+                <p className="text-[10px] font-semibold text-slate-500 mb-1">Status Tubulação</p>
+                <div className="grid grid-cols-1 gap-1">
+                    {ALL_STATUSES.map(status => (
+                        <div key={status} className="flex items-center gap-2">
+                            <div className="w-2.5 h-2.5 rounded-full shadow-sm border border-white/10" style={{ backgroundColor: STATUS_COLORS[status] }}></div>
+                            <span className="text-[10px] text-slate-300">{STATUS_LABELS[status]}</span>
+                        </div>
+                    ))}
+                </div>
+            </div>
+
+            <div>
+                <p className="text-[10px] font-semibold text-slate-500 mb-1">Proteção Térmica</p>
+                <div className="grid grid-cols-1 gap-1">
+                    {ALL_INSULATION_STATUSES.map(status => {
+                        const color = INSULATION_COLORS[status];
+                        const isTrans = color === 'transparent';
+                        return (
+                        <div key={status} className="flex items-center gap-2">
+                            <div className="w-2.5 h-2.5 rounded shadow-sm" 
+                                style={{ 
+                                    backgroundColor: isTrans ? 'transparent' : color,
+                                    border: isTrans ? '1px dashed #64748b' : '1px solid rgba(255,255,255,0.2)'
+                                }}></div>
+                            <span className="text-[10px] text-slate-300">{INSULATION_LABELS[status]}</span>
+                        </div>
+                    )})}
+                </div>
+            </div>
+          </div>
+      </div>
       
-      <div className="flex-1 relative">
+      <div className="flex-1 relative" id="scene-canvas-container">
           <Canvas 
             camera={{ position: [8, 8, 8], fov: 50 }} 
             shadows 
+            gl={{ preserveDrawingBuffer: true }}
             onPointerMissed={(e) => {
                 if (!props.isDrawing && e.type === 'click') {
                     props.onSelectPipe(null);
@@ -381,7 +446,7 @@ const Scene: React.FC<SceneProps> = (props) => {
             }}
           >
             <color attach="background" args={['#0f172a']} />
-            <SceneContent {...props} lockedAxis={lockedAxis} />
+            <SceneContent {...props} lockedAxis={lockedAxis} fixedLength={props.fixedLength} />
           </Canvas>
       </div>
     </div>

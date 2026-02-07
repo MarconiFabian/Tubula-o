@@ -1,5 +1,5 @@
 {
-  "name": "PipeFlow Manager",
+  "name": "Planejamento de Tubulação Marconi Fabian",
   "description": "Um Banco de Dados Visual 3D para Rastreamento de Tubulação e Gestão de Soldagem. Apresenta visualização 3D em tempo real, cálculos automáticos de comprimento, rastreamento de status (Pendente, Montado, Soldado, Teste Hidrostático) e dashboards de BI.",
   "requestFramePermissions": []
 }
