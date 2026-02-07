@@ -67,7 +67,7 @@ export default function App() {
 
         // Title
         pdf.setFontSize(18);
-        pdf.text('Relatório de Progresso - PipeFlow Manager', margin, currentY);
+        pdf.text('Relatório - Isometrico manager - Marconi Fabian', margin, currentY);
         currentY += 10;
         pdf.setFontSize(10);
         pdf.text(`Data: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`, margin, currentY);
@@ -159,7 +159,7 @@ export default function App() {
             currentY += 8;
         });
 
-        pdf.save('relatorio-pipeflow.pdf');
+        pdf.save('relatorio-isometrico-manager.pdf');
 
     } catch (err) {
         console.error("Erro ao gerar PDF:", err);
@@ -208,9 +208,9 @@ export default function App() {
           <div className="bg-blue-600 p-2 rounded-lg shadow-blue-500/20 shadow-lg">
             <Cuboid className="text-white" size={24} />
           </div>
-          <div className="hidden sm:block">
-            <h1 className="text-xl font-bold tracking-tight leading-none">PipeFlow</h1>
-            <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">Gestor de Tubulação</p>
+          <div className="flex flex-col">
+            <h1 className="text-lg sm:text-xl font-bold tracking-tight leading-none">Isometrico manager</h1>
+            <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">Marconi Fabian</p>
           </div>
         </div>
 

@@ -1,5 +1,5 @@
 export enum PipeStatus {
-  PENDING = 'PENDING',       // Red: Pendente de montagem
+  PENDING = 'PENDING',       // Gray: Pendente de montagem
   MOUNTED = 'MOUNTED',       // Yellow: Montado, aguardando solda
   WELDED = 'WELDED',         // Green: Soldagem concluída
   HYDROTEST = 'HYDROTEST'    // Blue: Teste Hidrostático aprovado

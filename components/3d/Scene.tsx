@@ -247,7 +247,7 @@ const SceneContent: React.FC<SceneProps & { lockedAxis: 'x'|'y'|'z'|null }> = ({
                                         <div className="flex gap-2 bg-slate-800 p-1.5 rounded-lg">
                                              <button 
                                                 onClick={(e) => { e.preventDefault(); e.stopPropagation(); onUpdatePipe({...pipe, status: 'PENDING' as PipeStatus})}}
-                                                className={`w-6 h-6 rounded-full border-2 shadow-sm ${pipe.status === 'PENDING' ? 'border-white scale-110 ring-2 ring-red-500/50' : 'border-transparent hover:scale-110 opacity-70 hover:opacity-100'} transition-all`}
+                                                className={`w-6 h-6 rounded-full border-2 shadow-sm ${pipe.status === 'PENDING' ? 'border-white scale-110 ring-2 ring-slate-400/50' : 'border-transparent hover:scale-110 opacity-70 hover:opacity-100'} transition-all`}
                                                 style={{backgroundColor: STATUS_COLORS['PENDING']}}
                                                 title="Pendente"
                                              />

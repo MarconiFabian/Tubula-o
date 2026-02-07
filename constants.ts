@@ -2,7 +2,7 @@ import { PipeStatus, PipeSegment, InsulationStatus } from './types';
 
 // Define explicit string keys to avoid runtime errors if PipeStatus enum is undefined
 export const STATUS_COLORS: Record<string, string> = {
-  'PENDING': '#ef4444', // Red-500
+  'PENDING': '#94a3b8', // Gray/Slate-400
   'MOUNTED': '#eab308', // Yellow-500
   'WELDED': '#22c55e',  // Green-500
   'HYDROTEST': '#3b82f6' // Blue-500
