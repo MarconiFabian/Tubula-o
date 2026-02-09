@@ -1,28 +1,24 @@
 import React, { useMemo, useRef } from 'react';
 import * as THREE from 'three';
-import { ThreeEvent } from '@react-three/fiber';
 import { PipeSegment } from '../../types';
 import { STATUS_COLORS, INSULATION_COLORS } from '../../constants';
 
 interface PipeMeshProps {
   data: PipeSegment;
   isSelected: boolean;
-  onSelect: (id: string, multi: boolean) => void; // Updated signature
+  onSelect: (id: string, multi: boolean) => void; 
   trimStart?: number;
   trimEnd?: number;
 }
 
-const PipeMesh: React.FC<PipeMeshProps> = ({ data, isSelected, onSelect, trimStart = 0, trimEnd = 0 }) => {
+const PipeMesh: React.FC<PipeMeshProps> = ({ data, isSelected, trimStart = 0, trimEnd = 0 }) => {
   const meshRef = useRef<THREE.Mesh>(null);
 
   // Calculate geometry and orientation
-  const { position, rotation, length, geometryLength } = useMemo(() => {
+  const { position, rotation, geometryLength } = useMemo(() => {
     const start = new THREE.Vector3(data.start.x, data.start.y, data.start.z);
     const end = new THREE.Vector3(data.end.x, data.end.y, data.end.z);
 
-    const fullLength = start.distanceTo(end);
-    
-    // Direction vector
     const direction = new THREE.Vector3().subVectors(end, start).normalize();
     
     // Calculate center of trimmed segment
@@ -41,7 +37,6 @@ const PipeMesh: React.FC<PipeMeshProps> = ({ data, isSelected, onSelect, trimSta
     return {
       position: midpoint,
       rotation: euler,
-      length: fullLength,
       geometryLength: visualLength
     };
   }, [data.start, data.end, trimStart, trimEnd]);
@@ -50,12 +45,6 @@ const PipeMesh: React.FC<PipeMeshProps> = ({ data, isSelected, onSelect, trimSta
   
   const hasInsulation = data.insulationStatus && data.insulationStatus !== 'NONE';
   const insulationColor = hasInsulation ? (INSULATION_COLORS[data.insulationStatus!] || '#e2e8f0') : 'transparent';
-
-  const handleClick = (e: ThreeEvent<MouseEvent>) => {
-    e.stopPropagation(); // Prevent clicking through to background
-    const isMulti = e.nativeEvent.ctrlKey || e.nativeEvent.metaKey || e.nativeEvent.shiftKey;
-    onSelect(data.id, isMulti);
-  };
 
   return (
     <group>
@@ -66,9 +55,9 @@ const PipeMesh: React.FC<PipeMeshProps> = ({ data, isSelected, onSelect, trimSta
                 ref={meshRef}
                 position={position}
                 rotation={rotation}
-                onClick={handleClick}
                 onPointerOver={() => document.body.style.cursor = 'pointer'}
                 onPointerOut={() => document.body.style.cursor = 'auto'}
+                // REMOVED onClick here to allow bubbling to parent Group in Scene.tsx
             >
                 <cylinderGeometry args={[data.diameter / 2, data.diameter / 2, geometryLength, 32]} />
                 <meshStandardMaterial
@@ -85,7 +74,6 @@ const PipeMesh: React.FC<PipeMeshProps> = ({ data, isSelected, onSelect, trimSta
                  <mesh
                     position={position}
                     rotation={rotation}
-                    onClick={handleClick}
                     onPointerOver={() => document.body.style.cursor = 'pointer'}
                     onPointerOut={() => document.body.style.cursor = 'auto'}
                  >

@@ -2,9 +2,11 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import Scene from './components/3d/Scene';
 import Dashboard from './components/Dashboard';
 import Sidebar from './components/Sidebar';
+import { DatabaseModal } from './components/DatabaseModal'; // Importando novo Modal
+import { saveProjectToDB, getAllProjects, deleteProjectFromDB } from './utils/db'; // Importando funções do DB
 import { INITIAL_PIPES, STATUS_LABELS, STATUS_COLORS, INSULATION_LABELS } from './constants';
-import { PipeSegment, PipeStatus } from './types';
-import { LayoutDashboard, Cuboid, PenTool, XCircle, FileDown, Save, FolderOpen, FilePlus, Loader2, MapPin } from 'lucide-react';
+import { PipeSegment, PipeStatus, Annotation } from './types';
+import { LayoutDashboard, Cuboid, PenTool, XCircle, FileDown, Save, FolderOpen, FilePlus, Loader2, MapPin, Database } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
 
@@ -20,8 +22,18 @@ export default function App() {
         return INITIAL_PIPES;
     }
   });
+
+  const [annotations, setAnnotations] = useState<Annotation[]>(() => {
+    try {
+        const saved = localStorage.getItem('iso-manager-annotations');
+        if (!saved) return [];
+        return JSON.parse(saved);
+    } catch (e) {
+        return [];
+    }
+  });
   
-  // Project Info - Default to empty or a placeholder if needed
+  // Project Info
   const [projectLocation, setProjectLocation] = useState('ÁREA / SETOR 01');
 
   // Selection State (Multi-select array)
@@ -36,12 +48,65 @@ export default function App() {
   const [isDrawing, setIsDrawing] = useState(false);
   const [isFixedLength, setIsFixedLength] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  
+  // Database UI State
+  const [isDBModalOpen, setIsDBModalOpen] = useState(false);
+  const [savedProjects, setSavedProjects] = useState<any[]>([]);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Auto-save
+  // Auto-save (Local Storage - Draft)
   useEffect(() => {
       localStorage.setItem('iso-manager-pipes', JSON.stringify(pipes));
   }, [pipes]);
+
+  useEffect(() => {
+      localStorage.setItem('iso-manager-annotations', JSON.stringify(annotations));
+  }, [annotations]);
+
+  // Load Saved Projects List
+  const loadProjectsList = async () => {
+      const projs = await getAllProjects();
+      setSavedProjects(projs);
+  };
+
+  useEffect(() => {
+      if (isDBModalOpen) {
+          loadProjectsList();
+      }
+  }, [isDBModalOpen]);
+
+  // --- DATABASE ACTIONS ---
+  const handleDBAction_Save = async (name: string) => {
+      const projectData = {
+          id: crypto.randomUUID(),
+          name: name,
+          updatedAt: new Date(),
+          pipes,
+          annotations,
+          location: projectLocation,
+          secondaryImage,
+          mapImage
+      };
+      await saveProjectToDB(projectData);
+      await loadProjectsList();
+      alert('Projeto salvo no Banco de Dados com sucesso!');
+  };
+
+  const handleDBAction_Load = (project: any) => {
+      setPipes(project.pipes || []);
+      setAnnotations(project.annotations || []);
+      setProjectLocation(project.location || '');
+      setSecondaryImage(project.secondaryImage || null);
+      setMapImage(project.mapImage || null);
+      setSelectedIds([]);
+      setIsDBModalOpen(false);
+  };
+
+  const handleDBAction_Delete = async (id: string) => {
+      await deleteProjectFromDB(id);
+      await loadProjectsList();
+  };
 
   // Derived state for Sidebar
   const selectedPipes = useMemo(() => {
@@ -61,6 +126,24 @@ export default function App() {
           return [id]; 
       });
   }, []);
+
+  // --- ANNOTATIONS LOGIC ---
+  const handleAddAnnotation = (pos: {x:number, y:number, z:number}) => {
+      const newAnn: Annotation = {
+          id: `A-${Date.now()}`,
+          position: pos,
+          text: '' // Starts empty to trigger edit mode
+      };
+      setAnnotations(prev => [...prev, newAnn]);
+  };
+
+  const handleUpdateAnnotation = (id: string, text: string) => {
+      setAnnotations(prev => prev.map(a => a.id === id ? { ...a, text } : a));
+  };
+
+  const handleDeleteAnnotation = (id: string) => {
+      setAnnotations(prev => prev.filter(a => a.id !== id));
+  };
 
   // --- TOPOLOGY ---
   const pipesWithTopology = useMemo(() => {
@@ -102,14 +185,44 @@ export default function App() {
       setSelectedIds([]);
   }, [selectedIds]);
 
+  // --- KEYBOARD LISTENERS (DELETE) ---
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+        // Only active in 3D mode, NOT drawing, and if items are selected
+        if (viewMode !== '3d' || isDrawing || selectedIds.length === 0) return;
+        
+        // Ignore if typing in an input/textarea
+        const target = e.target as HTMLElement;
+        if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
+
+        if (e.key === 'Delete' || e.key === 'Backspace') {
+            handleDeleteSelected();
+        }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [viewMode, isDrawing, selectedIds, handleDeleteSelected]);
+
+
   const handleNewProject = () => {
-      if (confirm("Criar novo projeto? O desenho atual será perdido.")) {
-          setPipes([]); setSelectedIds([]); setSecondaryImage(null); setMapImage(null); setProjectLocation('ÁREA / SETOR 01');
+      if (confirm("Criar novo projeto? O desenho atual não salvo será perdido.")) {
+          setPipes([]); 
+          setAnnotations([]);
+          setSelectedIds([]); 
+          setSecondaryImage(null); 
+          setMapImage(null); 
+          setProjectLocation('ÁREA / SETOR 01');
       }
   };
 
-  const handleSaveProject = () => {
-      const dataStr = JSON.stringify(pipes, null, 2);
+  // --- OLD FILE BASED SAVE/LOAD (KEPT AS BACKUP) ---
+  const handleSaveFile = () => {
+      const projectData = {
+          pipes,
+          annotations,
+          projectLocation
+      };
+      const dataStr = JSON.stringify(projectData, null, 2);
       const blob = new Blob([dataStr], { type: "application/json" });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
@@ -118,36 +231,40 @@ export default function App() {
       link.click();
   };
 
-  const handleLoadProject = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleLoadFile = (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file) return;
       const reader = new FileReader();
       reader.onload = (ev) => {
           try {
               const loaded = JSON.parse(ev.target?.result as string);
-              if (Array.isArray(loaded)) setPipes(loaded);
+              if (Array.isArray(loaded)) {
+                  setPipes(loaded);
+                  setAnnotations([]);
+              } else {
+                  if (loaded.pipes) setPipes(loaded.pipes);
+                  if (loaded.annotations) setAnnotations(loaded.annotations);
+                  if (loaded.projectLocation) setProjectLocation(loaded.projectLocation);
+              }
           } catch(err) { alert("Erro ao ler arquivo"); }
       };
       reader.readAsText(file);
   };
 
-  // --- EXPORT PDF LOGIC (HUD FIXED RESOLUTION) ---
+  // --- EXPORT PDF LOGIC ---
   const handleExportPDF = async () => {
     setIsExporting(true);
 
-    // 1. Capture 3D Canvas
     const sceneWrapper = document.getElementById('scene-canvas-wrapper');
     const canvas = sceneWrapper?.querySelector('canvas');
     let main3DImage = '';
     if (canvas) main3DImage = canvas.toDataURL('image/png', 1.0);
 
-    // 2. Prepare Template
     const exportEl = document.getElementById('composed-dashboard-export');
     const mainImgEl = document.getElementById('export-main-img') as HTMLImageElement;
     
     if (exportEl && mainImgEl) {
         mainImgEl.src = main3DImage;
-        // Wait for image to render
         await new Promise(r => setTimeout(r, 500));
 
         try {
@@ -166,15 +283,13 @@ export default function App() {
             const w = pdf.internal.pageSize.getWidth();
             const h = pdf.internal.pageSize.getHeight();
 
-            // Page 1: HUD
             pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, w, h);
 
-            // Page 2: Table
             pdf.addPage();
             pdf.setFontSize(16);
             pdf.text("Detalhamento de Linhas (Tabela Completa)", 10, 20);
             pdf.setFontSize(12);
-            pdf.text(`Local: ${projectLocation}`, 10, 28); // Add location to table page too
+            pdf.text(`Local: ${projectLocation}`, 10, 28);
             
             let y = 35;
             pdf.setFontSize(9);
@@ -193,13 +308,10 @@ export default function App() {
 
             pipesWithTopology.forEach(p => {
                 if (y > h - 20) { pdf.addPage(); y = 20; }
-                
-                // Tradução correta usando os CONSTANTS
                 const status = STATUS_LABELS[p.status] || p.status;
                 const ins = (!p.insulationStatus || p.insulationStatus === 'NONE') 
                     ? '-' 
                     : (INSULATION_LABELS[p.insulationStatus] || p.insulationStatus);
-                
                 pdf.text(p.id, 12, y);
                 pdf.text(p.location?.substring(0,15) || '-', 35, y);
                 pdf.text(p.name.substring(0, 20), 65, y);
@@ -227,6 +339,16 @@ export default function App() {
   return (
     <div className="h-screen w-screen bg-slate-950 text-slate-100 flex flex-col overflow-hidden font-sans">
         
+        {/* DATABASE MODAL */}
+        <DatabaseModal 
+            isOpen={isDBModalOpen} 
+            onClose={() => setIsDBModalOpen(false)}
+            projects={savedProjects}
+            onSave={handleDBAction_Save}
+            onLoad={handleDBAction_Load}
+            onDelete={handleDBAction_Delete}
+        />
+
         {/* HEADER */}
         <header className="h-16 bg-slate-900 border-b border-slate-800 px-6 flex items-center justify-between z-50">
             <div className="flex items-center gap-6">
@@ -238,7 +360,6 @@ export default function App() {
                     </div>
                 </div>
 
-                {/* ACTIVITY LOCATION INPUT - FIXED SIZE ISSUE */}
                 <div className="flex items-center gap-2 bg-slate-800/50 p-1.5 px-3 rounded-lg border border-slate-700/50 hover:border-blue-500/50 transition-colors group">
                      <div className="flex flex-col justify-center">
                         <label className="text-[9px] font-bold text-slate-500 uppercase leading-none mb-0.5 flex items-center gap-1 group-hover:text-blue-400 transition-colors">
@@ -256,25 +377,37 @@ export default function App() {
             </div>
             
             <div className="flex items-center gap-3">
+                <button 
+                    onClick={() => setIsDBModalOpen(true)} 
+                    className="flex items-center gap-2 bg-blue-900/40 hover:bg-blue-800 text-blue-300 border border-blue-500/30 px-4 py-2 rounded-lg font-bold transition-all"
+                >
+                    <Database size={18} /> Banco de Dados
+                </button>
+
+                <div className="h-6 w-px bg-slate-700 mx-1"></div>
+
                 <div className="bg-slate-800 p-1 rounded-lg flex gap-1 border border-slate-700">
                     <button onClick={() => { setViewMode('3d'); setIsDrawing(false); }} className={`px-3 py-1.5 text-sm font-bold rounded flex gap-2 items-center ${viewMode === '3d' && !isDrawing ? 'bg-slate-700 text-blue-400' : 'text-slate-400 hover:text-white'}`}><Cuboid size={16}/> 3D</button>
                     <button onClick={() => { setViewMode('dashboard'); setIsDrawing(false); }} className={`px-3 py-1.5 text-sm font-bold rounded flex gap-2 items-center ${viewMode === 'dashboard' ? 'bg-slate-700 text-blue-400' : 'text-slate-400 hover:text-white'}`}><LayoutDashboard size={16}/> Painel</button>
                 </div>
                 <div className="h-6 w-px bg-slate-700 mx-2"></div>
-                <button onClick={handleNewProject} className="p-2 hover:bg-slate-800 rounded text-slate-400 hover:text-blue-400"><FilePlus size={20}/></button>
-                <button onClick={handleSaveProject} className="p-2 hover:bg-slate-800 rounded text-slate-400 hover:text-blue-400"><Save size={20}/></button>
-                <button onClick={() => fileInputRef.current?.click()} className="p-2 hover:bg-slate-800 rounded text-slate-400 hover:text-blue-400"><FolderOpen size={20}/></button>
-                <input type="file" hidden ref={fileInputRef} onChange={handleLoadProject} accept=".json" />
+                
+                {/* File Actions (Secondary) */}
+                <button onClick={handleNewProject} className="p-2 hover:bg-slate-800 rounded text-slate-400 hover:text-blue-400" title="Novo Limpo"><FilePlus size={20}/></button>
+                <button onClick={handleSaveFile} className="p-2 hover:bg-slate-800 rounded text-slate-400 hover:text-blue-400" title="Baixar JSON"><Save size={20}/></button>
+                <button onClick={() => fileInputRef.current?.click()} className="p-2 hover:bg-slate-800 rounded text-slate-400 hover:text-blue-400" title="Carregar JSON"><FolderOpen size={20}/></button>
+                <input type="file" hidden ref={fileInputRef} onChange={handleLoadFile} accept=".json" />
+                
                 <div className="h-6 w-px bg-slate-700 mx-2"></div>
                 <button onClick={handleExportPDF} disabled={isExporting} className="bg-red-600 hover:bg-red-700 px-4 py-2 rounded-lg font-bold flex items-center gap-2 text-sm transition-all shadow-lg shadow-red-900/20">
-                    {isExporting ? <Loader2 className="animate-spin" size={18}/> : <FileDown size={18}/>} Relatório PDF
+                    {isExporting ? <Loader2 className="animate-spin" size={18}/> : <FileDown size={18}/>} PDF
                 </button>
             </div>
         </header>
 
         <main className="flex-1 relative overflow-hidden flex">
             
-            {/* HIDDEN EXPORT TEMPLATE (FIXED 1920x1080) */}
+            {/* HIDDEN EXPORT TEMPLATE */}
             <div id="composed-dashboard-export" style={{ position: 'fixed', top: 0, left: '-5000px', width: '1920px', height: '1080px', zIndex: -50, backgroundColor: '#0f172a', padding: '32px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
                  {/* Header Report */}
                  <div className="flex justify-between items-center border-b border-blue-500/30 pb-4 shrink-0">
@@ -296,25 +429,25 @@ export default function App() {
 
                  <div className="grid grid-cols-12 grid-rows-12 gap-6 flex-1 min-h-0 text-white">
                       
-                      {/* 1. Main 3D View (Span 8 cols, 7 rows) */}
+                      {/* 1. Main 3D View */}
                       <div className="col-span-8 row-span-7 relative rounded-xl overflow-hidden border-2 border-slate-700 bg-black">
                            <div className="absolute top-4 left-4 z-10 bg-black/60 px-4 py-2 rounded text-blue-400 font-bold border border-blue-500/30 text-lg">VISTA PRINCIPAL 3D</div>
                            <img id="export-main-img" className="w-full h-full object-cover" alt="3D View" crossOrigin="anonymous" />
                       </div>
 
-                      {/* 2. Photo (Span 4 cols, 3 rows) */}
+                      {/* 2. Photo */}
                       <div className="col-span-4 row-span-3 relative rounded-xl overflow-hidden border-2 border-slate-700 bg-slate-800 flex items-center justify-center">
                            <div className="absolute top-4 left-4 z-10 bg-black/60 px-3 py-1 rounded text-yellow-400 font-bold border border-yellow-500/30">FOTO DA OBRA</div>
                            {secondaryImage ? <img src={secondaryImage} className="w-full h-full object-cover" /> : <div className="text-slate-600 font-mono text-xl">SEM FOTO</div>}
                       </div>
 
-                      {/* 3. Map (Span 4 cols, 4 rows) */}
+                      {/* 3. Map */}
                       <div className="col-span-4 row-span-4 relative rounded-xl overflow-hidden border-2 border-slate-700 bg-slate-800 flex items-center justify-center">
                             <div className="absolute top-4 left-4 z-10 bg-black/60 px-3 py-1 rounded text-green-400 font-bold border border-green-500/30">MAPA DE LOCALIZAÇÃO</div>
                             {mapImage ? <img src={mapImage} className="w-full h-full object-cover" /> : <div className="text-slate-600 font-mono text-xl">SEM MAPA</div>}
                       </div>
 
-                      {/* 4. Detailed Stats (Span 12 cols, 5 rows) - THIS IS THE NEW SPLIT SECTION */}
+                      {/* 4. Detailed Stats */}
                       <div className="col-span-12 row-span-5 relative rounded-xl border-2 border-slate-700 bg-slate-800/50 p-6">
                            <Dashboard pipes={pipes} exportMode={true} />
                       </div>
@@ -345,6 +478,7 @@ export default function App() {
                         <div className="flex-1 rounded-xl overflow-hidden border border-slate-700 shadow-2xl relative">
                             <Scene 
                                 pipes={pipes}
+                                annotations={annotations}
                                 selectedIds={selectedIds}
                                 onSelectPipe={handleSelectPipe}
                                 isDrawing={isDrawing}
@@ -352,6 +486,9 @@ export default function App() {
                                 onUpdatePipe={handleUpdateSinglePipe}
                                 onCancelDraw={() => setIsDrawing(false)}
                                 fixedLength={isFixedLength}
+                                onAddAnnotation={handleAddAnnotation}
+                                onUpdateAnnotation={handleUpdateAnnotation}
+                                onDeleteAnnotation={handleDeleteAnnotation}
                             />
                         </div>
                     </div>

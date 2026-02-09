@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import * as THREE from 'three';
+import { ThreeEvent } from '@react-three/fiber';
 import { PipeSegment, PipeStatus } from '../../types';
 import { STATUS_COLORS, INSULATION_COLORS } from '../../constants';
 
@@ -7,7 +8,10 @@ interface FittingsProps {
   pipes: PipeSegment[];
   connections: Record<string, ConnectionNode>;
   onSelect: (id: string | null, multi?: boolean) => void;
-  selectedIds: string[]; // Changed from single ID to array
+  selectedIds: string[];
+  isQPressed?: boolean;
+  onAnnotationClick?: (point: THREE.Vector3) => void;
+  onPointerMove?: (e: ThreeEvent<PointerEvent>) => void;
 }
 
 export interface ConnectionNode {
@@ -19,7 +23,6 @@ export interface ConnectionNode {
   }[];
 }
 
-// Helper to determine status level safely without relying on enum runtime object
 const getStatusLevel = (status: PipeStatus | string): number => {
   const s = String(status);
   if (s === 'PENDING') return 0;
@@ -29,47 +32,47 @@ const getStatusLevel = (status: PipeStatus | string): number => {
   return 0;
 }
 
-// Helper to get color based on status level safely
 const getColorForStatus = (status: PipeStatus | string) => {
     return STATUS_COLORS[String(status)] || '#888888';
 };
 
-export const Fittings: React.FC<FittingsProps> = ({ pipes, connections, onSelect, selectedIds }) => {
+export const Fittings: React.FC<FittingsProps> = ({ pipes, connections, onSelect, selectedIds, isQPressed, onAnnotationClick, onPointerMove }) => {
+  
+  const handleInteraction = (e: ThreeEvent<MouseEvent>, pipeId: string) => {
+      e.stopPropagation();
+      if (isQPressed && onAnnotationClick) {
+          onAnnotationClick(e.point);
+      } else {
+          const isMulti = e.nativeEvent.ctrlKey || e.nativeEvent.metaKey || e.nativeEvent.shiftKey;
+          onSelect(pipeId, isMulti);
+      }
+  };
+
   const fittings = useMemo(() => {
     const items: React.ReactElement[] = [];
-
-    // Safety check for undefined connections
     if (!connections) return items;
 
     Object.entries(connections).forEach(([key, rawNode]) => {
-      // Fix: Explicitly cast to ConnectionNode to avoid 'unknown' type errors
       const node = rawNode as ConnectionNode;
 
-      // 1. End Cap / Open End (1 pipe)
       if (node.connectedPipes.length < 2) return;
 
-      // 2. Simple Connection (2 pipes)
       if (node.connectedPipes.length === 2) {
         const p1 = node.connectedPipes[0];
         const p2 = node.connectedPipes[1];
         
         const dot = p1.vector.dot(p2.vector);
-        const isStraight = dot < -0.99; // Approx 180 degrees
+        const isStraight = dot < -0.99; 
 
         const radius = Math.max(p1.pipe.diameter, p2.pipe.diameter) * 1.5; 
         
-        // Smart Selection: When clicking a joint/fitting, select the pipe with the LOWEST status (the bottleneck)
-        // If equal, prefer p1.
         const level1 = getStatusLevel(p1.pipe.status);
         const level2 = getStatusLevel(p2.pipe.status);
         const smartSelectId = level1 <= level2 ? p1.pipe.id : p2.pipe.id;
 
         if (isStraight) {
-          // --- STRAIGHT JOINT (Junta Reta) ---
-          
+          // --- STRAIGHT JOINT ---
           let weldColor = STATUS_COLORS['PENDING'] || '#888888';
-          
-          // Logic: Combined status for butt weld. Both sides need to be ready.
           if (level1 >= 3 && level2 >= 3) {
             weldColor = STATUS_COLORS['HYDROTEST'] || '#3b82f6';
           } else if (level1 >= 2 && level2 >= 2) {
@@ -80,65 +83,40 @@ export const Fittings: React.FC<FittingsProps> = ({ pipes, connections, onSelect
 
           const up = new THREE.Vector3(0, 1, 0);
           const quaternion = new THREE.Quaternion().setFromUnitVectors(up, p1.vector);
-          
-          // Highlight weld if either connected pipe is selected
           const isSelected = selectedIds.includes(p1.pipe.id) || selectedIds.includes(p2.pipe.id);
 
           items.push(
-            <group 
-                key={`weld-${key}`} 
-                position={node.point} 
-                quaternion={quaternion}
-            >
+            <group key={`weld-${key}`} position={node.point} quaternion={quaternion}>
                <WeldJoint 
                   radius={p1.pipe.diameter/2}
                   color={weldColor}
-                  onClick={(multi) => onSelect(smartSelectId, multi)}
+                  onClick={(e) => handleInteraction(e, smartSelectId)}
+                  onPointerMove={onPointerMove}
                   isSelected={isSelected}
-                  isStraight={true}
                />
             </group>
           );
         } else {
-          // --- ELBOW (Curva) ---
-          
+          // --- ELBOW ---
           const startPt = p1.vector.clone().multiplyScalar(radius);
           const endPt = p2.vector.clone().multiplyScalar(radius);
           const controlPt = new THREE.Vector3(0,0,0);
-
           const curve = new THREE.QuadraticBezierCurve3(startPt, controlPt, endPt);
           
-          // Elbow Body Color: Warns about the lowest status (Bottleneck visualization)
           const bodyStatus = level1 < level2 ? p1.pipe.status : p2.pipe.status;
           const bodyColor = getColorForStatus(bodyStatus);
 
-          // INSULATION LOGIC FOR ELBOW
-          // If the "Smart Selected" pipe has insulation, the elbow gets it.
-          // Or if *any* pipe has it. Let's use the property of the smartSelectId pipe.
           const mainPipe = pipes.find(p => p.id === smartSelectId);
           const hasInsulation = mainPipe?.insulationStatus && mainPipe.insulationStatus !== 'NONE';
           const insulationColor = hasInsulation ? (INSULATION_COLORS[mainPipe?.insulationStatus!] || '#e2e8f0') : 'transparent';
-
-
-          // Independent Weld Colors
-          const weld1Color = getColorForStatus(p1.pipe.status);
-          const weld2Color = getColorForStatus(p2.pipe.status);
-          
-          // Selection Highlight Logic
           const isSelected = selectedIds.includes(p1.pipe.id) || selectedIds.includes(p2.pipe.id);
 
           items.push(
-            <group 
-                key={`elbow-${key}`} 
-                position={node.point}
-            >
+            <group key={`elbow-${key}`} position={node.point}>
               {/* Elbow Body */}
               <mesh 
-                onClick={(e) => {
-                    e.stopPropagation();
-                    const isMulti = e.nativeEvent.ctrlKey || e.nativeEvent.metaKey || e.nativeEvent.shiftKey;
-                    onSelect(smartSelectId, isMulti); 
-                }}
+                onClick={(e) => handleInteraction(e, smartSelectId)}
+                onPointerMove={onPointerMove}
                 onPointerOver={() => document.body.style.cursor = 'pointer'}
                 onPointerOut={() => document.body.style.cursor = 'auto'}
               >
@@ -152,82 +130,44 @@ export const Fittings: React.FC<FittingsProps> = ({ pipes, connections, onSelect
                 />
               </mesh>
 
-              {/* Elbow Insulation Shell (Transparent Solid) */}
               {hasInsulation && (
-                  <mesh>
-                    {/* Radius +0.08 */}
+                  <mesh onPointerMove={onPointerMove} onClick={(e) => handleInteraction(e, smartSelectId)}>
                     <tubeGeometry args={[curve, 10, p1.pipe.diameter / 2 + 0.08, 16, false]} />
-                    <meshStandardMaterial 
-                        color={insulationColor}
-                        transparent
-                        opacity={0.3} // Glass-like transparency
-                        roughness={0.1}
-                        metalness={0.1}
-                        depthWrite={false}
-                        side={THREE.DoubleSide}
-                    />
+                    <meshStandardMaterial color={insulationColor} transparent opacity={0.3} roughness={0.1} metalness={0.1} depthWrite={false} side={THREE.DoubleSide} />
                   </mesh>
               )}
 
-              {/* Weld 1: Connecting Pipe 1 to Elbow */}
               <group position={startPt} quaternion={new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0), p1.vector)}>
-                <WeldJoint 
-                    radius={p1.pipe.diameter/2} 
-                    color={weld1Color}
-                    onClick={(multi) => onSelect(p1.pipe.id, multi)} 
-                    isSelected={selectedIds.includes(p1.pipe.id)}
-                />
+                <WeldJoint radius={p1.pipe.diameter/2} color={getColorForStatus(p1.pipe.status)} onClick={(e) => handleInteraction(e, p1.pipe.id)} onPointerMove={onPointerMove} isSelected={selectedIds.includes(p1.pipe.id)} />
               </group>
 
-              {/* Weld 2: Connecting Pipe 2 to Elbow */}
               <group position={endPt} quaternion={new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0), p2.vector)}>
-                <WeldJoint 
-                    radius={p2.pipe.diameter/2} 
-                    color={weld2Color}
-                    onClick={(multi) => onSelect(p2.pipe.id, multi)}
-                    isSelected={selectedIds.includes(p2.pipe.id)}
-                />
+                <WeldJoint radius={p2.pipe.diameter/2} color={getColorForStatus(p2.pipe.status)} onClick={(e) => handleInteraction(e, p2.pipe.id)} onPointerMove={onPointerMove} isSelected={selectedIds.includes(p2.pipe.id)} />
               </group>
             </group>
           );
         }
       }
-      // 3. Tee / Cross (>2 pipes)
-      else {
-         items.push(
-            <mesh key={`tee-${key}`} position={node.point}>
-                <sphereGeometry args={[node.connectedPipes[0].pipe.diameter * 0.8]} />
-                <meshStandardMaterial color="#555" />
-            </mesh>
-         );
-      }
     });
-
     return items;
-  }, [pipes, connections, onSelect, selectedIds]);
+  }, [pipes, connections, selectedIds, isQPressed, onAnnotationClick, onPointerMove]);
 
   return <group>{fittings}</group>;
 };
 
-// Interactive Weld Joint Component
-const WeldJoint = ({ radius, color, onClick, isSelected, isStraight = false }: { radius: number, color: string, onClick: (multi: boolean) => void, isSelected?: boolean, isStraight?: boolean }) => {
+const WeldJoint = ({ radius, color, onClick, onPointerMove, isSelected }: { radius: number, color: string, onClick: (e: ThreeEvent<MouseEvent>) => void, onPointerMove?: (e: ThreeEvent<PointerEvent>) => void, isSelected?: boolean }) => {
     const [hovered, setHovered] = useState(false);
-
     return (
         <mesh
-            onClick={(e) => { 
-                e.stopPropagation(); 
-                const isMulti = e.nativeEvent.ctrlKey || e.nativeEvent.metaKey || e.nativeEvent.shiftKey;
-                onClick(isMulti); 
-            }}
+            onClick={onClick}
+            onPointerMove={onPointerMove}
             onPointerOver={(e) => { e.stopPropagation(); setHovered(true); document.body.style.cursor = 'pointer'; }}
             onPointerOut={(e) => { e.stopPropagation(); setHovered(false); document.body.style.cursor = 'auto'; }}
-            scale={hovered ? 1.2 : 1} // Visual feedback on hover
+            scale={hovered ? 1.2 : 1}
         >
-             {/* Ring geometry slightly larger than pipe */}
              <torusGeometry args={[radius + 0.015, 0.035, 12, 24]} />
              <meshStandardMaterial 
-                color={hovered ? '#ffffff' : color} // Highlights white on hover, otherwise status color
+                color={hovered ? '#ffffff' : color} 
                 roughness={0.5} 
                 emissive={isSelected || hovered ? color : '#000000'}
                 emissiveIntensity={isSelected || hovered ? 0.6 : 0}

@@ -40,6 +40,12 @@ export interface PipeSegment {
   insulationStatus?: InsulationStatus; // Updated from boolean to Enum
 }
 
+export interface Annotation {
+  id: string;
+  position: Coordinates;
+  text: string;
+}
+
 export interface ProjectStats {
   totalLength: number;
   installedLength: number;

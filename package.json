@@ -17,7 +17,8 @@
     "three": "^0.182.0",
     "@react-three/drei": "^10.7.7",
     "html2canvas": "^1.4.1",
-    "jspdf": "^2.5.1"
+    "jspdf": "^2.5.1",
+    "idb": "8.0.0"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
