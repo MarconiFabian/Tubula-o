@@ -1,236 +1,208 @@
-import React, { useMemo } from 'react';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import React, { useMemo, useRef } from 'react';
 import { PipeSegment } from '../types';
 import { STATUS_COLORS, STATUS_LABELS, ALL_STATUSES, INSULATION_COLORS, INSULATION_LABELS, ALL_INSULATION_STATUSES } from '../constants';
-import { Activity, Ruler, Flame, Droplets, Shield, FileDown, FileText } from 'lucide-react';
+import { Activity, FileDown, Upload, Image as ImageIcon, Map as MapIcon, Layers, Shield } from 'lucide-react';
 
 interface DashboardProps {
   pipes: PipeSegment[];
-  onExportPDF?: () => void; // Optional prop for the export function
+  onExportPDF?: () => void;
   isExporting?: boolean;
+  exportMode?: boolean;
+  secondaryImage?: string | null;
+  mapImage?: string | null;
+  onUploadSecondary?: (img: string | null) => void;
+  onUploadMap?: (img: string | null) => void;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ pipes = [], onExportPDF, isExporting = false }) => {
-  
-  const stats = useMemo(() => {
-    // Defensive check
-    if (!Array.isArray(pipes)) {
-        return { totalLength: 0, installedLength: 0, countByStatus: {}, countByInsulation: {} };
-    }
+const Dashboard: React.FC<DashboardProps> = ({ 
+    pipes = [], 
+    onExportPDF, 
+    isExporting = false, 
+    exportMode = false,
+    secondaryImage,
+    mapImage,
+    onUploadSecondary,
+    onUploadMap
+}) => {
+  const secInputRef = useRef<HTMLInputElement>(null);
+  const mapInputRef = useRef<HTMLInputElement>(null);
 
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>, setter?: (val: string | null) => void) => {
+      const file = e.target.files?.[0];
+      if (file && setter) {
+          const reader = new FileReader();
+          reader.onload = (ev) => setter(ev.target?.result as string);
+          reader.readAsDataURL(file);
+      }
+  };
+
+  const stats = useMemo(() => {
     const totalLength = pipes.reduce((acc, p) => acc + (p?.length || 0), 0);
     
-    // Calculate installed length (anything not PENDING)
-    const installedLength = pipes
-      .filter(p => p && p.status && p.status !== 'PENDING')
-      .reduce((acc, p) => acc + (p?.length || 0), 0);
-    
-    // Initialize counters safely
-    const countByStatus: Record<string, number> = {};
-    ALL_STATUSES.forEach(status => countByStatus[status] = 0);
+    // Piping Status Counts
+    const pipeCounts: Record<string, number> = {};
+    ALL_STATUSES.forEach(s => pipeCounts[s] = 0);
+    pipes.forEach(p => { if (p.status) pipeCounts[p.status] = (pipeCounts[p.status] || 0) + 1; });
 
-    const countByInsulation: Record<string, number> = {};
-    ALL_INSULATION_STATUSES.forEach(status => countByInsulation[status] = 0);
-
-    // Count
-    pipes.forEach(p => {
-      // Pipe Status
-      if (p && p.status) {
-        const current = countByStatus[p.status] || 0;
-        countByStatus[p.status] = current + 1;
-      }
-      
-      // Insulation Status
-      const insStatus = p.insulationStatus || 'NONE';
-      const currentIns = countByInsulation[insStatus] || 0;
-      countByInsulation[insStatus] = currentIns + 1;
+    // Insulation Status Counts
+    const insulationCounts: Record<string, number> = {};
+    ALL_INSULATION_STATUSES.forEach(s => insulationCounts[s] = 0);
+    pipes.forEach(p => { 
+        const status = p.insulationStatus || 'NONE';
+        insulationCounts[status] = (insulationCounts[status] || 0) + 1; 
     });
 
-    return { totalLength, installedLength, countByStatus, countByInsulation };
+    return { totalLength, pipeCounts, insulationCounts };
   }, [pipes]);
 
-  // Construct chart data for Pipe Status
-  const statusData = useMemo(() => {
-     if (!stats || !stats.countByStatus) return [];
-     return ALL_STATUSES.map(status => ({
-        name: STATUS_LABELS[status] || status,
-        count: stats.countByStatus[status] || 0,
-        color: STATUS_COLORS[status] || '#94a3b8'
-     }));
-  }, [stats]);
+  // --- EXPORT VIEW (SPLIT PIPING VS INSULATION) ---
+  if (exportMode) {
+      return (
+          <div className="flex flex-col h-full w-full gap-4">
+               {/* Top Half: PIPING STATS */}
+               <div className="flex-1 border-b border-slate-600 pb-2">
+                    <div className="flex items-center gap-2 mb-2">
+                        <Layers size={24} className="text-blue-400" />
+                        <h3 className="text-xl font-bold text-blue-400 tracking-widest uppercase">Tubulação - Status Físico</h3>
+                        <div className="ml-auto bg-slate-900 px-3 py-1 rounded border border-slate-600">
+                             <span className="text-slate-400 text-sm mr-2">TOTAL METROS:</span>
+                             <span className="text-white font-bold text-lg">{stats.totalLength.toFixed(2)}m</span>
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-4 gap-4 h-[120px]">
+                        {ALL_STATUSES.map(status => (
+                            <div key={status} className="bg-slate-900/60 rounded-lg border-l-4 flex flex-col justify-center items-center relative" style={{ borderColor: STATUS_COLORS[status] }}>
+                                <span className="text-4xl font-bold text-white">{stats.pipeCounts[status]}</span>
+                                <span className="text-xs text-slate-400 uppercase tracking-widest mt-1">{STATUS_LABELS[status]}</span>
+                                {/* Mini percentage bar at bottom */}
+                                <div className="absolute bottom-2 w-16 h-1 bg-slate-700 rounded-full overflow-hidden">
+                                     <div className="h-full" style={{ width: `${(stats.pipeCounts[status] / (pipes.length || 1)) * 100}%`, backgroundColor: STATUS_COLORS[status] }} />
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+               </div>
 
-  // Construct chart data for Insulation Status
-  const insulationData = useMemo(() => {
-    if (!stats || !stats.countByInsulation) return [];
-    return ALL_INSULATION_STATUSES.map(status => {
-       // Visual fix: If color is transparent (NONE), make it a visible dark grey for the chart so it can be seen in the legend
-       let color = INSULATION_COLORS[status] || '#94a3b8';
-       if (color === 'transparent') color = '#334155'; // Dark Slate for "None" in chart
+               {/* Bottom Half: INSULATION STATS */}
+               <div className="flex-1 pt-2">
+                    <div className="flex items-center gap-2 mb-2">
+                        <Shield size={24} className="text-yellow-400" />
+                        <h3 className="text-xl font-bold text-yellow-400 tracking-widest uppercase">Proteção Térmica / Isolamento</h3>
+                    </div>
+                    <div className="grid grid-cols-4 gap-4 h-[120px]">
+                        {ALL_INSULATION_STATUSES.map(status => (
+                            <div key={status} className="bg-slate-900/60 rounded-lg border-t-4 flex flex-col justify-center items-center relative" style={{ borderColor: INSULATION_COLORS[status] === 'transparent' ? '#64748b' : INSULATION_COLORS[status] }}>
+                                <span className="text-4xl font-bold text-white">{stats.insulationCounts[status]}</span>
+                                <span className="text-xs text-slate-400 uppercase tracking-widest mt-1 text-center px-1">{INSULATION_LABELS[status]}</span>
+                            </div>
+                        ))}
+                    </div>
+               </div>
+          </div>
+      )
+  }
 
-       return {
-           name: INSULATION_LABELS[status] || status,
-           count: stats.countByInsulation[status] || 0,
-           color: color
-       };
-    });
- }, [stats]);
-
-  const completionPercentage = stats.totalLength > 0 
-    ? Math.round((stats.installedLength / stats.totalLength) * 100) 
-    : 0;
-
-  // Safe counts
-  const weldedCount = (stats.countByStatus['WELDED'] || 0) + (stats.countByStatus['HYDROTEST'] || 0);
-  const hydroCount = stats.countByStatus['HYDROTEST'] || 0;
-
+  // --- INTERACTIVE VIEW ---
   return (
-    <div className="flex flex-col gap-4 mb-6">
-      
-      {/* EXPORT HEADER - Always visible if function provided */}
+    <div className="flex flex-col gap-6">
       {onExportPDF && (
-        <div className="bg-slate-800 rounded-xl p-4 shadow-lg border border-slate-700 flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-4">
-                <div className="bg-red-500/10 p-3 rounded-full">
-                    <FileText className="text-red-500" size={32} />
-                </div>
-                <div>
-                    <h2 className="text-xl font-bold text-white">Relatório de Obra (PDF)</h2>
-                    <p className="text-slate-400 text-sm">Gere um documento completo com visualização 3D, gráficos e listagem.</p>
-                </div>
-            </div>
-            <button 
-                onClick={onExportPDF}
-                disabled={isExporting}
-                className={`
-                    px-6 py-3 rounded-lg font-bold text-white flex items-center gap-2 transition-all shadow-lg
-                    ${isExporting 
-                        ? 'bg-slate-600 cursor-wait' 
-                        : 'bg-red-600 hover:bg-red-500 hover:scale-105 shadow-red-600/20'}
-                `}
-            >
-                <FileDown size={20} />
-                {isExporting ? 'Gerando Arquivo...' : 'BAIXAR RELATÓRIO PDF'}
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-slate-900 p-6 rounded-xl border border-slate-800 shadow-xl gap-4">
+             <div>
+                 <h2 className="text-xl font-bold text-white flex items-center gap-2"><Activity className="text-blue-500" /> Painel de Controle (HUD)</h2>
+                 <p className="text-slate-400 text-sm">Adicione as fotos abaixo para compor o relatório final.</p>
+             </div>
+             <button onClick={onExportPDF} disabled={isExporting} className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-3 rounded-lg font-bold flex gap-2 items-center transition-all shadow-lg shadow-blue-500/20">
+                <FileDown size={20} /> {isExporting ? 'Gerando PDF...' : 'Exportar Relatório PDF'}
             </button>
         </div>
       )}
 
-      {/* Grid Layout for Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* KPI Cards */}
-        <div className="bg-white dark:bg-slate-800 p-4 rounded-lg shadow border border-slate-200 dark:border-slate-700">
-            <div className="flex items-center gap-3">
-            <div className="p-2 bg-blue-100 dark:bg-blue-900 rounded-full text-blue-600 dark:text-blue-300">
-                <Ruler size={24} />
-            </div>
-            <div>
-                <p className="text-sm text-slate-500 dark:text-slate-400">Tubulação Total (m)</p>
-                <h3 className="text-xl font-bold text-slate-900 dark:text-white">{stats.totalLength.toFixed(2)} m</h3>
-            </div>
-            </div>
-        </div>
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+          
+          {/* Main 3D Placeholder */}
+          <div className="col-span-12 md:col-span-8 h-80 bg-slate-900 rounded-xl border-2 border-dashed border-slate-800 flex flex-col items-center justify-center relative overflow-hidden group">
+               <div className="absolute inset-0 bg-gradient-to-br from-blue-900/10 to-transparent pointer-events-none" />
+               <Activity size={48} className="text-slate-700 mb-2" />
+               <p className="text-slate-500 font-bold uppercase tracking-wider">Vista Principal 3D</p>
+               <p className="text-slate-600 text-xs mt-1">Será capturada automaticamente do modelo</p>
+          </div>
 
-        <div className="bg-white dark:bg-slate-800 p-4 rounded-lg shadow border border-slate-200 dark:border-slate-700">
-            <div className="flex items-center gap-3">
-            <div className="p-2 bg-green-100 dark:bg-green-900 rounded-full text-green-600 dark:text-green-300">
-                <Activity size={24} />
-            </div>
-            <div>
-                <p className="text-sm text-slate-500 dark:text-slate-400">Progresso (Linear)</p>
-                <h3 className="text-xl font-bold text-slate-900 dark:text-white">{completionPercentage}%</h3>
-                <p className="text-xs text-slate-500">Realizado: {stats.installedLength.toFixed(2)}m</p>
-            </div>
-            </div>
-        </div>
+          {/* Secondary Image Upload */}
+          <div className="col-span-12 md:col-span-4 h-80 bg-slate-900 rounded-xl border border-slate-800 flex flex-col relative overflow-hidden group">
+               <div className="absolute top-0 left-0 w-full p-3 bg-black/60 backdrop-blur-sm z-10 flex justify-between items-center border-b border-white/10">
+                   <span className="text-xs font-bold text-yellow-400 uppercase flex items-center gap-2"><ImageIcon size={14} /> Foto Obra</span>
+                   {secondaryImage && <button onClick={() => onUploadSecondary?.(null)} className="text-xs text-red-400 hover:text-red-300 font-bold">Remover</button>}
+               </div>
+               
+               {secondaryImage ? (
+                   <img src={secondaryImage} className="w-full h-full object-cover" />
+               ) : (
+                   <div className="flex-1 flex flex-col items-center justify-center p-6 text-center cursor-pointer hover:bg-slate-800/50 transition-colors" onClick={() => secInputRef.current?.click()}>
+                       <div className="bg-slate-800 p-4 rounded-full mb-3"><Upload size={24} className="text-slate-400" /></div>
+                       <p className="text-slate-400 text-sm font-bold">Carregar Foto</p>
+                       <p className="text-slate-600 text-xs mt-1">Clique para selecionar</p>
+                   </div>
+               )}
+               <input type="file" ref={secInputRef} className="hidden" accept="image/*" onChange={(e) => handleImageUpload(e, onUploadSecondary)} />
+          </div>
 
-        <div className="bg-white dark:bg-slate-800 p-4 rounded-lg shadow border border-slate-200 dark:border-slate-700">
-            <div className="flex items-center gap-3">
-            <div className="p-2 bg-yellow-100 dark:bg-yellow-900 rounded-full text-yellow-600 dark:text-yellow-300">
-                <Flame size={24} />
-            </div>
-            <div>
-                <p className="text-sm text-slate-500 dark:text-slate-400">Soldas Concluídas</p>
-                <h3 className="text-xl font-bold text-slate-900 dark:text-white">
-                {weldedCount} / {pipes.length}
-                </h3>
-            </div>
-            </div>
-        </div>
+          {/* Map Image Upload */}
+          <div className="col-span-12 md:col-span-4 h-64 bg-slate-900 rounded-xl border border-slate-800 flex flex-col relative overflow-hidden group">
+               <div className="absolute top-0 left-0 w-full p-3 bg-black/60 backdrop-blur-sm z-10 flex justify-between items-center border-b border-white/10">
+                   <span className="text-xs font-bold text-green-400 uppercase flex items-center gap-2"><MapIcon size={14} /> Mapa Local</span>
+                   {mapImage && <button onClick={() => onUploadMap?.(null)} className="text-xs text-red-400 hover:text-red-300 font-bold">Remover</button>}
+               </div>
+               
+               {mapImage ? (
+                   <img src={mapImage} className="w-full h-full object-cover" />
+               ) : (
+                   <div className="flex-1 flex flex-col items-center justify-center p-6 text-center cursor-pointer hover:bg-slate-800/50 transition-colors" onClick={() => mapInputRef.current?.click()}>
+                       <div className="bg-slate-800 p-3 rounded-full mb-3"><MapIcon size={20} className="text-slate-400" /></div>
+                       <p className="text-slate-400 text-sm font-bold">Carregar Mapa</p>
+                   </div>
+               )}
+               <input type="file" ref={mapInputRef} className="hidden" accept="image/*" onChange={(e) => handleImageUpload(e, onUploadMap)} />
+          </div>
 
-        <div className="bg-white dark:bg-slate-800 p-4 rounded-lg shadow border border-slate-200 dark:border-slate-700">
-            <div className="flex items-center gap-3">
-            <div className="p-2 bg-indigo-100 dark:bg-indigo-900 rounded-full text-indigo-600 dark:text-indigo-300">
-                <Droplets size={24} />
-            </div>
-            <div>
-                <p className="text-sm text-slate-500 dark:text-slate-400">Teste Hidrostático</p>
-                <h3 className="text-xl font-bold text-slate-900 dark:text-white">
-                {hydroCount} Linhas
-                </h3>
-            </div>
-            </div>
-        </div>
-
-        {/* Chart Section - Pipe Status */}
-        <div className="col-span-1 md:col-span-1 lg:col-span-2 bg-white dark:bg-slate-800 p-4 rounded-lg shadow border border-slate-200 dark:border-slate-700 h-64 flex flex-col">
-            <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-4 flex items-center gap-2">
-                <Activity size={16} /> Status Montagem/Solda
-            </h4>
-            <div className="flex-1 w-full">
-                {statusData.length > 0 ? (
-                    <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={statusData} layout="vertical" margin={{ left: 20 }}>
-                            <XAxis type="number" hide />
-                            <YAxis dataKey="name" type="category" width={100} tick={{fill: '#94a3b8', fontSize: 11}} />
-                            <Tooltip 
-                                contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155', color: '#fff' }}
-                                itemStyle={{ color: '#fff' }}
-                                cursor={{fill: 'transparent'}}
-                            />
-                            <Bar dataKey="count" radius={[0, 4, 4, 0]} barSize={20}>
-                            {statusData.map((entry, index) => (
-                                <Cell key={`cell-${index}`} fill={entry.color} />
+          {/* INTERACTIVE STATS AREA (Combined View) */}
+          <div className="col-span-12 md:col-span-8 h-64 bg-slate-900 rounded-xl border border-slate-800 p-6 flex flex-col overflow-y-auto">
+                <div className="flex items-center justify-between mb-4 border-b border-slate-800 pb-2 shrink-0">
+                     <h3 className="text-sm font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2"><Activity size={16} /> Indicadores Gerais</h3>
+                     <span className="text-xs text-blue-500 font-mono animate-pulse">LIVE DATA</span>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-8">
+                     {/* Piping Section */}
+                     <div>
+                        <h4 className="text-blue-400 font-bold text-xs uppercase mb-3 border-b border-blue-900/30 pb-1">Status Tubulação</h4>
+                        <div className="grid grid-cols-2 gap-3">
+                            <div className="bg-slate-950 p-2 rounded border border-slate-800 col-span-2">
+                                <span className="text-[10px] text-slate-500 block">Total Metros</span>
+                                <span className="text-lg font-bold text-white">{stats.totalLength.toFixed(1)}m</span>
+                            </div>
+                            {ALL_STATUSES.map(s => (
+                                <div key={s} className="bg-slate-950 p-2 rounded border-l-2" style={{ borderColor: STATUS_COLORS[s] }}>
+                                    <span className="text-lg font-bold text-white block leading-none">{stats.pipeCounts[s]}</span>
+                                    <span className="text-[9px] text-slate-500 uppercase">{STATUS_LABELS[s].split(' ')[0]}</span>
+                                </div>
                             ))}
-                            </Bar>
-                        </BarChart>
-                    </ResponsiveContainer>
-                ) : (
-                    <div className="flex items-center justify-center h-full text-slate-500">
-                        Sem dados
-                    </div>
-                )}
-            </div>
-        </div>
+                        </div>
+                     </div>
 
-        {/* Chart Section - Insulation Status */}
-        <div className="col-span-1 md:col-span-1 lg:col-span-2 bg-white dark:bg-slate-800 p-4 rounded-lg shadow border border-slate-200 dark:border-slate-700 h-64 flex flex-col">
-            <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-4 flex items-center gap-2">
-                <Shield size={16} /> Status Isolamento Térmico
-            </h4>
-            <div className="flex-1 w-full">
-                {insulationData.length > 0 ? (
-                    <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={insulationData} layout="vertical" margin={{ left: 20 }}>
-                            <XAxis type="number" hide />
-                            <YAxis dataKey="name" type="category" width={100} tick={{fill: '#94a3b8', fontSize: 11}} />
-                            <Tooltip 
-                                contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155', color: '#fff' }}
-                                itemStyle={{ color: '#fff' }}
-                                cursor={{fill: 'transparent'}}
-                            />
-                            <Bar dataKey="count" radius={[0, 4, 4, 0]} barSize={20}>
-                            {insulationData.map((entry, index) => (
-                                <Cell key={`cell-ins-${index}`} fill={entry.color} />
+                     {/* Insulation Section */}
+                     <div>
+                        <h4 className="text-yellow-400 font-bold text-xs uppercase mb-3 border-b border-yellow-900/30 pb-1">Isolamento Térmico</h4>
+                        <div className="grid grid-cols-2 gap-3">
+                             {ALL_INSULATION_STATUSES.map(s => (
+                                <div key={s} className="bg-slate-950 p-2 rounded border-t-2" style={{ borderColor: INSULATION_COLORS[s] === 'transparent' ? '#475569' : INSULATION_COLORS[s] }}>
+                                    <span className="text-lg font-bold text-white block leading-none">{stats.insulationCounts[s]}</span>
+                                    <span className="text-[9px] text-slate-500 uppercase">{INSULATION_LABELS[s].replace('Isol. ', '')}</span>
+                                </div>
                             ))}
-                            </Bar>
-                        </BarChart>
-                    </ResponsiveContainer>
-                ) : (
-                    <div className="flex items-center justify-center h-full text-slate-500">
-                        Sem dados
-                    </div>
-                )}
-            </div>
-        </div>
+                        </div>
+                     </div>
+                </div>
+          </div>
       </div>
     </div>
   );

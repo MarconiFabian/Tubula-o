@@ -15,6 +15,13 @@ export const STATUS_LABELS: Record<string, string> = {
   'HYDROTEST': 'Testado (Hydro)'
 };
 
+export const NEXT_STEP_LABELS: Record<string, string> = {
+  'PENDING': 'Executar Montagem',
+  'MOUNTED': 'Liberar Solda',
+  'WELDED': 'Realizar Teste Hidro',
+  'HYDROTEST': 'Isolamento / Pintura'
+};
+
 // Colors for the Insulation Shell (Usually semi-transparent in 3D)
 export const INSULATION_COLORS: Record<string, string> = {
   'NONE': 'transparent',

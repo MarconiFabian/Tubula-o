@@ -19,7 +19,7 @@ export interface Coordinates {
 }
 
 export interface WelderInfo {
-  welderId: string;
+  welderId?: string; // Made optional or deprecated
   weldDate: string;
   electrodeBatch: string;
   visualInspection: boolean;
@@ -28,11 +28,13 @@ export interface WelderInfo {
 export interface PipeSegment {
   id: string;
   name: string;
+  location?: string; // New Field: Local da Atividade
   start: Coordinates;
   end: Coordinates;
   diameter: number; // in meters
   status: PipeStatus;
   welderInfo?: WelderInfo;
+  generalInfo?: string; // New field for general notes
   testPackId?: string;
   length: number; // Calculated automatically
   insulationStatus?: InsulationStatus; // Updated from boolean to Enum

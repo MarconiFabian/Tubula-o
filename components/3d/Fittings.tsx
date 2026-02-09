@@ -6,8 +6,8 @@ import { STATUS_COLORS, INSULATION_COLORS } from '../../constants';
 interface FittingsProps {
   pipes: PipeSegment[];
   connections: Record<string, ConnectionNode>;
-  onSelect: (id: string | null) => void;
-  selectedId: string | null;
+  onSelect: (id: string | null, multi?: boolean) => void;
+  selectedIds: string[]; // Changed from single ID to array
 }
 
 export interface ConnectionNode {
@@ -34,7 +34,7 @@ const getColorForStatus = (status: PipeStatus | string) => {
     return STATUS_COLORS[String(status)] || '#888888';
 };
 
-export const Fittings: React.FC<FittingsProps> = ({ pipes, connections, onSelect, selectedId }) => {
+export const Fittings: React.FC<FittingsProps> = ({ pipes, connections, onSelect, selectedIds }) => {
   const fittings = useMemo(() => {
     const items: React.ReactElement[] = [];
 
@@ -82,7 +82,7 @@ export const Fittings: React.FC<FittingsProps> = ({ pipes, connections, onSelect
           const quaternion = new THREE.Quaternion().setFromUnitVectors(up, p1.vector);
           
           // Highlight weld if either connected pipe is selected
-          const isSelected = selectedId === p1.pipe.id || selectedId === p2.pipe.id;
+          const isSelected = selectedIds.includes(p1.pipe.id) || selectedIds.includes(p2.pipe.id);
 
           items.push(
             <group 
@@ -93,7 +93,7 @@ export const Fittings: React.FC<FittingsProps> = ({ pipes, connections, onSelect
                <WeldJoint 
                   radius={p1.pipe.diameter/2}
                   color={weldColor}
-                  onClick={() => onSelect(smartSelectId)}
+                  onClick={(multi) => onSelect(smartSelectId, multi)}
                   isSelected={isSelected}
                   isStraight={true}
                />
@@ -125,7 +125,7 @@ export const Fittings: React.FC<FittingsProps> = ({ pipes, connections, onSelect
           const weld2Color = getColorForStatus(p2.pipe.status);
           
           // Selection Highlight Logic
-          const isSelected = selectedId === p1.pipe.id || selectedId === p2.pipe.id;
+          const isSelected = selectedIds.includes(p1.pipe.id) || selectedIds.includes(p2.pipe.id);
 
           items.push(
             <group 
@@ -136,7 +136,8 @@ export const Fittings: React.FC<FittingsProps> = ({ pipes, connections, onSelect
               <mesh 
                 onClick={(e) => {
                     e.stopPropagation();
-                    onSelect(smartSelectId); 
+                    const isMulti = e.nativeEvent.ctrlKey || e.nativeEvent.metaKey || e.nativeEvent.shiftKey;
+                    onSelect(smartSelectId, isMulti); 
                 }}
                 onPointerOver={() => document.body.style.cursor = 'pointer'}
                 onPointerOut={() => document.body.style.cursor = 'auto'}
@@ -173,8 +174,8 @@ export const Fittings: React.FC<FittingsProps> = ({ pipes, connections, onSelect
                 <WeldJoint 
                     radius={p1.pipe.diameter/2} 
                     color={weld1Color}
-                    onClick={() => onSelect(p1.pipe.id)} // Clicking this specific ring selects Pipe 1
-                    isSelected={selectedId === p1.pipe.id}
+                    onClick={(multi) => onSelect(p1.pipe.id, multi)} 
+                    isSelected={selectedIds.includes(p1.pipe.id)}
                 />
               </group>
 
@@ -183,8 +184,8 @@ export const Fittings: React.FC<FittingsProps> = ({ pipes, connections, onSelect
                 <WeldJoint 
                     radius={p2.pipe.diameter/2} 
                     color={weld2Color}
-                    onClick={() => onSelect(p2.pipe.id)} // Clicking this specific ring selects Pipe 2
-                    isSelected={selectedId === p2.pipe.id}
+                    onClick={(multi) => onSelect(p2.pipe.id, multi)}
+                    isSelected={selectedIds.includes(p2.pipe.id)}
                 />
               </group>
             </group>
@@ -203,18 +204,22 @@ export const Fittings: React.FC<FittingsProps> = ({ pipes, connections, onSelect
     });
 
     return items;
-  }, [pipes, connections, onSelect, selectedId]);
+  }, [pipes, connections, onSelect, selectedIds]);
 
   return <group>{fittings}</group>;
 };
 
 // Interactive Weld Joint Component
-const WeldJoint = ({ radius, color, onClick, isSelected, isStraight = false }: { radius: number, color: string, onClick: () => void, isSelected?: boolean, isStraight?: boolean }) => {
+const WeldJoint = ({ radius, color, onClick, isSelected, isStraight = false }: { radius: number, color: string, onClick: (multi: boolean) => void, isSelected?: boolean, isStraight?: boolean }) => {
     const [hovered, setHovered] = useState(false);
 
     return (
         <mesh
-            onClick={(e) => { e.stopPropagation(); onClick(); }}
+            onClick={(e) => { 
+                e.stopPropagation(); 
+                const isMulti = e.nativeEvent.ctrlKey || e.nativeEvent.metaKey || e.nativeEvent.shiftKey;
+                onClick(isMulti); 
+            }}
             onPointerOver={(e) => { e.stopPropagation(); setHovered(true); document.body.style.cursor = 'pointer'; }}
             onPointerOut={(e) => { e.stopPropagation(); setHovered(false); document.body.style.cursor = 'auto'; }}
             scale={hovered ? 1.2 : 1} // Visual feedback on hover

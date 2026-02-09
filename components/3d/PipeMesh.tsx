@@ -7,9 +7,9 @@ import { STATUS_COLORS, INSULATION_COLORS } from '../../constants';
 interface PipeMeshProps {
   data: PipeSegment;
   isSelected: boolean;
-  onSelect: (id: string) => void;
-  trimStart?: number; // Amount to shorten from start
-  trimEnd?: number;   // Amount to shorten from end
+  onSelect: (id: string, multi: boolean) => void; // Updated signature
+  trimStart?: number;
+  trimEnd?: number;
 }
 
 const PipeMesh: React.FC<PipeMeshProps> = ({ data, isSelected, onSelect, trimStart = 0, trimEnd = 0 }) => {
@@ -25,15 +25,10 @@ const PipeMesh: React.FC<PipeMeshProps> = ({ data, isSelected, onSelect, trimSta
     // Direction vector
     const direction = new THREE.Vector3().subVectors(end, start).normalize();
     
-    // Calculate new start/end points based on trim
-    // Actual Visual Start = Start + Direction * TrimStart
-    // Actual Visual End = End - Direction * TrimEnd
-    
-    // We compute the center of the TRIMMED segment
+    // Calculate center of trimmed segment
     const effectiveStart = start.clone().add(direction.clone().multiplyScalar(trimStart));
     const effectiveEnd = end.clone().sub(direction.clone().multiplyScalar(trimEnd));
     
-    // Safety check to prevent negative length
     let visualLength = effectiveStart.distanceTo(effectiveEnd);
     if (visualLength < 0.01) visualLength = 0.01;
 
@@ -57,8 +52,9 @@ const PipeMesh: React.FC<PipeMeshProps> = ({ data, isSelected, onSelect, trimSta
   const insulationColor = hasInsulation ? (INSULATION_COLORS[data.insulationStatus!] || '#e2e8f0') : 'transparent';
 
   const handleClick = (e: ThreeEvent<MouseEvent>) => {
-    e.stopPropagation();
-    onSelect(data.id);
+    e.stopPropagation(); // Prevent clicking through to background
+    const isMulti = e.nativeEvent.ctrlKey || e.nativeEvent.metaKey || e.nativeEvent.shiftKey;
+    onSelect(data.id, isMulti);
   };
 
   return (
@@ -71,6 +67,8 @@ const PipeMesh: React.FC<PipeMeshProps> = ({ data, isSelected, onSelect, trimSta
                 position={position}
                 rotation={rotation}
                 onClick={handleClick}
+                onPointerOver={() => document.body.style.cursor = 'pointer'}
+                onPointerOut={() => document.body.style.cursor = 'auto'}
             >
                 <cylinderGeometry args={[data.diameter / 2, data.diameter / 2, geometryLength, 32]} />
                 <meshStandardMaterial
@@ -82,23 +80,24 @@ const PipeMesh: React.FC<PipeMeshProps> = ({ data, isSelected, onSelect, trimSta
                 />
             </mesh>
             
-            {/* Thermal Protection Layer (Transparent Glass/Gel Shell) */}
+            {/* Thermal Protection Layer */}
             {hasInsulation && (
                  <mesh
                     position={position}
                     rotation={rotation}
-                    onClick={handleClick} // Pass click through
+                    onClick={handleClick}
+                    onPointerOver={() => document.body.style.cursor = 'pointer'}
+                    onPointerOut={() => document.body.style.cursor = 'auto'}
                  >
-                    {/* Radius slightly larger (+0.08) for layering effect */}
                     <cylinderGeometry args={[data.diameter / 2 + 0.08, data.diameter / 2 + 0.08, geometryLength, 32]} />
                     <meshStandardMaterial
                         color={insulationColor}
                         transparent
-                        opacity={0.3} // Low opacity to see the pipe status inside clearly
-                        roughness={0.1} // Smooth/Shiny surface for glass effect
+                        opacity={0.3}
+                        roughness={0.1}
                         metalness={0.1}
                         side={THREE.DoubleSide}
-                        depthWrite={false} // Important for transparency sorting
+                        depthWrite={false}
                     />
                  </mesh>
             )}

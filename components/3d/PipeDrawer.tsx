@@ -15,30 +15,20 @@ interface PipeDrawerProps {
 }
 
 // Helper: Calculate the closest point on a specific axis line to the mouse ray
-// This avoids creating Plane objects which can cause NaN errors
 const projectRayToAxis = (ray: THREE.Ray, origin: Vector3, axisDir: Vector3): Vector3 => {
-    // We want to find the point on the line (origin + t * axisDir) that is closest to the ray.
-    // This is essentially the distance between two skew lines.
-    
-    // Vector connecting ray origin to line origin
     const w0 = new THREE.Vector3().subVectors(ray.origin, origin);
-    
-    const a = ray.direction.dot(ray.direction); // always 1 if normalized
+    const a = ray.direction.dot(ray.direction);
     const b = ray.direction.dot(axisDir);
-    const c = axisDir.dot(axisDir); // always 1 if normalized
+    const c = axisDir.dot(axisDir);
     const d = ray.direction.dot(w0);
     const e = axisDir.dot(w0);
 
     const denom = a * c - b * b;
     
-    // If lines are parallel (denom ~ 0), just project to the closest point on the line from the ray origin
     if (denom < 0.00001) {
         return origin.clone().add(axisDir.clone().multiplyScalar(e));
     }
 
-    // Closest point parameter on the axis line
-    // FORMULA FIX: Previously (b*d - a*e) was inverted, causing axis mirroring.
-    // Correct derivation for t: (a*e - b*d) / (a*c - b*b)
     const t = (a * e - b * d) / denom;
     
     return origin.clone().add(axisDir.clone().multiplyScalar(t));
@@ -77,7 +67,8 @@ export const PipeDrawer: React.FC<PipeDrawerProps> = ({ isDrawing, onAddPipe, on
       if (!raycaster || !raycaster.ray) return null;
 
       let closest: Vector3 | null = null;
-      let minDist = 0.5;
+      // Increased threshold for easier connecting
+      let minDist = 0.8; 
 
       const points: Vector3[] = [];
       if (Array.isArray(pipes)) {
@@ -90,7 +81,6 @@ export const PipeDrawer: React.FC<PipeDrawerProps> = ({ isDrawing, onAddPipe, on
       }
 
       points.forEach(pt => {
-        // Simple distance check to the ray
         const dist = raycaster.ray.distanceToPoint(pt);
         if (dist < minDist) {
             minDist = dist;
@@ -118,54 +108,38 @@ export const PipeDrawer: React.FC<PipeDrawerProps> = ({ isDrawing, onAddPipe, on
     
     if (!startPoint) {
         // Phase 1: Picking Start Point (Ground Plane interaction)
-        // Default to y=0 plane
         if (e.point) {
              target.set(e.point.x, 0, e.point.z);
         }
     } else {
         // Phase 2: Picking End Point relative to Start Point
-        
-        // Safety: Ensure ray is valid
         if (!raycaster || !raycaster.ray) return;
 
         if (lockedAxis === 'x') {
-            // Project ray to X axis line passing through startPoint
             target = projectRayToAxis(raycaster.ray, startPoint, new Vector3(1, 0, 0));
-            // Force exact Y/Z alignment to avoid floating point drift
             target.y = startPoint.y;
             target.z = startPoint.z;
         } 
         else if (lockedAxis === 'y') {
-            // Project ray to Y axis line
             target = projectRayToAxis(raycaster.ray, startPoint, new Vector3(0, 1, 0));
             target.x = startPoint.x;
             target.z = startPoint.z;
         }
         else if (lockedAxis === 'z') {
-            // Project ray to Z axis line
             target = projectRayToAxis(raycaster.ray, startPoint, new Vector3(0, 0, 1));
             target.x = startPoint.x;
             target.y = startPoint.y;
         }
         else {
-            // No Lock: Move on the horizontal plane at startPoint height
-            // We use math plane intersection here, but strictly horizontal (safe)
-            // Ray: P = O + tD
-            // Plane: y = h
-            // h = Oy + t * Dy  =>  t = (h - Oy) / Dy
-            
             const h = startPoint.y;
             const Dy = raycaster.ray.direction.y;
             
-            // Avoid division by zero (looking purely horizontal)
             if (Math.abs(Dy) > 0.001) {
                 const t = (h - raycaster.ray.origin.y) / Dy;
-                // If t < 0, intersection is behind camera, ignore
                 if (t >= 0) {
                      const intersect = raycaster.ray.origin.clone().add(raycaster.ray.direction.clone().multiplyScalar(t));
                      target.set(intersect.x, h, intersect.z);
                 } else {
-                     // Fallback to ground projection if looking up
                      target.set(e.point.x, h, e.point.z);
                 }
             } else {
@@ -179,9 +153,7 @@ export const PipeDrawer: React.FC<PipeDrawerProps> = ({ isDrawing, onAddPipe, on
     target.y = snap(target.y);
     target.z = snap(target.z);
 
-    // 4. Apply Fixed Length Override (if enabled)
-    // This MUST happen after grid snapping to ensure the direction is clean, 
-    // but the final length is strict.
+    // 4. Apply Fixed Length Override
     if (fixedLength && startPoint) {
         const direction = new THREE.Vector3().subVectors(target, startPoint);
         if (direction.lengthSq() > 0.001) {
@@ -190,12 +162,10 @@ export const PipeDrawer: React.FC<PipeDrawerProps> = ({ isDrawing, onAddPipe, on
         }
     }
 
-    // 5. Final Selection logic (Geometric Snap vs Calculated Target)
+    // 5. Final Selection logic
     if (snapped && startPoint && !fixedLength) {
-        // If free drawing, allow snapping to existing geometry
         setEndPoint(snapped);
     } else {
-        // If fixed length, strict length wins over point snapping (unless we added sophisticated intersection logic)
         setEndPoint(target);
     }
   };
@@ -204,10 +174,8 @@ export const PipeDrawer: React.FC<PipeDrawerProps> = ({ isDrawing, onAddPipe, on
     if (!isDrawing) return;
     e.stopPropagation();
     
-    // If fixed length is ON, use endPoint (calculated strict 6m), ignoring snapPoint if they conflict
     const pointToUse = (fixedLength && startPoint) ? endPoint : (snapPoint || endPoint);
 
-    // Prevent zero-length pipes
     if (startPoint && startPoint.distanceTo(pointToUse) < 0.01) return;
 
     if (!startPoint) {
@@ -222,7 +190,7 @@ export const PipeDrawer: React.FC<PipeDrawerProps> = ({ isDrawing, onAddPipe, on
 
   return (
     <group>
-        {/* Invisible ground plane to catch mouse events for the initial calculation */}
+        {/* Invisible ground plane */}
         <mesh 
             visible={false} 
             rotation={[-Math.PI / 2, 0, 0]} 
@@ -236,9 +204,18 @@ export const PipeDrawer: React.FC<PipeDrawerProps> = ({ isDrawing, onAddPipe, on
         {/* Helper Visuals */}
         <>
             <mesh position={endPoint}>
-                <sphereGeometry args={[snapPoint ? 0.2 : 0.1, 16, 16]} />
+                {/* Larger sphere when snapping to make it obvious */}
+                <sphereGeometry args={[snapPoint ? 0.25 : 0.1, 16, 16]} />
                 <meshBasicMaterial color={snapPoint ? "#facc15" : (lockedAxis ? "#22c55e" : "red")} opacity={0.8} transparent depthTest={false} />
             </mesh>
+            
+            {/* Snap Ring Highlight */}
+            {snapPoint && (
+                <mesh position={endPoint} rotation={[Math.PI/2,0,0]}>
+                    <ringGeometry args={[0.3, 0.35, 32]} />
+                    <meshBasicMaterial color="#facc15" side={THREE.DoubleSide} transparent opacity={0.8} depthTest={false} />
+                </mesh>
+            )}
             
             {/* Guide Lines */}
             {startPoint && (
@@ -266,6 +243,14 @@ export const PipeDrawer: React.FC<PipeDrawerProps> = ({ isDrawing, onAddPipe, on
             
             <Html position={endPoint} style={{ pointerEvents: 'none' }}>
                 <div className="bg-slate-900/90 text-white text-xs px-2 py-1 rounded shadow-lg whitespace-nowrap transform -translate-x-1/2 -translate-y-full mt-[-20px] border border-slate-700 font-mono">
+                    
+                    {/* Visual Feedback for Connection */}
+                    {!startPoint && snapPoint && (
+                        <div className="text-yellow-400 font-bold mb-1 text-[10px] uppercase flex items-center justify-center gap-1 animate-pulse border-b border-white/10 pb-1">
+                            <span>🔗</span> CONECTAR
+                        </div>
+                    )}
+
                     <div>
                         {endPoint.x.toFixed(1)}, {endPoint.y.toFixed(1)}, {endPoint.z.toFixed(1)}
                     </div>
@@ -291,7 +276,6 @@ const GhostLine = ({ start, end, color }: { start: Vector3, end: Vector3, color:
     const distance = start.distanceTo(end);
     if(distance < 0.01) return null;
     
-    // Use simple line instead of cylinder to avoid geometry math errors
     return (
         <lineSegments>
             <bufferGeometry>

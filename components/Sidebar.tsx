@@ -1,73 +1,141 @@
 import React, { useState, useEffect } from 'react';
 import { PipeSegment, PipeStatus, InsulationStatus } from '../types';
 import { STATUS_LABELS, STATUS_COLORS, ALL_STATUSES, INSULATION_LABELS, INSULATION_COLORS, ALL_INSULATION_STATUSES } from '../constants';
-import { X, CheckCircle, AlertCircle, FileText, Ruler, User, Trash2, Shield, Thermometer } from 'lucide-react';
+import { X, CheckCircle, AlertCircle, FileText, Ruler, MessageSquare, Trash2, Shield, Wrench, Layers, MapPin } from 'lucide-react';
 
 interface SidebarProps {
-  pipe: PipeSegment | null;
-  onUpdate: (updatedPipe: PipeSegment) => void;
-  onDelete: (id: string) => void;
+  selectedPipes: PipeSegment[]; // Array of selected pipes
+  onUpdateSingle: (updatedPipe: PipeSegment) => void;
+  onUpdateBatch: (updates: Partial<PipeSegment>) => void;
+  onDelete: () => void;
   onClose: () => void;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ pipe, onUpdate, onDelete, onClose }) => {
+const Sidebar: React.FC<SidebarProps> = ({ selectedPipes, onUpdateSingle, onUpdateBatch, onDelete, onClose }) => {
   const [formData, setFormData] = useState<PipeSegment | null>(null);
 
+  // Determine mode
+  const isBatch = selectedPipes.length > 1;
+  const singlePipe = selectedPipes.length === 1 ? selectedPipes[0] : null;
+
   useEffect(() => {
-    // Only update if pipe exists and is different to prevent cycles
-    if (pipe) {
-        setFormData(JSON.parse(JSON.stringify(pipe))); // Deep clone to avoid ref issues
+    if (singlePipe) {
+        setFormData(JSON.parse(JSON.stringify(singlePipe))); 
     } else {
         setFormData(null);
     }
-  }, [pipe]);
+  }, [singlePipe]);
 
-  // Extreme Guard: Ensure formData matches the currently selected pipe ID before rendering
-  // This prevents rendering stale data during rapid switching
-  if (!formData || !pipe || formData.id !== pipe.id) return null;
-
-  const handleStatusChange = (newStatus: string) => {
-    const status = newStatus as PipeStatus;
-    
-    const updated = { ...formData, status };
-    // Clear welder info if moving back to pending
-    if (status === 'PENDING' || status === 'MOUNTED') {
-      updated.welderInfo = undefined;
-    }
+  // SINGLE MODE HANDLERS
+  const handleSingleChange = (field: keyof PipeSegment, value: any) => {
+    if (!formData) return;
+    const updated = { ...formData, [field]: value };
     setFormData(updated);
-    onUpdate(updated);
+    onUpdateSingle(updated);
   };
 
-  const handleInsulationChange = (newStatus: string) => {
-      const insulationStatus = newStatus as InsulationStatus;
-      const updated = { ...formData, insulationStatus };
-      setFormData(updated);
-      onUpdate(updated);
-  }
-
   const handleWelderChange = (field: string, value: any) => {
-    // Create default object safely
+    if (!formData) return;
     const baseWelderInfo = formData.welderInfo ? { ...formData.welderInfo } : {
-        welderId: '',
         weldDate: new Date().toISOString().split('T')[0],
         electrodeBatch: '',
         visualInspection: false
     };
-
     const updated = { 
       ...formData, 
-      welderInfo: { 
-        ...baseWelderInfo, 
-        [field]: value 
-      } 
+      welderInfo: { ...baseWelderInfo, [field]: value } 
     };
-    
     setFormData(updated);
-    onUpdate(updated);
+    onUpdateSingle(updated);
   };
 
+  // --- RENDER BATCH MODE ---
+  if (isBatch) {
+      return (
+        <div className="h-full flex flex-col bg-white dark:bg-slate-800 border-l border-slate-200 dark:border-slate-700 shadow-xl overflow-y-auto w-full md:w-96 absolute right-0 top-0 z-20 transition-transform">
+            <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center bg-blue-50 dark:bg-slate-900">
+                <h2 className="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                <Layers size={18} className="text-blue-600" />
+                Edição em Lote
+                </h2>
+                <button onClick={onClose} className="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-slate-500">
+                <X size={20} />
+                </button>
+            </div>
+
+            <div className="p-6 space-y-8 flex-1">
+                <div className="bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200 p-4 rounded-lg flex items-center gap-3">
+                    <CheckCircle size={24} />
+                    <div>
+                        <p className="font-bold text-lg">{selectedPipes.length} Tubos Selecionados</p>
+                        <p className="text-sm opacity-80">As alterações abaixo serão aplicadas a todos os itens.</p>
+                    </div>
+                </div>
+
+                {/* Batch Location */}
+                <div>
+                     <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-1">
+                        <MapPin size={12} /> Local da Atividade (Todos)
+                     </label>
+                     <input
+                        type="text"
+                        onChange={(e) => onUpdateBatch({ location: e.target.value })}
+                        placeholder="Ex: Galpão A, Setor 2..."
+                        className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded p-2 text-sm text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                </div>
+
+                {/* Batch Status */}
+                <div>
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 block">Definir Status (Todos)</label>
+                    <div className="grid grid-cols-2 gap-2">
+                        {ALL_STATUSES.map((statusKey) => (
+                            <button
+                                key={statusKey}
+                                onClick={() => onUpdateBatch({ status: statusKey as PipeStatus })}
+                                className="p-2 rounded text-xs font-bold transition-all border border-slate-200 hover:scale-105 active:scale-95 shadow-sm"
+                                style={{
+                                    backgroundColor: STATUS_COLORS[statusKey] || '#ccc',
+                                    color: '#fff',
+                                    textShadow: '0 1px 2px rgba(0,0,0,0.3)'
+                                }}
+                            >
+                                {STATUS_LABELS[statusKey]}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
+                 {/* Batch Note */}
+                 <div className="space-y-2">
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                        <MessageSquare size={12} /> Adicionar Observação (Todos)
+                    </label>
+                    <textarea
+                        onChange={(e) => onUpdateBatch({ generalInfo: e.target.value })}
+                        placeholder="Escrever aqui substituirá a observação de TODOS os selecionados..."
+                        className="w-full h-24 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg p-3 text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none resize-none"
+                    />
+                </div>
+            </div>
+
+            <div className="p-4 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900">
+                <button 
+                    onClick={onDelete}
+                    className="w-full flex items-center justify-center gap-2 p-3 rounded bg-red-600 hover:bg-red-700 text-white shadow-red-500/20 shadow-lg transition-all font-bold"
+                >
+                    <Trash2 size={18} /> Excluir {selectedPipes.length} Itens
+                </button>
+            </div>
+        </div>
+      )
+  }
+
+  // --- SINGLE PIPE RENDER ---
+  if (!formData) return null;
+
   const isWeldedOrLater = ['WELDED', 'HYDROTEST'].includes(formData.status || '');
-  
+
   return (
     <div className="h-full flex flex-col bg-white dark:bg-slate-800 border-l border-slate-200 dark:border-slate-700 shadow-xl overflow-y-auto w-full md:w-96 absolute right-0 top-0 z-20 transition-transform">
       <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-900">
@@ -89,6 +157,20 @@ const Sidebar: React.FC<SidebarProps> = ({ pipe, onUpdate, onDelete, onClose }) 
             <div className="text-slate-900 dark:text-white font-mono">{formData.id}</div>
           </div>
           
+          {/* Location Input */}
+          <div>
+            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1 mb-1">
+                <MapPin size={12} /> Local da Atividade
+            </label>
+            <input
+                type="text"
+                value={formData.location || ''}
+                onChange={(e) => handleSingleChange('location', e.target.value)}
+                placeholder="Ex: Pipe Rack Norte"
+                className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded p-2 text-sm text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
           <div>
             <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1">
               <Ruler size={12} /> Comprimento Calculado (3D)
@@ -99,6 +181,19 @@ const Sidebar: React.FC<SidebarProps> = ({ pipe, onUpdate, onDelete, onClose }) 
           </div>
         </div>
 
+        {/* General Info / Observations */}
+        <div className="space-y-2">
+            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                <MessageSquare size={12} /> Observações / Informações Gerais
+            </label>
+            <textarea
+                value={formData.generalInfo || ''}
+                onChange={(e) => handleSingleChange('generalInfo', e.target.value)}
+                placeholder="Ex: Área de difícil acesso, prioridade alta..."
+                className="w-full h-24 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg p-3 text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none resize-none"
+            />
+        </div>
+
         {/* Status Control */}
         <div>
           <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 block">Status Tubulação</label>
@@ -107,7 +202,7 @@ const Sidebar: React.FC<SidebarProps> = ({ pipe, onUpdate, onDelete, onClose }) 
               return (
               <button
                 key={statusKey}
-                onClick={() => handleStatusChange(statusKey)}
+                onClick={() => handleSingleChange('status', statusKey)}
                 className={`
                   p-2 rounded text-xs font-bold transition-all border
                   ${formData.status === statusKey 
@@ -142,7 +237,7 @@ const Sidebar: React.FC<SidebarProps> = ({ pipe, onUpdate, onDelete, onClose }) 
                     return (
                         <button
                             key={insKey}
-                            onClick={() => handleInsulationChange(insKey)}
+                            onClick={() => handleSingleChange('insulationStatus', insKey)}
                             className={`
                                 flex items-center gap-3 px-3 py-2 rounded-md text-sm font-bold transition-all border
                                 ${isActive 
@@ -168,17 +263,9 @@ const Sidebar: React.FC<SidebarProps> = ({ pipe, onUpdate, onDelete, onClose }) 
         {isWeldedOrLater && (
           <div className="bg-slate-50 dark:bg-slate-900 p-4 rounded-lg border border-slate-200 dark:border-slate-700 space-y-4">
             <h3 className="font-bold text-slate-700 dark:text-slate-200 flex items-center gap-2 border-b pb-2 dark:border-slate-700">
-              <User size={16} /> DataBook / Registro de Solda
+              <Wrench size={16} /> Dados Técnicos Solda
             </h3>
-            <div>
-              <label className="block text-xs text-slate-500 mb-1">ID do Soldador / Sinete</label>
-              <input 
-                type="text" 
-                value={formData.welderInfo?.welderId || ''}
-                onChange={(e) => handleWelderChange('welderId', e.target.value)}
-                className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded p-2 text-sm text-slate-900 dark:text-white outline-none"
-              />
-            </div>
+            
             <div>
               <label className="block text-xs text-slate-500 mb-1">Data da Solda</label>
               <input 
@@ -212,24 +299,11 @@ const Sidebar: React.FC<SidebarProps> = ({ pipe, onUpdate, onDelete, onClose }) 
           </div>
         )}
 
-        {/* Hydro Info */}
-        {formData.status === 'HYDROTEST' && (
-           <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg border border-blue-200 dark:border-blue-800 flex items-start gap-3">
-             <AlertCircle className="text-blue-500 shrink-0 mt-0.5" size={18} />
-             <div>
-               <h4 className="text-sm font-bold text-blue-700 dark:text-blue-300">Pronto para Test Pack</h4>
-               <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
-                 Esta linha está incluída no Test Pack <strong>{formData.testPackId || 'TP-PENDENTE'}</strong>.
-               </p>
-             </div>
-           </div>
-        )}
-
       </div>
 
       <div className="p-4 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900">
          <button 
-            onClick={() => onDelete(formData.id)}
+            onClick={onDelete}
             className="w-full flex items-center justify-center gap-2 p-3 rounded bg-red-100 hover:bg-red-200 text-red-700 dark:bg-red-900/30 dark:hover:bg-red-900/50 dark:text-red-400 transition-colors font-semibold"
          >
             <Trash2 size={18} /> Excluir Segmento de Tubo
