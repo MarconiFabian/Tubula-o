@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { PipeSegment, PipeStatus, InsulationStatus } from '../types';
 import { STATUS_LABELS, STATUS_COLORS, ALL_STATUSES, INSULATION_LABELS, INSULATION_COLORS, ALL_INSULATION_STATUSES } from '../constants';
-import { X, CheckCircle, AlertCircle, FileText, Ruler, MessageSquare, Trash2, Shield, Wrench, Layers, MapPin } from 'lucide-react';
+import { X, CheckCircle, AlertCircle, FileText, Ruler, MessageSquare, Trash2, Shield, Wrench, Layers, MapPin, Hash } from 'lucide-react';
 
 interface SidebarProps {
   selectedPipes: PipeSegment[]; // Array of selected pipes
@@ -70,6 +70,19 @@ const Sidebar: React.FC<SidebarProps> = ({ selectedPipes, onUpdateSingle, onUpda
                         <p className="font-bold text-lg">{selectedPipes.length} Tubos Selecionados</p>
                         <p className="text-sm opacity-80">As alterações abaixo serão aplicadas a todos os itens.</p>
                     </div>
+                </div>
+
+                {/* Batch Spool */}
+                <div>
+                     <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-1">
+                        <Hash size={12} /> Spool ID (Fabricação)
+                     </label>
+                     <input
+                        type="text"
+                        onChange={(e) => onUpdateBatch({ spoolId: e.target.value })}
+                        placeholder="Ex: SP-01-A (Define grupo)"
+                        className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded p-2 text-sm text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500"
+                    />
                 </div>
 
                 {/* Batch Location */}
@@ -155,6 +168,21 @@ const Sidebar: React.FC<SidebarProps> = ({ selectedPipes, onUpdateSingle, onUpda
           <div>
             <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">ID da Linha</label>
             <div className="text-slate-900 dark:text-white font-mono">{formData.id}</div>
+          </div>
+
+          {/* SPOOL ID */}
+          <div>
+            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1 mb-1">
+                <Hash size={12} /> Spool ID (Fabricação)
+            </label>
+            <input
+                type="text"
+                value={formData.spoolId || ''}
+                onChange={(e) => handleSingleChange('spoolId', e.target.value)}
+                placeholder="Ex: SP-01-A"
+                className="w-full bg-blue-50 dark:bg-slate-900 border border-blue-200 dark:border-slate-600 rounded p-2 text-sm text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+            />
+            <p className="text-[10px] text-slate-500 mt-1">Define o agrupamento para fabricação.</p>
           </div>
           
           {/* Location Input */}

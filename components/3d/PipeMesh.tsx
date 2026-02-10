@@ -9,9 +9,10 @@ interface PipeMeshProps {
   onSelect: (id: string, multi: boolean) => void; 
   trimStart?: number;
   trimEnd?: number;
+  customColor?: string; // New prop for overriding status color (e.g. Spool View)
 }
 
-const PipeMesh: React.FC<PipeMeshProps> = ({ data, isSelected, trimStart = 0, trimEnd = 0 }) => {
+const PipeMesh: React.FC<PipeMeshProps> = ({ data, isSelected, trimStart = 0, trimEnd = 0, customColor }) => {
   const meshRef = useRef<THREE.Mesh>(null);
 
   // Calculate geometry and orientation
@@ -41,7 +42,8 @@ const PipeMesh: React.FC<PipeMeshProps> = ({ data, isSelected, trimStart = 0, tr
     };
   }, [data.start, data.end, trimStart, trimEnd]);
 
-  const color = (STATUS_COLORS && STATUS_COLORS[data.status]) || '#888888';
+  // Use customColor if provided, else fall back to status color
+  const color = customColor || ((STATUS_COLORS && STATUS_COLORS[data.status]) || '#888888');
   
   const hasInsulation = data.insulationStatus && data.insulationStatus !== 'NONE';
   const insulationColor = hasInsulation ? (INSULATION_COLORS[data.insulationStatus!] || '#e2e8f0') : 'transparent';

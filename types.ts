@@ -1,3 +1,4 @@
+
 export enum PipeStatus {
   PENDING = 'PENDING',       // Gray: Pendente de montagem
   MOUNTED = 'MOUNTED',       // Yellow: Montado, aguardando solda
@@ -28,16 +29,28 @@ export interface WelderInfo {
 export interface PipeSegment {
   id: string;
   name: string;
-  location?: string; // New Field: Local da Atividade
+  location?: string;
+  spoolId?: string; // NOVO: Agrupamento de fabricação
   start: Coordinates;
   end: Coordinates;
   diameter: number; // in meters
   status: PipeStatus;
   welderInfo?: WelderInfo;
-  generalInfo?: string; // New field for general notes
+  generalInfo?: string;
   testPackId?: string;
-  length: number; // Calculated automatically
-  insulationStatus?: InsulationStatus; // Updated from boolean to Enum
+  length: number; 
+  insulationStatus?: InsulationStatus;
+}
+
+export type AccessoryType = 'VALVE' | 'FLANGE' | 'SUPPORT';
+
+export interface Accessory {
+  id: string;
+  type: AccessoryType;
+  position: Coordinates;
+  rotation?: Coordinates; // Euler angles
+  parentPipeId: string; // ID do tubo onde está anexado
+  color?: string;
 }
 
 export interface Annotation {

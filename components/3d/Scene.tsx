@@ -6,7 +6,7 @@ import PipeMesh from './PipeMesh';
 import { PipeDrawer } from './PipeDrawer';
 import { Fittings, ConnectionNode } from './Fittings';
 import { AnnotationMarker, GhostMarker } from './AnnotationMarker';
-import { PipeSegment, PipeStatus, Annotation } from '../../types';
+import { PipeSegment, PipeStatus, Annotation, AccessoryType } from '../../types';
 import { STATUS_COLORS, STATUS_LABELS, ALL_STATUSES } from '../../constants';
 import { Loader2 } from 'lucide-react';
 
@@ -23,25 +23,51 @@ interface SceneProps {
   onAddAnnotation?: (pos: {x:number, y:number, z:number}) => void;
   onUpdateAnnotation?: (id: string, text: string) => void;
   onDeleteAnnotation?: (id: string) => void;
+  onUndo?: () => void;
+  onRedo?: () => void;
+  colorMode?: 'STATUS' | 'SPOOL';
 }
 
-const KeyboardManager = ({ selectedIds, pipes, onUpdatePipe }: { selectedIds: string[], pipes: PipeSegment[], onUpdatePipe: (p: PipeSegment) => void }) => {
+const stringToColor = (str: string) => {
+    if (!str) return '#475569'; 
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+        hash = str.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const c = (hash & 0x00ffffff).toString(16).toUpperCase();
+    return '#' + '00000'.substring(0, 6 - c.length) + c;
+};
+
+const KeyboardManager = ({ selectedIds, pipes, onUpdatePipe, onUndo, onRedo }: 
+    { selectedIds: string[], pipes: PipeSegment[], onUpdatePipe: (p: PipeSegment) => void, onUndo?: ()=>void, onRedo?: ()=>void }) => {
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if ((e.target as HTMLElement).tagName === 'INPUT' || (e.target as HTMLElement).tagName === 'TEXTAREA') return;
+
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+                e.preventDefault();
+                if (e.shiftKey) { onRedo?.(); } else { onUndo?.(); }
+                return;
+            }
+
             if (selectedIds.length !== 1) return;
             const selectedId = selectedIds[0];
+            
             const pipe = pipes.find(p => p.id === selectedId);
+
             if (!pipe) return;
+
             const step = e.shiftKey ? 1.0 : 0.1; 
             const delta = { x: 0, y: 0, z: 0 };
             let moved = false;
+            
             if (e.key === 'ArrowUp') { delta.z = -step; moved = true; }
             if (e.key === 'ArrowDown') { delta.z = step; moved = true; }
             if (e.key === 'ArrowLeft') { delta.x = -step; moved = true; }
             if (e.key === 'ArrowRight') { delta.x = step; moved = true; }
             if (e.key === 'PageUp') { delta.y = step; moved = true; }
             if (e.key === 'PageDown') { delta.y = -step; moved = true; }
+            
             if (moved) {
                 e.preventDefault();
                 onUpdatePipe({
@@ -53,38 +79,28 @@ const KeyboardManager = ({ selectedIds, pipes, onUpdatePipe }: { selectedIds: st
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [selectedIds, pipes, onUpdatePipe]);
+    }, [selectedIds, pipes, onUpdatePipe, onUndo, onRedo]);
     return null;
 };
 
 const SceneContent: React.FC<SceneProps & { lockedAxis: 'x'|'y'|'z'|null }> = ({ 
   pipes, annotations = [], selectedIds, onSelectPipe, isDrawing, onAddPipe, onUpdatePipe, onCancelDraw, lockedAxis, fixedLength,
-  onAddAnnotation, onUpdateAnnotation, onDeleteAnnotation
+  onAddAnnotation, onUpdateAnnotation, onDeleteAnnotation, onUndo, onRedo,
+  colorMode = 'STATUS'
 }) => {
     const { camera, gl } = useThree();
     const [isDragging, setIsDragging] = useState(false);
     const [isQPressed, setIsQPressed] = useState(false);
     const [ghostPos, setGhostPos] = useState<THREE.Vector3 | null>(null);
     
-    // Track 'Q' key for Annotations
     useEffect(() => {
-        const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.key.toLowerCase() === 'q') setIsQPressed(true);
-        };
-        const handleKeyUp = (e: KeyboardEvent) => {
-            if (e.key.toLowerCase() === 'q') {
-                setIsQPressed(false);
-                setGhostPos(null);
-            }
-        };
-        window.addEventListener('keydown', handleKeyDown);
-        window.addEventListener('keyup', handleKeyUp);
-        return () => {
-            window.removeEventListener('keydown', handleKeyDown);
-            window.removeEventListener('keyup', handleKeyUp);
-        };
+        const handleKeyDown = (e: KeyboardEvent) => { if (e.key.toLowerCase() === 'q') setIsQPressed(true); };
+        const handleKeyUp = (e: KeyboardEvent) => { if (e.key.toLowerCase() === 'q') { setIsQPressed(false); setGhostPos(null); } };
+        window.addEventListener('keydown', handleKeyDown); window.addEventListener('keyup', handleKeyUp);
+        return () => { window.removeEventListener('keydown', handleKeyDown); window.removeEventListener('keyup', handleKeyUp); };
     }, []);
 
+    // ... (Connection Logic remains the same, omitted for brevity but implicitly included)
     const { connections, trims } = useMemo(() => {
         const map: Record<string, ConnectionNode> = {};
         const pipeTrims: Record<string, { start: number, end: number }> = {};
@@ -119,27 +135,30 @@ const SceneContent: React.FC<SceneProps & { lockedAxis: 'x'|'y'|'z'|null }> = ({
         return { connections: map, trims: pipeTrims };
     }, [pipes]);
 
+
     const handleTransformEnd = (e: any) => {
         setIsDragging(false);
         const object = e.target.object;
         if (!object || selectedIds.length !== 1) return;
-        const pipe = pipes.find(p => p.id === selectedIds[0]);
-        if (!pipe) return;
-        const oldMidX = (pipe.start.x + pipe.end.x) / 2;
-        const oldMidY = (pipe.start.y + pipe.end.y) / 2;
-        const oldMidZ = (pipe.start.z + pipe.end.z) / 2;
-        const dx = object.position.x - oldMidX;
-        const dy = object.position.y - oldMidY;
-        const dz = object.position.z - oldMidZ;
-        onUpdatePipe({
-            ...pipe,
-            start: { x: pipe.start.x + dx, y: pipe.start.y + dy, z: pipe.start.z + dz },
-            end: { x: pipe.end.x + dx, y: pipe.end.y + dy, z: pipe.end.z + dz }
-        });
-        object.position.set(oldMidX, oldMidY, oldMidZ);
-    };
 
-    // --- INTERACTION HANDLERS ---
+        // Try to find Pipe
+        const pipe = pipes.find(p => p.id === selectedIds[0]);
+        if (pipe) {
+            const oldMidX = (pipe.start.x + pipe.end.x) / 2;
+            const oldMidY = (pipe.start.y + pipe.end.y) / 2;
+            const oldMidZ = (pipe.start.z + pipe.end.z) / 2;
+            const dx = object.position.x - oldMidX;
+            const dy = object.position.y - oldMidY;
+            const dz = object.position.z - oldMidZ;
+            onUpdatePipe({
+                ...pipe,
+                start: { x: pipe.start.x + dx, y: pipe.start.y + dy, z: pipe.start.z + dz },
+                end: { x: pipe.end.x + dx, y: pipe.end.y + dy, z: pipe.end.z + dz }
+            });
+            object.position.set(oldMidX, oldMidY, oldMidZ);
+            return;
+        }
+    };
     
     const handlePointerMove = (e: ThreeEvent<PointerEvent>) => {
         if (isQPressed && !isDrawing) {
@@ -157,16 +176,22 @@ const SceneContent: React.FC<SceneProps & { lockedAxis: 'x'|'y'|'z'|null }> = ({
         }
     };
 
-    const handlePipeClick = (e: ThreeEvent<MouseEvent>, pipeId: string) => {
+    const handlePipeClick = (e: ThreeEvent<MouseEvent>, pipe: PipeSegment) => {
+        e.stopPropagation();
+        
         if (isQPressed) {
-             e.stopPropagation();
              onAddAnnotation?.(e.point);
         } else {
-            e.stopPropagation();
             const isMulti = e.nativeEvent.ctrlKey || e.nativeEvent.metaKey || e.nativeEvent.shiftKey;
-            onSelectPipe(pipeId, isMulti);
+            onSelectPipe(pipe.id, isMulti);
         }
     };
+
+    const spoolColors = useMemo(() => {
+        const map: Record<string, string> = {};
+        pipes.forEach(p => { if (p.spoolId && !map[p.spoolId]) map[p.spoolId] = stringToColor(p.spoolId); });
+        return map;
+    }, [pipes]);
 
     if (!Array.isArray(pipes)) return null;
 
@@ -179,12 +204,10 @@ const SceneContent: React.FC<SceneProps & { lockedAxis: 'x'|'y'|'z'|null }> = ({
             <Grid infiniteGrid fadeDistance={30} sectionColor="#475569" cellColor="#1e293b" position={[0, -0.01, 0]} onClick={handleGlobalClick} onPointerMove={handlePointerMove} />
             <axesHelper args={[2]} position={[-6, 0, -6]} />
 
-            {/* ANNOTATIONS */}
             {annotations.map(ann => (
                 <AnnotationMarker key={ann.id} data={ann} onUpdate={onUpdateAnnotation!} onDelete={onDeleteAnnotation!} />
             ))}
-
-            {/* GHOST MARKER FOR Q-KEY */}
+            
             {ghostPos && isQPressed && <GhostMarker position={ghostPos} />}
 
             <group>
@@ -201,7 +224,8 @@ const SceneContent: React.FC<SceneProps & { lockedAxis: 'x'|'y'|'z'|null }> = ({
                 {pipes.map((pipe) => {
                     const isSelected = selectedIds.includes(pipe.id);
                     const trim = trims[pipe.id] || { start: 0, end: 0 };
-                    
+                    let colorOverride = (colorMode === 'SPOOL' && pipe.spoolId) ? spoolColors[pipe.spoolId] : undefined;
+
                     if (isSelected && selectedIds.length === 1 && !isDrawing) {
                         const midX = (pipe.start.x + pipe.end.x) / 2;
                         const midY = (pipe.start.y + pipe.end.y) / 2;
@@ -209,31 +233,33 @@ const SceneContent: React.FC<SceneProps & { lockedAxis: 'x'|'y'|'z'|null }> = ({
                         return (
                             <group key={pipe.id}>
                                 <TransformControls mode="translate" onMouseDown={() => setIsDragging(true)} onMouseUp={handleTransformEnd} size={0.7}>
-                                    <group onClick={(e) => handlePipeClick(e, pipe.id)} onPointerMove={handlePointerMove}>
-                                        <PipeMesh data={pipe} isSelected={true} onSelect={() => {}} trimStart={trim.start} trimEnd={trim.end} />
+                                    <group onClick={(e) => handlePipeClick(e, pipe)} onPointerMove={handlePointerMove}>
+                                        <PipeMesh data={pipe} isSelected={true} onSelect={() => {}} trimStart={trim.start} trimEnd={trim.end} customColor={colorOverride} />
                                     </group>
                                 </TransformControls>
                                 <Html position={[midX, midY + 0.6, midZ]} center zIndexRange={[100, 0]} style={{ pointerEvents: 'auto' }}>
-                                    <div className="bg-slate-900/95 p-2 rounded-xl border border-slate-600 shadow-2xl backdrop-blur flex gap-2" onPointerDown={(e) => e.stopPropagation()}>
-                                         {ALL_STATUSES.map(status => (
-                                            <button key={status} onClick={(e) => { e.preventDefault(); e.stopPropagation(); onUpdatePipe({...pipe, status: status as PipeStatus})}} className={`w-6 h-6 rounded-full border-2 ${pipe.status === status ? 'border-white scale-110' : 'border-transparent opacity-70'}`} style={{backgroundColor: STATUS_COLORS[status]}} />
-                                         ))}
+                                    <div className="bg-slate-900/95 p-2 rounded-xl border border-slate-600 shadow-2xl backdrop-blur flex flex-col gap-2" onPointerDown={(e) => e.stopPropagation()}>
+                                         <div className="flex gap-1 justify-center">
+                                            {ALL_STATUSES.map(status => (
+                                                <button key={status} onClick={(e) => { e.preventDefault(); e.stopPropagation(); onUpdatePipe({...pipe, status: status as PipeStatus})}} className={`w-6 h-6 rounded-full border-2 ${pipe.status === status ? 'border-white scale-110' : 'border-transparent opacity-70'}`} style={{backgroundColor: STATUS_COLORS[status]}} title={status} />
+                                            ))}
+                                         </div>
+                                         <div className="text-[10px] text-center text-slate-400 font-mono bg-black/30 rounded px-1">{pipe.spoolId ? `Spool: ${pipe.spoolId}` : 'No Spool'}</div>
                                     </div>
                                 </Html>
                             </group>
                         );
                     }
                     return (
-                        <group key={pipe.id} onClick={(e) => handlePipeClick(e, pipe.id)} onPointerMove={handlePointerMove}>
-                             <PipeMesh data={pipe} isSelected={isSelected} onSelect={() => {}} trimStart={trim.start} trimEnd={trim.end} />
+                        <group key={pipe.id} onClick={(e) => handlePipeClick(e, pipe)} onPointerMove={handlePointerMove}>
+                             <PipeMesh data={pipe} isSelected={isSelected} onSelect={() => {}} trimStart={trim.start} trimEnd={trim.end} customColor={colorOverride} />
                         </group>
                     );
                 })}
             </group>
             <PipeDrawer isDrawing={isDrawing} onAddPipe={onAddPipe} onCancel={onCancelDraw} pipes={pipes} lockedAxis={lockedAxis} fixedLength={fixedLength} />
-            <KeyboardManager selectedIds={selectedIds} pipes={pipes} onUpdatePipe={onUpdatePipe} />
+            <KeyboardManager selectedIds={selectedIds} pipes={pipes} onUpdatePipe={onUpdatePipe} onUndo={onUndo} onRedo={onRedo} />
             
-            {/* Visual feedback for Q key */}
             {isQPressed && !isDrawing && (
                 <Html position={[0,0,0]} style={{pointerEvents:'none'}}>
                     <div className="fixed top-20 left-1/2 transform -translate-x-1/2 bg-purple-600 text-white px-4 py-2 rounded-full font-bold shadow-xl animate-pulse flex items-center gap-2 pointer-events-none">
@@ -245,7 +271,7 @@ const SceneContent: React.FC<SceneProps & { lockedAxis: 'x'|'y'|'z'|null }> = ({
     );
 }
 
-const Scene: React.FC<SceneProps & { fixedLength?: boolean }> = (props) => {
+const Scene: React.FC<SceneProps & { fixedLength?: boolean, onUndo?: ()=>void, onRedo?: ()=>void, colorMode?: 'STATUS'|'SPOOL' }> = (props) => {
   const [lockedAxis, setLockedAxis] = useState<'x'|'y'|'z'|null>(null);
   useEffect(() => {
     if (!props.isDrawing) return;
@@ -270,7 +296,9 @@ const Scene: React.FC<SceneProps & { fixedLength?: boolean }> = (props) => {
                     <p className="font-bold text-slate-300">Modo de Edição</p>
                     <p>Clique: Selecionar (Ctrl: Múltiplo)</p>
                     <p className="text-purple-400 font-bold">Segure Q + Clique: Marcar Obs.</p>
+                    <p>Ctrl + Z: Desfazer</p>
                     <p>Del: Excluir</p>
+                    {props.colorMode === 'SPOOL' && <p className="text-green-400 font-bold mt-1">VISTA POR SPOOL ATIVA</p>}
                 </>
             ) : (
                 <>

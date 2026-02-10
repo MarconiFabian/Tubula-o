@@ -1,7 +1,7 @@
-import React, { useMemo, useRef } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { PipeSegment } from '../types';
 import { STATUS_COLORS, STATUS_LABELS, ALL_STATUSES, INSULATION_COLORS, INSULATION_LABELS, ALL_INSULATION_STATUSES } from '../constants';
-import { Activity, FileDown, Upload, Image as ImageIcon, Map as MapIcon, Layers, Shield } from 'lucide-react';
+import { Activity, FileDown, Upload, Image as ImageIcon, Map as MapIcon, Layers, Shield, ClipboardList } from 'lucide-react';
 
 interface DashboardProps {
   pipes: PipeSegment[];
@@ -24,6 +24,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     onUploadSecondary,
     onUploadMap
 }) => {
+  const [activeTab, setActiveTab] = useState<'OVERVIEW' | 'BOM'>('OVERVIEW');
   const secInputRef = useRef<HTMLInputElement>(null);
   const mapInputRef = useRef<HTMLInputElement>(null);
 
@@ -52,7 +53,14 @@ const Dashboard: React.FC<DashboardProps> = ({
         insulationCounts[status] = (insulationCounts[status] || 0) + 1; 
     });
 
-    return { totalLength, pipeCounts, insulationCounts };
+    // --- BOM CALCULATIONS ---
+    const pipesByDiameter: Record<number, number> = {};
+    pipes.forEach(p => {
+        const d = p.diameter || 0.3; // Default 300mm if undefined
+        pipesByDiameter[d] = (pipesByDiameter[d] || 0) + p.length;
+    });
+
+    return { totalLength, pipeCounts, insulationCounts, pipesByDiameter };
   }, [pipes]);
 
   // --- EXPORT VIEW (SPLIT PIPING VS INSULATION) ---
@@ -164,45 +172,86 @@ const Dashboard: React.FC<DashboardProps> = ({
                <input type="file" ref={mapInputRef} className="hidden" accept="image/*" onChange={(e) => handleImageUpload(e, onUploadMap)} />
           </div>
 
-          {/* INTERACTIVE STATS AREA (Combined View) */}
-          <div className="col-span-12 md:col-span-8 h-64 bg-slate-900 rounded-xl border border-slate-800 p-6 flex flex-col overflow-y-auto">
-                <div className="flex items-center justify-between mb-4 border-b border-slate-800 pb-2 shrink-0">
-                     <h3 className="text-sm font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2"><Activity size={16} /> Indicadores Gerais</h3>
-                     <span className="text-xs text-blue-500 font-mono animate-pulse">LIVE DATA</span>
-                </div>
-                
-                <div className="grid grid-cols-2 gap-8">
-                     {/* Piping Section */}
-                     <div>
-                        <h4 className="text-blue-400 font-bold text-xs uppercase mb-3 border-b border-blue-900/30 pb-1">Status Tubulação</h4>
-                        <div className="grid grid-cols-2 gap-3">
-                            <div className="bg-slate-950 p-2 rounded border border-slate-800 col-span-2">
-                                <span className="text-[10px] text-slate-500 block">Total Metros</span>
-                                <span className="text-lg font-bold text-white">{stats.totalLength.toFixed(1)}m</span>
-                            </div>
-                            {ALL_STATUSES.map(s => (
-                                <div key={s} className="bg-slate-950 p-2 rounded border-l-2" style={{ borderColor: STATUS_COLORS[s] }}>
-                                    <span className="text-lg font-bold text-white block leading-none">{stats.pipeCounts[s]}</span>
-                                    <span className="text-[9px] text-slate-500 uppercase">{STATUS_LABELS[s].split(' ')[0]}</span>
-                                </div>
-                            ))}
-                        </div>
-                     </div>
-
-                     {/* Insulation Section */}
-                     <div>
-                        <h4 className="text-yellow-400 font-bold text-xs uppercase mb-3 border-b border-yellow-900/30 pb-1">Isolamento Térmico</h4>
-                        <div className="grid grid-cols-2 gap-3">
-                             {ALL_INSULATION_STATUSES.map(s => (
-                                <div key={s} className="bg-slate-950 p-2 rounded border-t-2" style={{ borderColor: INSULATION_COLORS[s] === 'transparent' ? '#475569' : INSULATION_COLORS[s] }}>
-                                    <span className="text-lg font-bold text-white block leading-none">{stats.insulationCounts[s]}</span>
-                                    <span className="text-[9px] text-slate-500 uppercase">{INSULATION_LABELS[s].replace('Isol. ', '')}</span>
-                                </div>
-                            ))}
-                        </div>
-                     </div>
-                </div>
+          {/* TABS HEADER */}
+          <div className="col-span-12 flex gap-4 border-b border-slate-800">
+              <button onClick={() => setActiveTab('OVERVIEW')} className={`pb-2 px-4 text-sm font-bold uppercase ${activeTab === 'OVERVIEW' ? 'text-blue-400 border-b-2 border-blue-400' : 'text-slate-500 hover:text-slate-300'}`}>Visão Geral</button>
+              <button onClick={() => setActiveTab('BOM')} className={`pb-2 px-4 text-sm font-bold uppercase ${activeTab === 'BOM' ? 'text-blue-400 border-b-2 border-blue-400' : 'text-slate-500 hover:text-slate-300'}`}>Lista de Materiais (BOM)</button>
           </div>
+
+          {activeTab === 'OVERVIEW' && (
+            <div className="col-span-12 md:col-span-8 h-64 bg-slate-900 rounded-xl border border-slate-800 p-6 flex flex-col overflow-y-auto">
+                    <div className="flex items-center justify-between mb-4 border-b border-slate-800 pb-2 shrink-0">
+                        <h3 className="text-sm font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2"><Activity size={16} /> Indicadores Gerais</h3>
+                        <span className="text-xs text-blue-500 font-mono animate-pulse">LIVE DATA</span>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-8">
+                        {/* Piping Section */}
+                        <div>
+                            <h4 className="text-blue-400 font-bold text-xs uppercase mb-3 border-b border-blue-900/30 pb-1">Status Tubulação</h4>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="bg-slate-950 p-2 rounded border border-slate-800 col-span-2">
+                                    <span className="text-[10px] text-slate-500 block">Total Metros</span>
+                                    <span className="text-lg font-bold text-white">{stats.totalLength.toFixed(1)}m</span>
+                                </div>
+                                {ALL_STATUSES.map(s => (
+                                    <div key={s} className="bg-slate-950 p-2 rounded border-l-2" style={{ borderColor: STATUS_COLORS[s] }}>
+                                        <span className="text-lg font-bold text-white block leading-none">{stats.pipeCounts[s]}</span>
+                                        <span className="text-[9px] text-slate-500 uppercase">{STATUS_LABELS[s].split(' ')[0]}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Insulation Section */}
+                        <div>
+                            <h4 className="text-yellow-400 font-bold text-xs uppercase mb-3 border-b border-yellow-900/30 pb-1">Isolamento Térmico</h4>
+                            <div className="grid grid-cols-2 gap-3">
+                                {ALL_INSULATION_STATUSES.map(s => (
+                                    <div key={s} className="bg-slate-950 p-2 rounded border-t-2" style={{ borderColor: INSULATION_COLORS[s] === 'transparent' ? '#475569' : INSULATION_COLORS[s] }}>
+                                        <span className="text-lg font-bold text-white block leading-none">{stats.insulationCounts[s]}</span>
+                                        <span className="text-[9px] text-slate-500 uppercase">{INSULATION_LABELS[s].replace('Isol. ', '')}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+            </div>
+          )}
+
+          {activeTab === 'BOM' && (
+             <div className="col-span-12 h-64 bg-slate-900 rounded-xl border border-slate-800 p-6 flex flex-col overflow-y-auto">
+                 <div className="flex items-center justify-between mb-4 border-b border-slate-800 pb-2 shrink-0">
+                    <h3 className="text-sm font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2"><ClipboardList size={16} /> Lista de Materiais Quantitativa (BOM)</h3>
+                    <span className="text-xs text-slate-500">Estimativa Automática</span>
+                 </div>
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                     {/* Pipes Table */}
+                     <div className="col-span-2">
+                         <table className="w-full text-sm text-left text-slate-400">
+                             <thead className="bg-slate-800 text-xs uppercase text-slate-200">
+                                 <tr>
+                                     <th className="px-3 py-2">Item (Tubulação)</th>
+                                     <th className="px-3 py-2 text-right">Qtd (m)</th>
+                                 </tr>
+                             </thead>
+                             <tbody>
+                                 {Object.entries(stats.pipesByDiameter).map(([diam, len]) => (
+                                     <tr key={diam} className="border-b border-slate-800">
+                                         <td className="px-3 py-2">Tubo Aço Carbono - {diam}m Diam.</td>
+                                         <td className="px-3 py-2 text-right font-mono text-white">{(len as number).toFixed(2)}m</td>
+                                     </tr>
+                                 ))}
+                                 {Object.keys(stats.pipesByDiameter).length === 0 && (
+                                     <tr><td colSpan={2} className="px-3 py-4 text-center italic text-slate-600">Nenhum tubo desenhado</td></tr>
+                                 )}
+                             </tbody>
+                         </table>
+                     </div>
+                 </div>
+             </div>
+          )}
+
       </div>
     </div>
   );
