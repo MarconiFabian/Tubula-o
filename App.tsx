@@ -5,8 +5,8 @@ import Sidebar from './components/Sidebar';
 import { DatabaseModal } from './components/DatabaseModal';
 import { saveProjectToDB, getAllProjects, deleteProjectFromDB } from './utils/db';
 import { INITIAL_PIPES, STATUS_LABELS, STATUS_COLORS, INSULATION_LABELS } from './constants';
-import { PipeSegment, PipeStatus, Annotation, Accessory, AccessoryType } from './types';
-import { LayoutDashboard, Cuboid, PenTool, XCircle, FileDown, Save, FolderOpen, FilePlus, Loader2, MapPin, Database, Undo, Redo, Wrench, Grid as GridIcon, CircleDot } from 'lucide-react';
+import { PipeSegment, PipeStatus, Annotation } from './types';
+import { LayoutDashboard, Cuboid, PenTool, XCircle, FileDown, FilePlus, Loader2, MapPin, Database, Undo, Redo, Grid as GridIcon } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
 

@@ -6,7 +6,7 @@ import PipeMesh from './PipeMesh';
 import { PipeDrawer } from './PipeDrawer';
 import { Fittings, ConnectionNode } from './Fittings';
 import { AnnotationMarker, GhostMarker } from './AnnotationMarker';
-import { PipeSegment, PipeStatus, Annotation, AccessoryType } from '../../types';
+import { PipeSegment, PipeStatus, Annotation } from '../../types';
 import { STATUS_COLORS, STATUS_LABELS, ALL_STATUSES } from '../../constants';
 import { Loader2 } from 'lucide-react';
 
