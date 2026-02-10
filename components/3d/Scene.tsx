@@ -197,11 +197,17 @@ const SceneContent: React.FC<SceneProps & { lockedAxis: 'x'|'y'|'z'|null }> = ({
 
     return (
         <>
-            <OrbitControls makeDefault enabled={!isDragging} mouseButtons={{LEFT: -1 as unknown as THREE.MOUSE, MIDDLE: THREE.MOUSE.ROTATE, RIGHT: THREE.MOUSE.PAN}} />
+            <OrbitControls 
+                makeDefault 
+                enabled={!isDragging} 
+                mouseButtons={{LEFT: -1 as unknown as THREE.MOUSE, MIDDLE: THREE.MOUSE.ROTATE, RIGHT: THREE.MOUSE.PAN}} 
+                minDistance={0.1}
+                maxDistance={5000}
+            />
             <ambientLight intensity={0.5} />
             <pointLight position={[10, 10, 10]} intensity={1} castShadow />
             <Environment preset="city" />
-            <Grid infiniteGrid fadeDistance={30} sectionColor="#475569" cellColor="#1e293b" position={[0, -0.01, 0]} onClick={handleGlobalClick} onPointerMove={handlePointerMove} />
+            <Grid infiniteGrid fadeDistance={500} sectionColor="#475569" cellColor="#1e293b" position={[0, -0.01, 0]} onClick={handleGlobalClick} onPointerMove={handlePointerMove} />
             <axesHelper args={[2]} position={[-6, 0, -6]} />
 
             {annotations.map(ann => (
@@ -328,7 +334,7 @@ const Scene: React.FC<SceneProps & { fixedLength?: boolean, onUndo?: ()=>void, o
           </div>
       </div>
       <div className="flex-1 relative">
-          <Canvas camera={{ position: [8, 8, 8], fov: 50 }} shadows gl={{ preserveDrawingBuffer: true, antialias: true }} onPointerMissed={(e) => !props.isDrawing && e.type === 'click' && props.onSelectPipe(null)}>
+          <Canvas camera={{ position: [8, 8, 8], fov: 50, near: 0.1, far: 5000 }} shadows gl={{ preserveDrawingBuffer: true, antialias: true }} onPointerMissed={(e) => !props.isDrawing && e.type === 'click' && props.onSelectPipe(null)}>
             <color attach="background" args={['#0f172a']} />
             <Suspense fallback={<Html center><Loader2 className="animate-spin text-white" /></Html>}>
                 <SceneContent {...props} lockedAxis={lockedAxis} />
