@@ -1,23 +1,23 @@
-import path from 'path';
-import { defineConfig, loadEnv } from 'vite';
-import react from '@vitejs/plugin-react';
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
 
-export default defineConfig(({ mode }) => {
-    const env = loadEnv(mode, '.', '');
-    return {
-      server: {
-        port: 3000,
-        host: '0.0.0.0',
+// https://vitejs.dev/config/
+export default defineConfig({
+  plugins: [react()],
+  build: {
+    // Aumenta o limite do aviso para 2500kb (2.5MB) para silenciar o aviso no Vercel
+    // devido às bibliotecas pesadas de 3D e PDF.
+    chunkSizeWarningLimit: 2500,
+    rollupOptions: {
+      output: {
+        // Separa as bibliotecas (node_modules) em um arquivo 'vendor' separado
+        // Isso ajuda o navegador a fazer cache das bibliotecas separadamente do seu código
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            return 'vendor';
+          }
+        },
       },
-      plugins: [react()],
-      define: {
-        'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
-        'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY)
-      },
-      resolve: {
-        alias: {
-          '@': path.resolve(__dirname, '.'),
-        }
-      }
-    };
-});
+    },
+  },
+})
