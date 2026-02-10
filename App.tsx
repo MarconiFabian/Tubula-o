@@ -447,6 +447,18 @@ export default function App() {
     setPipes(prev => prev.map(p => p.id === updatedPipe.id ? { ...updatedPipe, length } : p));
   };
 
+  // MULTI-MOVE HANDLER: Moves all selected pipes by a delta vector
+  const handleMovePipes = (delta: {x:number, y:number, z:number}) => {
+    setPipes(prev => prev.map(p => {
+        if (selectedIds.includes(p.id)) {
+            const newStart = { x: p.start.x + delta.x, y: p.start.y + delta.y, z: p.start.z + delta.z };
+            const newEnd = { x: p.end.x + delta.x, y: p.end.y + delta.y, z: p.end.z + delta.z };
+            return { ...p, start: newStart, end: newEnd };
+        }
+        return p;
+    }));
+  };
+
   const handleBatchUpdate = (updates: Partial<PipeSegment>) => {
       setPipes(prev => prev.map(p => selectedIds.includes(p.id) ? { ...p, ...updates } : p));
   };
@@ -869,6 +881,7 @@ export default function App() {
                                 isDrawing={isDrawing}
                                 onAddPipe={handleAddPipe}
                                 onUpdatePipe={handleUpdateSinglePipe}
+                                onMovePipes={handleMovePipes}
                                 onCancelDraw={() => setIsDrawing(false)}
                                 fixedLength={isFixedLength}
                                 onAddAnnotation={handleAddAnnotation}

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, Suspense } from 'react';
+import React, { useEffect, useState, useMemo, Suspense, useRef } from 'react';
 import { Canvas, useThree, ThreeEvent } from '@react-three/fiber';
 import { OrbitControls, Grid, Environment, TransformControls, Html } from '@react-three/drei';
 import * as THREE from 'three';
@@ -18,6 +18,7 @@ interface SceneProps {
   isDrawing: boolean;
   onAddPipe: (start: {x:number, y:number, z:number}, end: {x:number, y:number, z:number}) => void;
   onUpdatePipe: (pipe: PipeSegment) => void;
+  onMovePipes?: (delta: {x:number, y:number, z:number}) => void;
   onCancelDraw: () => void;
   fixedLength?: boolean;
   onAddAnnotation?: (pos: {x:number, y:number, z:number}) => void;
@@ -37,6 +38,68 @@ const stringToColor = (str: string) => {
     const c = (hash & 0x00ffffff).toString(16).toUpperCase();
     return '#' + '00000'.substring(0, 6 - c.length) + c;
 };
+
+// Componente para Mover Múltiplos Itens (Gizmo no Centro do Grupo)
+const MultiSelectControls = ({ selectedIds, pipes, onMovePipes }: { selectedIds: string[], pipes: PipeSegment[], onMovePipes: (d:{x:number, y:number, z:number})=>void }) => {
+    const transformRef = useRef<any>(null);
+    const targetRef = useRef<THREE.Mesh>(null);
+    const lastPos = useRef<THREE.Vector3 | null>(null);
+
+    // 1. Calcular o centróide (média) de todos os itens selecionados
+    const centroid = useMemo(() => {
+        if (selectedIds.length === 0) return null;
+        const selectedPipes = pipes.filter(p => selectedIds.includes(p.id));
+        if (selectedPipes.length === 0) return null;
+
+        let x = 0, y = 0, z = 0;
+        let count = 0;
+        selectedPipes.forEach(p => {
+            x += p.start.x + p.end.x;
+            y += p.start.y + p.end.y;
+            z += p.start.z + p.end.z;
+            count += 2; // start e end points
+        });
+        return new THREE.Vector3(x / count, y / count, z / count);
+    }, [selectedIds, pipes]);
+
+    // 2. Posicionar o target "invisível" no centróide sempre que a seleção muda
+    useEffect(() => {
+        if (centroid && targetRef.current) {
+            targetRef.current.position.copy(centroid);
+        }
+    }, [centroid]);
+
+    if (!centroid || selectedIds.length === 0) return null;
+
+    return (
+        <>
+            <mesh ref={targetRef} position={centroid} visible={false}>
+                <boxGeometry args={[0.5, 0.5, 0.5]} />
+            </mesh>
+            <TransformControls 
+                ref={transformRef}
+                object={targetRef}
+                mode="translate"
+                onMouseDown={() => {
+                   if (targetRef.current) lastPos.current = targetRef.current.position.clone();
+                }}
+                onObjectChange={() => {
+                    if (targetRef.current && lastPos.current) {
+                        const current = targetRef.current.position;
+                        const delta = {
+                            x: current.x - lastPos.current.x,
+                            y: current.y - lastPos.current.y,
+                            z: current.z - lastPos.current.z
+                        };
+                        // Aplica o movimento relativo a todos os tubos selecionados
+                        onMovePipes(delta);
+                        lastPos.current.copy(current);
+                    }
+                }}
+            />
+        </>
+    )
+}
 
 const KeyboardManager = ({ selectedIds, pipes, onUpdatePipe, onUndo, onRedo }: 
     { selectedIds: string[], pipes: PipeSegment[], onUpdatePipe: (p: PipeSegment) => void, onUndo?: ()=>void, onRedo?: ()=>void }) => {
@@ -83,16 +146,69 @@ const KeyboardManager = ({ selectedIds, pipes, onUpdatePipe, onUndo, onRedo }:
     return null;
 };
 
-const SceneContent: React.FC<SceneProps & { lockedAxis: 'x'|'y'|'z'|null }> = ({ 
-  pipes, annotations = [], selectedIds, onSelectPipe, isDrawing, onAddPipe, onUpdatePipe, onCancelDraw, lockedAxis, fixedLength,
+const SceneContent: React.FC<SceneProps & { lockedAxis: 'x'|'y'|'z'|null, selectionBox: any, onSetSelectionBox: any }> = ({ 
+  pipes, annotations = [], selectedIds, onSelectPipe, isDrawing, onAddPipe, onUpdatePipe, onMovePipes, onCancelDraw, lockedAxis, fixedLength,
   onAddAnnotation, onUpdateAnnotation, onDeleteAnnotation, onUndo, onRedo,
-  colorMode = 'STATUS'
+  colorMode = 'STATUS', selectionBox, onSetSelectionBox
 }) => {
-    const { camera, gl } = useThree();
+    const { camera, gl, size } = useThree();
     const [isDragging, setIsDragging] = useState(false);
     const [isQPressed, setIsQPressed] = useState(false);
     const [ghostPos, setGhostPos] = useState<THREE.Vector3 | null>(null);
     
+    // --- BOX SELECTION LOGIC ---
+    // Executa apenas quando o mouse é solto e uma caixa foi desenhada
+    useEffect(() => {
+        if (!selectionBox.isSelecting && selectionBox.w > 2 && selectionBox.h > 2) {
+            // Converter coordenadas da caixa (CSS pixels) para coordenadas de dispositivo normalizadas (NDC -1 a +1)
+            // A origem do mouse é Top-Left, mas NDC é Bottom-Left para Y.
+            const startX = (selectionBox.x / size.width) * 2 - 1;
+            const startY = -(selectionBox.y / size.height) * 2 + 1;
+            const endX = ((selectionBox.x + selectionBox.w) / size.width) * 2 - 1;
+            const endY = -((selectionBox.y + selectionBox.h) / size.height) * 2 + 1;
+
+            const minX = Math.min(startX, endX);
+            const maxX = Math.max(startX, endX);
+            const minY = Math.min(startY, endY);
+            const maxY = Math.max(startY, endY);
+
+            const newSelectedIds: string[] = [];
+
+            // Verificar cada tubo
+            pipes.forEach(pipe => {
+                // Projetar o centro do tubo para a tela
+                const center = new THREE.Vector3(
+                    (pipe.start.x + pipe.end.x) / 2,
+                    (pipe.start.y + pipe.end.y) / 2,
+                    (pipe.start.z + pipe.end.z) / 2
+                );
+                center.project(camera); // Converte para NDC (-1 a 1)
+
+                // Verificar se o ponto está dentro da caixa NDC
+                if (center.x >= minX && center.x <= maxX && center.y >= minY && center.y <= maxY) {
+                    newSelectedIds.push(pipe.id);
+                }
+            });
+
+            if (newSelectedIds.length > 0) {
+                // Merge com seleção atual se segurar Shift/Ctrl? (Simples: Substitui por enquanto ou merge se quiser)
+                onSelectPipe(null, false); // Limpa
+                // Adiciona um por um ou refatora onSelectPipe para aceitar array (vamos fazer loop simples)
+                // A prop onSelectPipe atual aceita um ID e booleano multi.
+                // Mas o estado selectedIds é controlado pelo pai. 
+                // Precisamos de uma forma de setar todos. 
+                // Solução rápida: loop chamando com multi=true
+                
+                // Hack: Vamos limpar primeiro (acima) e depois adicionar o primeiro
+                if(newSelectedIds.length > 0) onSelectPipe(newSelectedIds[0], false);
+                // Adicionar o resto
+                for(let i=1; i<newSelectedIds.length; i++) {
+                    onSelectPipe(newSelectedIds[i], true);
+                }
+            }
+        }
+    }, [selectionBox.isSelecting]); // Dispara quando termina de selecionar
+
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => { if (e.key.toLowerCase() === 'q') setIsQPressed(true); };
         const handleKeyUp = (e: KeyboardEvent) => { if (e.key.toLowerCase() === 'q') { setIsQPressed(false); setGhostPos(null); } };
@@ -134,31 +250,6 @@ const SceneContent: React.FC<SceneProps & { lockedAxis: 'x'|'y'|'z'|null }> = ({
         });
         return { connections: map, trims: pipeTrims };
     }, [pipes]);
-
-
-    const handleTransformEnd = (e: any) => {
-        setIsDragging(false);
-        const object = e.target.object;
-        if (!object || selectedIds.length !== 1) return;
-
-        // Try to find Pipe
-        const pipe = pipes.find(p => p.id === selectedIds[0]);
-        if (pipe) {
-            const oldMidX = (pipe.start.x + pipe.end.x) / 2;
-            const oldMidY = (pipe.start.y + pipe.end.y) / 2;
-            const oldMidZ = (pipe.start.z + pipe.end.z) / 2;
-            const dx = object.position.x - oldMidX;
-            const dy = object.position.y - oldMidY;
-            const dz = object.position.z - oldMidZ;
-            onUpdatePipe({
-                ...pipe,
-                start: { x: pipe.start.x + dx, y: pipe.start.y + dy, z: pipe.start.z + dz },
-                end: { x: pipe.end.x + dx, y: pipe.end.y + dy, z: pipe.end.z + dz }
-            });
-            object.position.set(oldMidX, oldMidY, oldMidZ);
-            return;
-        }
-    };
     
     const handlePointerMove = (e: ThreeEvent<PointerEvent>) => {
         if (isQPressed && !isDrawing) {
@@ -170,6 +261,7 @@ const SceneContent: React.FC<SceneProps & { lockedAxis: 'x'|'y'|'z'|null }> = ({
     };
 
     const handleGlobalClick = (e: ThreeEvent<MouseEvent>) => {
+        // Se clicar no grid/fundo, não faz nada específico (Box selection é tratada no DOM overlay)
         if (isQPressed && onAddAnnotation) {
             e.stopPropagation();
             onAddAnnotation(e.point);
@@ -199,7 +291,7 @@ const SceneContent: React.FC<SceneProps & { lockedAxis: 'x'|'y'|'z'|null }> = ({
         <>
             <OrbitControls 
                 makeDefault 
-                enabled={!isDragging} 
+                enabled={!isDragging && !selectionBox.isSelecting} // Desabilita orbita se estiver arrastando gizmo ou selecionando caixa
                 mouseButtons={{LEFT: -1 as unknown as THREE.MOUSE, MIDDLE: THREE.MOUSE.ROTATE, RIGHT: THREE.MOUSE.PAN}} 
                 minDistance={0.1}
                 maxDistance={5000}
@@ -215,6 +307,11 @@ const SceneContent: React.FC<SceneProps & { lockedAxis: 'x'|'y'|'z'|null }> = ({
             ))}
             
             {ghostPos && isQPressed && <GhostMarker position={ghostPos} />}
+
+            {/* GIZMO DE TRANSFORMAÇÃO PARA MÚLTIPLOS OU ÚNICOS ITENS */}
+            {onMovePipes && selectedIds.length > 0 && !isDrawing && (
+                <MultiSelectControls selectedIds={selectedIds} pipes={pipes} onMovePipes={onMovePipes} />
+            )}
 
             <group>
                 <Fittings 
@@ -232,18 +329,15 @@ const SceneContent: React.FC<SceneProps & { lockedAxis: 'x'|'y'|'z'|null }> = ({
                     const trim = trims[pipe.id] || { start: 0, end: 0 };
                     let colorOverride = (colorMode === 'SPOOL' && pipe.spoolId) ? spoolColors[pipe.spoolId] : undefined;
 
-                    if (isSelected && selectedIds.length === 1 && !isDrawing) {
-                        const midX = (pipe.start.x + pipe.end.x) / 2;
-                        const midY = (pipe.start.y + pipe.end.y) / 2;
-                        const midZ = (pipe.start.z + pipe.end.z) / 2;
-                        return (
-                            <group key={pipe.id}>
-                                <TransformControls mode="translate" onMouseDown={() => setIsDragging(true)} onMouseUp={handleTransformEnd} size={0.7}>
-                                    <group onClick={(e) => handlePipeClick(e, pipe)} onPointerMove={handlePointerMove}>
-                                        <PipeMesh data={pipe} isSelected={true} onSelect={() => {}} trimStart={trim.start} trimEnd={trim.end} customColor={colorOverride} />
-                                    </group>
-                                </TransformControls>
-                                <Html position={[midX, midY + 0.6, midZ]} center zIndexRange={[100, 0]} style={{ pointerEvents: 'auto' }}>
+                    // Mostra info label apenas se for seleção única e não estiver desenhando
+                    const showLabel = isSelected && selectedIds.length === 1 && !isDrawing;
+
+                    return (
+                        <group key={pipe.id} onClick={(e) => handlePipeClick(e, pipe)} onPointerMove={handlePointerMove}>
+                             <PipeMesh data={pipe} isSelected={isSelected} onSelect={() => {}} trimStart={trim.start} trimEnd={trim.end} customColor={colorOverride} />
+                             
+                             {showLabel && (
+                                <Html position={[(pipe.start.x + pipe.end.x)/2, (pipe.start.y + pipe.end.y)/2 + 0.6, (pipe.start.z + pipe.end.z)/2]} center zIndexRange={[100, 0]} style={{ pointerEvents: 'auto' }}>
                                     <div className="bg-slate-900/95 p-2 rounded-xl border border-slate-600 shadow-2xl backdrop-blur flex flex-col gap-2 min-w-[140px]" onPointerDown={(e) => e.stopPropagation()}>
                                          <div className="flex gap-1 justify-center mb-1">
                                             {ALL_STATUSES.map(status => (
@@ -251,32 +345,9 @@ const SceneContent: React.FC<SceneProps & { lockedAxis: 'x'|'y'|'z'|null }> = ({
                                             ))}
                                          </div>
                                          <div className="text-[10px] text-center text-slate-400 font-mono bg-black/30 rounded px-1 py-0.5 border border-slate-700">{pipe.spoolId ? `Spool: ${pipe.spoolId}` : 'No Spool'}</div>
-                                         
-                                         {/* INSPECTOR INFO BLOCK */}
-                                         {(pipe.welderInfo?.welderId || pipe.welderInfo?.weldDate) && (
-                                            <div className="mt-1 pt-1 border-t border-slate-700/50 flex flex-col gap-1">
-                                                {pipe.welderInfo.welderId && (
-                                                    <div className="flex items-center gap-1.5 text-[10px] text-slate-200">
-                                                        <UserCheck size={10} className="text-blue-400" />
-                                                        <span className="font-bold">Insp:</span> {pipe.welderInfo.welderId}
-                                                    </div>
-                                                )}
-                                                {pipe.welderInfo.weldDate && (
-                                                    <div className="flex items-center gap-1.5 text-[10px] text-slate-400">
-                                                        <Calendar size={10} />
-                                                        <span>{new Date(pipe.welderInfo.weldDate).toLocaleDateString()}</span>
-                                                    </div>
-                                                )}
-                                            </div>
-                                         )}
                                     </div>
                                 </Html>
-                            </group>
-                        );
-                    }
-                    return (
-                        <group key={pipe.id} onClick={(e) => handlePipeClick(e, pipe)} onPointerMove={handlePointerMove}>
-                             <PipeMesh data={pipe} isSelected={isSelected} onSelect={() => {}} trimStart={trim.start} trimEnd={trim.end} customColor={colorOverride} />
+                             )}
                         </group>
                     );
                 })}
@@ -295,8 +366,10 @@ const SceneContent: React.FC<SceneProps & { lockedAxis: 'x'|'y'|'z'|null }> = ({
     );
 }
 
-const Scene: React.FC<SceneProps & { fixedLength?: boolean, onUndo?: ()=>void, onRedo?: ()=>void, colorMode?: 'STATUS'|'SPOOL' }> = (props) => {
+const Scene: React.FC<SceneProps & { fixedLength?: boolean, onUndo?: ()=>void, onRedo?: ()=>void, colorMode?: 'STATUS'|'SPOOL', onMovePipes?: (d:any)=>void }> = (props) => {
   const [lockedAxis, setLockedAxis] = useState<'x'|'y'|'z'|null>(null);
+  const [selectionBox, setSelectionBox] = useState({ x: 0, y: 0, w: 0, h: 0, isSelecting: false, startX: 0, startY: 0 });
+
   useEffect(() => {
     if (!props.isDrawing) return;
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -311,14 +384,82 @@ const Scene: React.FC<SceneProps & { fixedLength?: boolean, onUndo?: ()=>void, o
     return () => { window.removeEventListener('keydown', handleKeyDown); window.removeEventListener('keyup', handleKeyUp); };
   }, [props.isDrawing]);
 
+  // --- BOX SELECTION EVENT HANDLERS ON PARENT DIV ---
+  const handleMouseDown = (e: React.MouseEvent) => {
+      // Somente inicia seleção se NÃO estiver desenhando e clicando com botão esquerdo
+      if (props.isDrawing || e.button !== 0) return;
+      // Se clicar em um elemento HTML da interface (ex: botões, gizmo), ignorar. 
+      // O Canvas captura eventos, mas o Gizmo (TransformControls) bloqueia propagação se configurado.
+      // Vamos assumir que se chegou aqui no div pai, é fundo ou grid.
+      
+      const rect = e.currentTarget.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      
+      setSelectionBox({
+          startX: x, startY: y,
+          x, y, w: 0, h: 0,
+          isSelecting: true
+      });
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+      if (!selectionBox.isSelecting) return;
+      const rect = e.currentTarget.getBoundingClientRect();
+      const currentX = e.clientX - rect.left;
+      const currentY = e.clientY - rect.top;
+      
+      const x = Math.min(selectionBox.startX, currentX);
+      const y = Math.min(selectionBox.startY, currentY);
+      const w = Math.abs(currentX - selectionBox.startX);
+      const h = Math.abs(currentY - selectionBox.startY);
+      
+      setSelectionBox(prev => ({ ...prev, x, y, w, h }));
+  };
+
+  const handleMouseUp = () => {
+      if (selectionBox.isSelecting) {
+          // A lógica de calcular quais itens estão dentro ocorre dentro do SceneContent via useEffect
+          // Aqui apenas finalizamos o visual
+          setSelectionBox(prev => ({ ...prev, isSelecting: false }));
+          // Reseta visual depois de um micro delay para o efeito ser percebido? Não, reseta w/h pra sumir
+          setTimeout(() => setSelectionBox({ x: 0, y: 0, w: 0, h: 0, isSelecting: false, startX: 0, startY: 0 }), 50);
+      }
+  };
+
+
   return (
-    <div className="w-full h-full bg-slate-900 relative rounded-lg overflow-hidden border border-slate-700 shadow-2xl flex flex-col">
+    <div 
+        className="w-full h-full bg-slate-900 relative rounded-lg overflow-hidden border border-slate-700 shadow-2xl flex flex-col select-none"
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
+    >
+      {/* BOX SELECTION OVERLAY */}
+      {selectionBox.isSelecting && selectionBox.w > 0 && (
+          <div 
+            style={{
+                position: 'absolute',
+                left: selectionBox.x,
+                top: selectionBox.y,
+                width: selectionBox.w,
+                height: selectionBox.h,
+                border: '2px dashed #0ea5e9', // Sky blue dashed
+                backgroundColor: 'rgba(14, 165, 233, 0.2)', // Semi-transparent blue
+                pointerEvents: 'none',
+                zIndex: 50
+            }}
+          />
+      )}
+
       <div className="absolute top-4 left-4 z-10 pointer-events-none">
           <div className="bg-black/60 text-white p-3 rounded-lg backdrop-blur-sm text-xs border border-white/10 select-none pointer-events-auto">
             {!props.isDrawing ? (
                 <>
                     <p className="font-bold text-slate-300">Modo de Edição</p>
                     <p>Clique: Selecionar (Ctrl: Múltiplo)</p>
+                    <p className="text-blue-400 font-bold">Arraste no fundo: Seleção em Caixa</p>
                     <p className="text-purple-400 font-bold">Segure Q + Clique: Marcar Obs.</p>
                     <p>Ctrl + Z: Desfazer</p>
                     <p>Del: Excluir</p>
@@ -334,10 +475,15 @@ const Scene: React.FC<SceneProps & { fixedLength?: boolean, onUndo?: ()=>void, o
           </div>
       </div>
       <div className="flex-1 relative">
-          <Canvas camera={{ position: [8, 8, 8], fov: 50, near: 0.1, far: 5000 }} shadows gl={{ preserveDrawingBuffer: true, antialias: true }} onPointerMissed={(e) => !props.isDrawing && e.type === 'click' && props.onSelectPipe(null)}>
+          <Canvas camera={{ position: [8, 8, 8], fov: 50, near: 0.1, far: 5000 }} shadows gl={{ preserveDrawingBuffer: true, antialias: true }} onPointerMissed={(e) => {
+              // Se clicar no vazio SEM arrastar (box w=0), limpa seleção
+              if (!props.isDrawing && !selectionBox.isSelecting && e.type === 'click') {
+                  props.onSelectPipe(null);
+              }
+          }}>
             <color attach="background" args={['#0f172a']} />
             <Suspense fallback={<Html center><Loader2 className="animate-spin text-white" /></Html>}>
-                <SceneContent {...props} lockedAxis={lockedAxis} />
+                <SceneContent {...props} lockedAxis={lockedAxis} selectionBox={selectionBox} onSetSelectionBox={setSelectionBox} />
             </Suspense>
           </Canvas>
       </div>
