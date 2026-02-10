@@ -3,14 +3,17 @@ import { Html, Text, Billboard } from '@react-three/drei';
 import { Annotation } from '../../types';
 import * as THREE from 'three';
 import { Check, X, Trash2 } from 'lucide-react';
+import { ThreeEvent } from '@react-three/fiber';
 
 interface AnnotationMarkerProps {
   data: Annotation;
   onUpdate: (id: string, text: string) => void;
   onDelete: (id: string) => void;
+  isSelected?: boolean;
+  onSelect?: (id: string, multi: boolean) => void;
 }
 
-export const AnnotationMarker: React.FC<AnnotationMarkerProps> = ({ data, onUpdate, onDelete }) => {
+export const AnnotationMarker: React.FC<AnnotationMarkerProps> = ({ data, onUpdate, onDelete, isSelected, onSelect }) => {
   // Se o texto estiver vazio ao criar, começa em modo de edição
   const [isEditing, setIsEditing] = useState(data.text === '');
   const [inputText, setInputText] = useState(data.text);
@@ -33,19 +36,33 @@ export const AnnotationMarker: React.FC<AnnotationMarkerProps> = ({ data, onUpda
       }
   };
 
+  const handleMarkerClick = (e: ThreeEvent<MouseEvent>) => {
+      e.stopPropagation();
+      if (onSelect) {
+          const isMulti = e.nativeEvent.ctrlKey || e.nativeEvent.shiftKey || e.nativeEvent.metaKey;
+          onSelect(data.id, isMulti);
+      }
+  };
+
+  // Cor do marcador: Roxo (padrão) ou Laranja (selecionado)
+  const markerColor = isSelected ? '#f97316' : '#9333ea'; // Orange-500 vs Purple-600
+
   return (
     <group position={[data.position.x, data.position.y, data.position.z]}>
-      {/* Visual Marker: Purple Arrow/Cone pointing down */}
-      <mesh position={[0, 0.25, 0]}>
-         <coneGeometry args={[0.1, 0.5, 32]} />
-         <meshStandardMaterial color="#9333ea" emissive="#7e22ce" emissiveIntensity={0.5} />
-      </mesh>
-      
-      {/* Floating Sphere on top */}
-      <mesh position={[0, 0.5, 0]}>
-          <sphereGeometry args={[0.08]} />
-          <meshStandardMaterial color="#9333ea" />
-      </mesh>
+      {/* Group para os elementos clicáveis de seleção (Cone e Esfera) */}
+      <group onClick={handleMarkerClick}>
+        {/* Visual Marker: Arrow/Cone pointing down */}
+        <mesh position={[0, 0.25, 0]}>
+            <coneGeometry args={[0.1, 0.5, 32]} />
+            <meshStandardMaterial color={markerColor} emissive={markerColor} emissiveIntensity={isSelected ? 0.8 : 0.5} />
+        </mesh>
+        
+        {/* Floating Sphere on top */}
+        <mesh position={[0, 0.5, 0]}>
+            <sphereGeometry args={[0.08]} />
+            <meshStandardMaterial color={markerColor} emissive={markerColor} emissiveIntensity={isSelected ? 0.5 : 0} />
+        </mesh>
+      </group>
 
       {/* TEXT DISPLAY OR EDIT MODE */}
       {isEditing ? (
@@ -71,20 +88,21 @@ export const AnnotationMarker: React.FC<AnnotationMarkerProps> = ({ data, onUpda
       ) : (
           <Billboard position={[0, 1.2, 0]}>
               {/* Background Panel for readability in 3D */}
-              <mesh position={[0, 0, -0.01]}>
+              <mesh position={[0, 0, -0.01]} onClick={handleMarkerClick}>
                   <planeGeometry args={[inputText.length * 0.12 + 0.5, 0.6]} />
-                  <meshBasicMaterial color="#581c87" opacity={0.9} transparent />
+                  <meshBasicMaterial color={isSelected ? "#ea580c" : "#581c87"} opacity={0.9} transparent />
               </mesh>
               
-              {/* 3D Text (Capturable by PDF/Canvas) */}
+              {/* 3D Text - Double click to edit, Single click to Select */}
               <Text
                 fontSize={0.25}
                 color="white"
                 anchorX="center"
                 anchorY="middle"
                 outlineWidth={0.02}
-                outlineColor="#9333ea"
-                onClick={(e) => { e.stopPropagation(); setIsEditing(true); }}
+                outlineColor={isSelected ? "#ea580c" : "#9333ea"}
+                onClick={handleMarkerClick}
+                onDoubleClick={(e) => { e.stopPropagation(); setIsEditing(true); }}
                 onPointerOver={() => document.body.style.cursor = 'pointer'}
                 onPointerOut={() => document.body.style.cursor = 'auto'}
               >
@@ -99,7 +117,7 @@ export const AnnotationMarker: React.FC<AnnotationMarkerProps> = ({ data, onUpda
               <bufferGeometry>
                   <float32BufferAttribute attach="attributes-position" count={2} itemSize={3} array={new Float32Array([0,0,0, 0,0.5,0])} />
               </bufferGeometry>
-              <lineBasicMaterial color="#9333ea" />
+              <lineBasicMaterial color={markerColor} />
           </lineSegments>
       )}
     </group>

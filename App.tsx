@@ -435,6 +435,11 @@ export default function App() {
       }
       setSelectedIds(prev => multiSelect ? (prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]) : [id]);
   }, []);
+  
+  // NEW: Optimized batch selection handler
+  const handleSetSelection = useCallback((ids: string[]) => {
+      setSelectedIds(ids);
+  }, []);
 
   // Annotations
   const handleAddAnnotation = (pos: {x:number, y:number, z:number}) => setAnnotations(prev => [...prev, { id: `A-${Date.now()}`, position: pos, text: '' }]);
@@ -896,6 +901,7 @@ export default function App() {
                                 annotations={annotations}
                                 selectedIds={selectedIds}
                                 onSelectPipe={handleSelectPipe}
+                                onSetSelection={handleSetSelection}
                                 isDrawing={isDrawing}
                                 onAddPipe={handleAddPipe}
                                 onUpdatePipe={handleUpdateSinglePipe}
