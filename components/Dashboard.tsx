@@ -1,18 +1,21 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { PipeSegment } from '../types';
 import { STATUS_COLORS, STATUS_LABELS, ALL_STATUSES, INSULATION_COLORS, INSULATION_LABELS, ALL_INSULATION_STATUSES } from '../constants';
-import { Activity, FileDown, Upload, Image as ImageIcon, Map as MapIcon, Layers, Shield, ClipboardList } from 'lucide-react';
+import { Activity, FileDown, Upload, Image as ImageIcon, Map as MapIcon, Layers, Shield, Ruler, Package, AlertCircle, Search, Filter, ClipboardList, UserCog, Calendar, CheckSquare } from 'lucide-react';
 
 interface DashboardProps {
   pipes: PipeSegment[];
   onExportPDF?: () => void;
   isExporting?: boolean;
-  exportMode?: boolean;
+  exportMode?: boolean; // Se true, remove botões e ajusta layout para impressão
   secondaryImage?: string | null;
   mapImage?: string | null;
   onUploadSecondary?: (img: string | null) => void;
   onUploadMap?: (img: string | null) => void;
+  sceneScreenshot?: string | null; // NOVA PROPRIEDADE
 }
+
+type TabType = 'overview' | 'tracking';
 
 const Dashboard: React.FC<DashboardProps> = ({ 
     pipes = [], 
@@ -22,9 +25,13 @@ const Dashboard: React.FC<DashboardProps> = ({
     secondaryImage,
     mapImage,
     onUploadSecondary,
-    onUploadMap
+    onUploadMap,
+    sceneScreenshot // Recebe a imagem
 }) => {
-  const [activeTab, setActiveTab] = useState<'OVERVIEW' | 'BOM'>('OVERVIEW');
+  const [activeTab, setActiveTab] = useState<TabType>('overview');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>('ALL');
+
   const secInputRef = useRef<HTMLInputElement>(null);
   const mapInputRef = useRef<HTMLInputElement>(null);
 
@@ -39,6 +46,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   const stats = useMemo(() => {
     const totalLength = pipes.reduce((acc, p) => acc + (p?.length || 0), 0);
+    const totalPipes = pipes.length;
     
     // Piping Status Counts
     const pipeCounts: Record<string, number> = {};
@@ -53,206 +61,328 @@ const Dashboard: React.FC<DashboardProps> = ({
         insulationCounts[status] = (insulationCounts[status] || 0) + 1; 
     });
 
-    // --- BOM CALCULATIONS ---
-    const pipesByDiameter: Record<number, number> = {};
+    // Material List (BOM) - Group by Diameter (Converted to Inches)
+    const bom: Record<string, number> = {};
     pipes.forEach(p => {
-        const d = p.diameter || 0.3; // Default 300mm if undefined
-        pipesByDiameter[d] = (pipesByDiameter[d] || 0) + p.length;
+        const inches = Math.round(p.diameter * 39.37);
+        const dLabel = `${inches}`; 
+        
+        if (!bom[dLabel]) bom[dLabel] = 0;
+        bom[dLabel] += p.length;
     });
 
-    return { totalLength, pipeCounts, insulationCounts, pipesByDiameter };
+    // Calculate Progress %
+    const completedWeight = (pipeCounts['WELDED'] * 0.8) + (pipeCounts['HYDROTEST'] * 1.0) + (pipeCounts['MOUNTED'] * 0.3);
+    const progress = totalPipes > 0 ? (completedWeight / totalPipes) * 100 : 0;
+
+    return { totalLength, totalPipes, pipeCounts, insulationCounts, bom, progress };
   }, [pipes]);
 
-  // --- EXPORT VIEW (SPLIT PIPING VS INSULATION) ---
-  if (exportMode) {
-      return (
-          <div className="flex flex-col h-full w-full gap-4">
-               {/* Top Half: PIPING STATS */}
-               <div className="flex-1 border-b border-slate-600 pb-2">
-                    <div className="flex items-center gap-2 mb-2">
-                        <Layers size={24} className="text-blue-400" />
-                        <h3 className="text-xl font-bold text-blue-400 tracking-widest uppercase">Tubulação - Status Físico</h3>
-                        <div className="ml-auto bg-slate-900 px-3 py-1 rounded border border-slate-600">
-                             <span className="text-slate-400 text-sm mr-2">TOTAL METROS:</span>
-                             <span className="text-white font-bold text-lg">{stats.totalLength.toFixed(2)}m</span>
-                        </div>
-                    </div>
-                    <div className="grid grid-cols-4 gap-4 h-[120px]">
-                        {ALL_STATUSES.map(status => (
-                            <div key={status} className="bg-slate-900/60 rounded-lg border-l-4 flex flex-col justify-center items-center relative" style={{ borderColor: STATUS_COLORS[status] }}>
-                                <span className="text-4xl font-bold text-white">{stats.pipeCounts[status]}</span>
-                                <span className="text-xs text-slate-400 uppercase tracking-widest mt-1">{STATUS_LABELS[status]}</span>
-                                {/* Mini percentage bar at bottom */}
-                                <div className="absolute bottom-2 w-16 h-1 bg-slate-700 rounded-full overflow-hidden">
-                                     <div className="h-full" style={{ width: `${(stats.pipeCounts[status] / (pipes.length || 1)) * 100}%`, backgroundColor: STATUS_COLORS[status] }} />
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-               </div>
+  // Filtered Pipes for Tracking Tab
+  const filteredPipes = useMemo(() => {
+      return pipes.filter(p => {
+          const matchesSearch = 
+            p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+            p.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (p.spoolId && p.spoolId.toLowerCase().includes(searchTerm.toLowerCase())) ||
+            (p.welderInfo?.welderId && p.welderInfo.welderId.toLowerCase().includes(searchTerm.toLowerCase()));
+          
+          const matchesStatus = statusFilter === 'ALL' || p.status === statusFilter;
+          
+          return matchesSearch && matchesStatus;
+      });
+  }, [pipes, searchTerm, statusFilter]);
 
-               {/* Bottom Half: INSULATION STATS */}
-               <div className="flex-1 pt-2">
-                    <div className="flex items-center gap-2 mb-2">
-                        <Shield size={24} className="text-yellow-400" />
-                        <h3 className="text-xl font-bold text-yellow-400 tracking-widest uppercase">Proteção Térmica / Isolamento</h3>
-                    </div>
-                    <div className="grid grid-cols-4 gap-4 h-[120px]">
-                        {ALL_INSULATION_STATUSES.map(status => (
-                            <div key={status} className="bg-slate-900/60 rounded-lg border-t-4 flex flex-col justify-center items-center relative" style={{ borderColor: INSULATION_COLORS[status] === 'transparent' ? '#64748b' : INSULATION_COLORS[status] }}>
-                                <span className="text-4xl font-bold text-white">{stats.insulationCounts[status]}</span>
-                                <span className="text-xs text-slate-400 uppercase tracking-widest mt-1 text-center px-1">{INSULATION_LABELS[status]}</span>
-                            </div>
-                        ))}
-                    </div>
-               </div>
-          </div>
-      )
-  }
-
-  // --- INTERACTIVE VIEW ---
   return (
-    <div className="flex flex-col gap-6">
-      {onExportPDF && (
+    <div className={`flex flex-col gap-6 w-full ${exportMode ? 'p-0' : ''}`}>
+      
+      {/* HEADER ACTION (Only visible in interactive mode) */}
+      {!exportMode && onExportPDF && (
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-slate-900 p-6 rounded-xl border border-slate-800 shadow-xl gap-4">
              <div>
-                 <h2 className="text-xl font-bold text-white flex items-center gap-2"><Activity className="text-blue-500" /> Painel de Controle (HUD)</h2>
-                 <p className="text-slate-400 text-sm">Adicione as fotos abaixo para compor o relatório final.</p>
+                 <h2 className="text-xl font-bold text-white flex items-center gap-2"><Activity className="text-blue-500" /> Dashboard de Controle</h2>
+                 <p className="text-slate-400 text-sm">Gerenciamento de Pipe Shop, Soldagem e Montagem.</p>
              </div>
-             <button onClick={onExportPDF} disabled={isExporting} className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-3 rounded-lg font-bold flex gap-2 items-center transition-all shadow-lg shadow-blue-500/20">
-                <FileDown size={20} /> {isExporting ? 'Gerando PDF...' : 'Exportar Relatório PDF'}
-            </button>
+             
+             <div className="flex gap-4 items-center">
+                 {/* TAB SWITCHER */}
+                 <div className="bg-slate-800 p-1 rounded-lg flex border border-slate-700">
+                    <button 
+                        onClick={() => setActiveTab('overview')}
+                        className={`px-4 py-2 rounded-md text-sm font-bold flex items-center gap-2 transition-all ${activeTab === 'overview' ? 'bg-slate-700 text-white shadow' : 'text-slate-400 hover:text-white'}`}
+                    >
+                        <Activity size={16}/> Visão Geral
+                    </button>
+                    <button 
+                        onClick={() => setActiveTab('tracking')}
+                        className={`px-4 py-2 rounded-md text-sm font-bold flex items-center gap-2 transition-all ${activeTab === 'tracking' ? 'bg-slate-700 text-white shadow' : 'text-slate-400 hover:text-white'}`}
+                    >
+                        <ClipboardList size={16}/> Rastreabilidade
+                    </button>
+                 </div>
+
+                 <button onClick={onExportPDF} disabled={isExporting} className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg font-bold flex gap-2 items-center transition-all shadow-lg shadow-blue-500/20 h-10 text-sm">
+                    <FileDown size={18} /> {isExporting ? '...' : 'PDF'}
+                </button>
+             </div>
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
-          
-          {/* Main 3D Placeholder */}
-          <div className="col-span-12 md:col-span-8 h-80 bg-slate-900 rounded-xl border-2 border-dashed border-slate-800 flex flex-col items-center justify-center relative overflow-hidden group">
-               <div className="absolute inset-0 bg-gradient-to-br from-blue-900/10 to-transparent pointer-events-none" />
-               <Activity size={48} className="text-slate-700 mb-2" />
-               <p className="text-slate-500 font-bold uppercase tracking-wider">Vista Principal 3D</p>
-               <p className="text-slate-600 text-xs mt-1">Será capturada automaticamente do modelo</p>
-          </div>
+      {/* --- TAB CONTENT: OVERVIEW --- */}
+      {(activeTab === 'overview' || exportMode) && (
+        <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-6">
+            {/* TOP CARDS - KPIs */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl flex flex-col justify-between relative overflow-hidden">
+                    <div className="absolute top-0 right-0 p-4 opacity-10"><Ruler size={64} className="text-blue-500" /></div>
+                    <span className="text-slate-400 text-xs font-bold uppercase tracking-wider">Total Metros Lineares</span>
+                    <div className="text-3xl font-bold text-white mt-1">{stats.totalLength.toFixed(2)}<span className="text-sm text-slate-500 ml-1">m</span></div>
+                    <div className="w-full bg-slate-800 h-1 mt-3 rounded-full overflow-hidden"><div className="bg-blue-500 h-full" style={{width: '100%'}}></div></div>
+                </div>
+                
+                <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl flex flex-col justify-between relative overflow-hidden">
+                    <div className="absolute top-0 right-0 p-4 opacity-10"><Package size={64} className="text-purple-500" /></div>
+                    <span className="text-slate-400 text-xs font-bold uppercase tracking-wider">Total Spools / Linhas</span>
+                    <div className="text-3xl font-bold text-white mt-1">{stats.totalPipes}</div>
+                    <div className="w-full bg-slate-800 h-1 mt-3 rounded-full overflow-hidden"><div className="bg-purple-500 h-full" style={{width: '100%'}}></div></div>
+                </div>
 
-          {/* Secondary Image Upload */}
-          <div className="col-span-12 md:col-span-4 h-80 bg-slate-900 rounded-xl border border-slate-800 flex flex-col relative overflow-hidden group">
-               <div className="absolute top-0 left-0 w-full p-3 bg-black/60 backdrop-blur-sm z-10 flex justify-between items-center border-b border-white/10">
-                   <span className="text-xs font-bold text-yellow-400 uppercase flex items-center gap-2"><ImageIcon size={14} /> Foto Obra</span>
-                   {secondaryImage && <button onClick={() => onUploadSecondary?.(null)} className="text-xs text-red-400 hover:text-red-300 font-bold">Remover</button>}
-               </div>
-               
-               {secondaryImage ? (
-                   <img src={secondaryImage} className="w-full h-full object-cover" />
-               ) : (
-                   <div className="flex-1 flex flex-col items-center justify-center p-6 text-center cursor-pointer hover:bg-slate-800/50 transition-colors" onClick={() => secInputRef.current?.click()}>
-                       <div className="bg-slate-800 p-4 rounded-full mb-3"><Upload size={24} className="text-slate-400" /></div>
-                       <p className="text-slate-400 text-sm font-bold">Carregar Foto</p>
-                       <p className="text-slate-600 text-xs mt-1">Clique para selecionar</p>
-                   </div>
-               )}
-               <input type="file" ref={secInputRef} className="hidden" accept="image/*" onChange={(e) => handleImageUpload(e, onUploadSecondary)} />
-          </div>
+                <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl flex flex-col justify-between relative overflow-hidden">
+                    <div className="absolute top-0 right-0 p-4 opacity-10"><Activity size={64} className="text-green-500" /></div>
+                    <span className="text-slate-400 text-xs font-bold uppercase tracking-wider">Progresso Físico (Est.)</span>
+                    <div className="text-3xl font-bold text-green-400 mt-1">{stats.progress.toFixed(1)}<span className="text-sm text-slate-500 ml-1">%</span></div>
+                    <div className="w-full bg-slate-800 h-1 mt-3 rounded-full overflow-hidden"><div className="bg-green-500 h-full" style={{width: `${stats.progress}%`}}></div></div>
+                </div>
 
-          {/* Map Image Upload */}
-          <div className="col-span-12 md:col-span-4 h-64 bg-slate-900 rounded-xl border border-slate-800 flex flex-col relative overflow-hidden group">
-               <div className="absolute top-0 left-0 w-full p-3 bg-black/60 backdrop-blur-sm z-10 flex justify-between items-center border-b border-white/10">
-                   <span className="text-xs font-bold text-green-400 uppercase flex items-center gap-2"><MapIcon size={14} /> Mapa Local</span>
-                   {mapImage && <button onClick={() => onUploadMap?.(null)} className="text-xs text-red-400 hover:text-red-300 font-bold">Remover</button>}
-               </div>
-               
-               {mapImage ? (
-                   <img src={mapImage} className="w-full h-full object-cover" />
-               ) : (
-                   <div className="flex-1 flex flex-col items-center justify-center p-6 text-center cursor-pointer hover:bg-slate-800/50 transition-colors" onClick={() => mapInputRef.current?.click()}>
-                       <div className="bg-slate-800 p-3 rounded-full mb-3"><MapIcon size={20} className="text-slate-400" /></div>
-                       <p className="text-slate-400 text-sm font-bold">Carregar Mapa</p>
-                   </div>
-               )}
-               <input type="file" ref={mapInputRef} className="hidden" accept="image/*" onChange={(e) => handleImageUpload(e, onUploadMap)} />
-          </div>
-
-          {/* TABS HEADER */}
-          <div className="col-span-12 flex gap-4 border-b border-slate-800">
-              <button onClick={() => setActiveTab('OVERVIEW')} className={`pb-2 px-4 text-sm font-bold uppercase ${activeTab === 'OVERVIEW' ? 'text-blue-400 border-b-2 border-blue-400' : 'text-slate-500 hover:text-slate-300'}`}>Visão Geral</button>
-              <button onClick={() => setActiveTab('BOM')} className={`pb-2 px-4 text-sm font-bold uppercase ${activeTab === 'BOM' ? 'text-blue-400 border-b-2 border-blue-400' : 'text-slate-500 hover:text-slate-300'}`}>Lista de Materiais (BOM)</button>
-          </div>
-
-          {activeTab === 'OVERVIEW' && (
-            <div className="col-span-12 md:col-span-8 h-64 bg-slate-900 rounded-xl border border-slate-800 p-6 flex flex-col overflow-y-auto">
-                    <div className="flex items-center justify-between mb-4 border-b border-slate-800 pb-2 shrink-0">
-                        <h3 className="text-sm font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2"><Activity size={16} /> Indicadores Gerais</h3>
-                        <span className="text-xs text-blue-500 font-mono animate-pulse">LIVE DATA</span>
-                    </div>
-                    
-                    <div className="grid grid-cols-2 gap-8">
-                        {/* Piping Section */}
-                        <div>
-                            <h4 className="text-blue-400 font-bold text-xs uppercase mb-3 border-b border-blue-900/30 pb-1">Status Tubulação</h4>
-                            <div className="grid grid-cols-2 gap-3">
-                                <div className="bg-slate-950 p-2 rounded border border-slate-800 col-span-2">
-                                    <span className="text-[10px] text-slate-500 block">Total Metros</span>
-                                    <span className="text-lg font-bold text-white">{stats.totalLength.toFixed(1)}m</span>
-                                </div>
-                                {ALL_STATUSES.map(s => (
-                                    <div key={s} className="bg-slate-950 p-2 rounded border-l-2" style={{ borderColor: STATUS_COLORS[s] }}>
-                                        <span className="text-lg font-bold text-white block leading-none">{stats.pipeCounts[s]}</span>
-                                        <span className="text-[9px] text-slate-500 uppercase">{STATUS_LABELS[s].split(' ')[0]}</span>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-
-                        {/* Insulation Section */}
-                        <div>
-                            <h4 className="text-yellow-400 font-bold text-xs uppercase mb-3 border-b border-yellow-900/30 pb-1">Isolamento Térmico</h4>
-                            <div className="grid grid-cols-2 gap-3">
-                                {ALL_INSULATION_STATUSES.map(s => (
-                                    <div key={s} className="bg-slate-950 p-2 rounded border-t-2" style={{ borderColor: INSULATION_COLORS[s] === 'transparent' ? '#475569' : INSULATION_COLORS[s] }}>
-                                        <span className="text-lg font-bold text-white block leading-none">{stats.insulationCounts[s]}</span>
-                                        <span className="text-[9px] text-slate-500 uppercase">{INSULATION_LABELS[s].replace('Isol. ', '')}</span>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    </div>
+                <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl flex flex-col justify-between relative overflow-hidden">
+                    <div className="absolute top-0 right-0 p-4 opacity-10"><AlertCircle size={64} className="text-red-500" /></div>
+                    <span className="text-slate-400 text-xs font-bold uppercase tracking-wider">Pendências (Montagem)</span>
+                    <div className="text-3xl font-bold text-white mt-1">{stats.pipeCounts['PENDING']}</div>
+                    <div className="w-full bg-slate-800 h-1 mt-3 rounded-full overflow-hidden"><div className="bg-red-500 h-full" style={{width: `${(stats.pipeCounts['PENDING']/stats.totalPipes)*100}%`}}></div></div>
+                </div>
             </div>
-          )}
 
-          {activeTab === 'BOM' && (
-             <div className="col-span-12 h-64 bg-slate-900 rounded-xl border border-slate-800 p-6 flex flex-col overflow-y-auto">
-                 <div className="flex items-center justify-between mb-4 border-b border-slate-800 pb-2 shrink-0">
-                    <h3 className="text-sm font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2"><ClipboardList size={16} /> Lista de Materiais Quantitativa (BOM)</h3>
-                    <span className="text-xs text-slate-500">Estimativa Automática</span>
-                 </div>
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                     {/* Pipes Table */}
-                     <div className="col-span-2">
-                         <table className="w-full text-sm text-left text-slate-400">
-                             <thead className="bg-slate-800 text-xs uppercase text-slate-200">
-                                 <tr>
-                                     <th className="px-3 py-2">Item (Tubulação)</th>
-                                     <th className="px-3 py-2 text-right">Qtd (m)</th>
-                                 </tr>
-                             </thead>
-                             <tbody>
-                                 {Object.entries(stats.pipesByDiameter).map(([diam, len]) => (
-                                     <tr key={diam} className="border-b border-slate-800">
-                                         <td className="px-3 py-2">Tubo Aço Carbono - {diam}m Diam.</td>
-                                         <td className="px-3 py-2 text-right font-mono text-white">{(len as number).toFixed(2)}m</td>
-                                     </tr>
-                                 ))}
-                                 {Object.keys(stats.pipesByDiameter).length === 0 && (
-                                     <tr><td colSpan={2} className="px-3 py-4 text-center italic text-slate-600">Nenhum tubo desenhado</td></tr>
-                                 )}
-                             </tbody>
-                         </table>
-                     </div>
-                 </div>
-             </div>
-          )}
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+                
+                {/* LEFT COLUMN: VISUALS (3D View + Photos) */}
+                <div className="col-span-12 md:col-span-5 flex flex-col gap-6">
+                    {/* 3D Placeholder/Screenshot */}
+                    <div className="bg-slate-900 rounded-xl border border-slate-800 aspect-video flex flex-col items-center justify-center relative overflow-hidden group shadow-lg">
+                        {sceneScreenshot ? (
+                             <>
+                                <img src={sceneScreenshot} className="w-full h-full object-cover" alt="Captura 3D" />
+                                <div className="absolute bottom-2 left-2 bg-black/60 px-2 py-1 rounded text-[10px] text-white backdrop-blur-sm">Captura Automática</div>
+                             </>
+                        ) : (
+                            <>
+                                <div className="absolute inset-0 bg-gradient-to-br from-blue-900/10 to-transparent pointer-events-none" />
+                                <Activity size={48} className="text-slate-700 mb-2" />
+                                <p className="text-slate-500 font-bold uppercase tracking-wider text-sm">Modelo 3D (Captura Automática)</p>
+                            </>
+                        )}
+                    </div>
 
-      </div>
+                    {/* Image Slots */}
+                    <div className="grid grid-cols-2 gap-4 h-48">
+                            {/* Secondary Image */}
+                            <div className="bg-slate-900 rounded-xl border border-slate-800 relative overflow-hidden group flex flex-col">
+                                <div className="absolute top-0 left-0 w-full p-2 bg-black/60 backdrop-blur-sm z-10 flex justify-between items-center border-b border-white/10">
+                                    <span className="text-[10px] font-bold text-yellow-400 uppercase flex items-center gap-1"><ImageIcon size={10} /> Foto Local</span>
+                                    {!exportMode && secondaryImage && <button onClick={() => onUploadSecondary?.(null)} className="text-[10px] text-red-400 hover:text-red-300 font-bold">X</button>}
+                                </div>
+                                {secondaryImage ? (
+                                    <img src={secondaryImage} className="w-full h-full object-cover" />
+                                ) : !exportMode ? (
+                                    <div className="flex-1 flex flex-col items-center justify-center cursor-pointer hover:bg-slate-800 transition-colors" onClick={() => secInputRef.current?.click()}>
+                                        <Upload size={20} className="text-slate-500 mb-1" /><span className="text-xs text-slate-500">Upload</span>
+                                    </div>
+                                ) : <div className="flex-1 flex items-center justify-center text-slate-700 text-xs">Sem Foto</div>}
+                                <input type="file" ref={secInputRef} className="hidden" accept="image/*" onChange={(e) => handleImageUpload(e, onUploadSecondary)} />
+                            </div>
+
+                            {/* Map Image */}
+                            <div className="bg-slate-900 rounded-xl border border-slate-800 relative overflow-hidden group flex flex-col">
+                                <div className="absolute top-0 left-0 w-full p-2 bg-black/60 backdrop-blur-sm z-10 flex justify-between items-center border-b border-white/10">
+                                    <span className="text-[10px] font-bold text-green-400 uppercase flex items-center gap-1"><MapIcon size={10} /> Mapa/ISO</span>
+                                    {!exportMode && mapImage && <button onClick={() => onUploadMap?.(null)} className="text-[10px] text-red-400 hover:text-red-300 font-bold">X</button>}
+                                </div>
+                                {mapImage ? (
+                                    <img src={mapImage} className="w-full h-full object-cover" />
+                                ) : !exportMode ? (
+                                    <div className="flex-1 flex flex-col items-center justify-center cursor-pointer hover:bg-slate-800 transition-colors" onClick={() => mapInputRef.current?.click()}>
+                                        <Upload size={20} className="text-slate-500 mb-1" /><span className="text-xs text-slate-500">Upload</span>
+                                    </div>
+                                ) : <div className="flex-1 flex items-center justify-center text-slate-700 text-xs">Sem Mapa</div>}
+                                <input type="file" ref={mapInputRef} className="hidden" accept="image/*" onChange={(e) => handleImageUpload(e, onUploadMap)} />
+                            </div>
+                    </div>
+                </div>
+
+                {/* RIGHT COLUMN: DETAILED STATS & BOM */}
+                <div className="col-span-12 md:col-span-7 flex flex-col gap-6">
+                    
+                    {/* STATUS BARS */}
+                    <div className="bg-slate-900 rounded-xl border border-slate-800 p-5 shadow-lg">
+                            <h3 className="text-sm font-bold text-white uppercase tracking-wider mb-4 flex items-center gap-2 border-b border-slate-700 pb-2">
+                                <Layers size={16} className="text-blue-400"/> Status Tubulação & Solda
+                            </h3>
+                            <div className="space-y-4">
+                                {ALL_STATUSES.map(status => {
+                                    const count = stats.pipeCounts[status];
+                                    const pct = stats.totalPipes > 0 ? (count / stats.totalPipes) * 100 : 0;
+                                    return (
+                                        <div key={status} className="flex items-center gap-3">
+                                            <div className="w-24 text-[10px] font-bold uppercase text-right text-slate-400">{STATUS_LABELS[status]}</div>
+                                            <div className="flex-1 h-3 bg-slate-950 rounded-full overflow-hidden border border-slate-800/50">
+                                                <div className="h-full rounded-full transition-all duration-500" style={{ width: `${pct}%`, backgroundColor: STATUS_COLORS[status] }}></div>
+                                            </div>
+                                            <div className="w-12 text-xs font-mono font-bold text-white text-right">{count}</div>
+                                        </div>
+                                    )
+                                })}
+                            </div>
+                    </div>
+
+                    {/* BOM (BILL OF MATERIALS) SUMMARY */}
+                    <div className="bg-slate-900 rounded-xl border border-slate-800 shadow-lg flex-1 flex flex-col">
+                            <div className="p-4 border-b border-slate-800 bg-slate-800/30 rounded-t-xl flex justify-between items-center">
+                                <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                                    <Package size={16} className="text-yellow-400"/> Resumo de Materiais (BOM)
+                                </h3>
+                                <span className="text-[10px] bg-slate-950 px-2 py-1 rounded text-slate-400 border border-slate-700">Quantitativo</span>
+                            </div>
+                            <div className="p-0 overflow-hidden">
+                                <table className="w-full text-sm text-left">
+                                    <thead className="bg-slate-950 text-slate-400 text-xs uppercase font-semibold">
+                                        <tr>
+                                            <th className="p-3">Item / Descrição</th>
+                                            <th className="p-3 text-right">Qtd. Estimada</th>
+                                            <th className="p-3 text-right">Unid.</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-800">
+                                        {Object.keys(stats.bom).length === 0 ? (
+                                            <tr><td colSpan={3} className="p-4 text-center text-slate-600 italic">Nenhum tubo modelado.</td></tr>
+                                        ) : (
+                                            Object.entries(stats.bom).map(([diameterInch, length]) => (
+                                                <tr key={diameterInch} className="hover:bg-slate-800/30 transition-colors">
+                                                    <td className="p-3 font-medium text-slate-200">
+                                                        Tubo Aço Carbono - <span className="text-blue-400 font-bold">{diameterInch}"</span>
+                                                    </td>
+                                                    <td className="p-3 text-right font-mono text-white">{(length as number).toFixed(2)}</td>
+                                                    <td className="p-3 text-right text-slate-500 text-xs">Metros</td>
+                                                </tr>
+                                            ))
+                                        )}
+                                        {/* Example of extra item */}
+                                        {stats.totalPipes > 0 && (
+                                            <tr className="hover:bg-slate-800/30">
+                                                <td className="p-3 font-medium text-slate-200">Juntas de Solda / Conexões (Est.)</td>
+                                                <td className="p-3 text-right font-mono text-white">~{stats.totalPipes * 2}</td>
+                                                <td className="p-3 text-right text-slate-500 text-xs">Un</td>
+                                            </tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+      )}
+
+      {/* --- TAB CONTENT: TRACKING (RASTREABILIDADE) --- */}
+      {activeTab === 'tracking' && !exportMode && (
+         <div className="animate-in fade-in slide-in-from-right-4 duration-500 flex flex-col gap-6 h-full">
+            {/* Filters Bar */}
+            <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 flex flex-wrap gap-4 items-center">
+                <div className="flex-1 min-w-[200px] relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
+                    <input 
+                        type="text" 
+                        placeholder="Buscar por Spool, ID da Linha ou Soldador..." 
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-700 rounded-lg pl-10 pr-4 py-2 text-slate-200 focus:ring-2 focus:ring-blue-500 outline-none"
+                    />
+                </div>
+                
+                <div className="flex items-center gap-2">
+                    <Filter size={18} className="text-slate-500" />
+                    <select 
+                        value={statusFilter}
+                        onChange={(e) => setStatusFilter(e.target.value)}
+                        className="bg-slate-950 border border-slate-700 rounded-lg px-4 py-2 text-slate-200 focus:ring-2 focus:ring-blue-500 outline-none"
+                    >
+                        <option value="ALL">Todos os Status</option>
+                        {ALL_STATUSES.map(s => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
+                    </select>
+                </div>
+            </div>
+
+            {/* Tracking Table */}
+            <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden flex-1 flex flex-col shadow-2xl">
+                 <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                        <thead className="bg-slate-950 text-slate-400 uppercase text-xs font-bold tracking-wider">
+                            <tr>
+                                <th className="p-4 border-b border-slate-800">Spool / ID</th>
+                                <th className="p-4 border-b border-slate-800">Linha / Descrição</th>
+                                <th className="p-4 border-b border-slate-800">Status</th>
+                                <th className="p-4 border-b border-slate-800"><div className="flex items-center gap-1"><UserCog size={14}/> Soldador</div></th>
+                                <th className="p-4 border-b border-slate-800"><div className="flex items-center gap-1"><Calendar size={14}/> Data</div></th>
+                                <th className="p-4 border-b border-slate-800 text-center"><div className="flex items-center justify-center gap-1"><CheckSquare size={14}/> Insp.</div></th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-800 text-sm">
+                            {filteredPipes.length === 0 ? (
+                                <tr>
+                                    <td colSpan={6} className="p-8 text-center text-slate-500 italic">Nenhum registro encontrado.</td>
+                                </tr>
+                            ) : (
+                                filteredPipes.map(pipe => (
+                                    <tr key={pipe.id} className="hover:bg-slate-800/50 transition-colors">
+                                        <td className="p-4 font-mono text-blue-300">
+                                            {pipe.spoolId ? <span className="bg-blue-900/30 px-2 py-1 rounded border border-blue-500/20">{pipe.spoolId}</span> : <span className="opacity-50">-</span>}
+                                            <div className="text-[10px] text-slate-500 mt-1">{pipe.id}</div>
+                                        </td>
+                                        <td className="p-4 text-slate-200 font-medium">
+                                            {pipe.name}
+                                            <div className="text-xs text-slate-500">{pipe.length.toFixed(2)}m - {Math.round(pipe.diameter * 39.37)}" pol</div>
+                                        </td>
+                                        <td className="p-4">
+                                            <span className="px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wide border border-black/20 shadow-sm" style={{ backgroundColor: STATUS_COLORS[pipe.status], color: '#fff' }}>
+                                                {STATUS_LABELS[pipe.status]}
+                                            </span>
+                                        </td>
+                                        <td className="p-4 text-slate-300">
+                                            {pipe.welderInfo?.welderId || '-'}
+                                            {pipe.welderInfo?.electrodeBatch && <div className="text-[10px] text-slate-500">Lot: {pipe.welderInfo.electrodeBatch}</div>}
+                                        </td>
+                                        <td className="p-4 text-slate-300 font-mono text-xs">
+                                            {pipe.welderInfo?.weldDate ? new Date(pipe.welderInfo.weldDate).toLocaleDateString() : '-'}
+                                        </td>
+                                        <td className="p-4 text-center">
+                                            {pipe.welderInfo?.visualInspection ? (
+                                                <div className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-green-500/20 text-green-400 border border-green-500/30">
+                                                    <CheckSquare size={14} />
+                                                </div>
+                                            ) : (
+                                                <div className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-slate-800 text-slate-600 border border-slate-700">
+                                                    <div className="w-1.5 h-1.5 rounded-full bg-slate-600"></div>
+                                                </div>
+                                            )}
+                                        </td>
+                                    </tr>
+                                ))
+                            )}
+                        </tbody>
+                    </table>
+                 </div>
+            </div>
+         </div>
+      )}
     </div>
   );
 };

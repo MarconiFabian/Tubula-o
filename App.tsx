@@ -5,8 +5,8 @@ import Sidebar from './components/Sidebar';
 import { DatabaseModal } from './components/DatabaseModal';
 import { saveProjectToDB, getAllProjects, deleteProjectFromDB } from './utils/db';
 import { INITIAL_PIPES, STATUS_LABELS, STATUS_COLORS, INSULATION_LABELS } from './constants';
-import { PipeSegment, PipeStatus, Annotation } from './types';
-import { LayoutDashboard, Cuboid, PenTool, XCircle, FileDown, FilePlus, Loader2, MapPin, Database, Undo, Redo, Grid as GridIcon } from 'lucide-react';
+import { PipeSegment, PipeStatus, Annotation, Accessory, AccessoryType } from './types';
+import { LayoutDashboard, Cuboid, PenTool, XCircle, FileDown, Save, FolderOpen, FilePlus, Loader2, MapPin, Database, Undo, Redo, Wrench, Grid as GridIcon, CircleDot, MousePointer2, Ruler } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
 
@@ -75,6 +75,7 @@ export default function App() {
   const [isDrawing, setIsDrawing] = useState(false);
   const [isFixedLength, setIsFixedLength] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [sceneScreenshot, setSceneScreenshot] = useState<string | null>(null);
   
   // New UI States for Improvements
   const [colorMode, setColorMode] = useState<'STATUS' | 'SPOOL'>('STATUS');
@@ -97,6 +98,22 @@ export default function App() {
   useEffect(() => { if (isDBModalOpen) { getAllProjects().then(setSavedProjects); } }, [isDBModalOpen]);
 
   // --- HANDLERS ---
+  const handleSwitchToDashboard = () => {
+      // Capture 3D Scene
+      const canvas = document.querySelector('canvas');
+      if (canvas) {
+          try {
+             // Scene.tsx uses preserveDrawingBuffer: true, so this works
+             const data = canvas.toDataURL('image/png');
+             setSceneScreenshot(data);
+          } catch(e) {
+              console.error("Failed to capture 3D scene", e);
+          }
+      }
+      setViewMode('dashboard');
+      setIsDrawing(false);
+  };
+
   const handleDBAction_Save = async (name: string) => {
       await saveProjectToDB({
           id: crypto.randomUUID(), name, updatedAt: new Date(), pipes, annotations, location: projectLocation, secondaryImage, mapImage
@@ -150,7 +167,10 @@ export default function App() {
     const newPipe: PipeSegment = {
         id: `P-${Math.floor(Math.random() * 10000)}`,
         name: `Nova Linha ${pipes.length + 1}`,
-        start, end, diameter: 0.3, status: 'PENDING' as PipeStatus, length
+        start, end, 
+        diameter: 0.2032, // 8 inches
+        status: 'PENDING' as PipeStatus, 
+        length
     };
     setPipes(prev => [...prev, newPipe]);
   };
@@ -192,28 +212,171 @@ export default function App() {
       }
   };
 
+  // Helper Hex to RGB
+  const hexToRgb = (hex: string) => {
+      const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+      return result ? {
+        r: parseInt(result[1], 16),
+        g: parseInt(result[2], 16),
+        b: parseInt(result[3], 16)
+      } : { r: 150, g: 150, b: 150 };
+  }
+
   // PDF Export
   const handleExportPDF = async () => {
     setIsExporting(true);
-    const sceneWrapper = document.getElementById('scene-canvas-wrapper');
-    const canvas = sceneWrapper?.querySelector('canvas');
-    let main3DImage = '';
-    if (canvas) main3DImage = canvas.toDataURL('image/png', 1.0);
+    try {
+        const pdf = new jsPDF('p', 'mm', 'a4');
+        const pageWidth = pdf.internal.pageSize.getWidth();
+        const pageHeight = pdf.internal.pageSize.getHeight();
+        const margin = 10;
+        let currentY = 20;
 
-    const exportEl = document.getElementById('composed-dashboard-export');
-    const mainImgEl = document.getElementById('export-main-img') as HTMLImageElement;
-    
-    if (exportEl && mainImgEl) {
-        mainImgEl.src = main3DImage;
-        await new Promise(r => setTimeout(r, 500));
-        try {
-            const canvas = await html2canvas(exportEl, { backgroundColor: '#0f172a', scale: 1.5, width: 1920, height: 1080, windowWidth: 1920, windowHeight: 1080, useCORS: true });
-            const pdf = new jsPDF('l', 'mm', 'a4');
-            const w = pdf.internal.pageSize.getWidth();
-            const h = pdf.internal.pageSize.getHeight();
-            pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, w, h);
-            pdf.save("relatorio_isometrico.pdf");
-        } catch (e) { alert("Erro na exportação."); } finally { setIsExporting(false); }
+        // 1. CAPTURE THE WHOLE DASHBOARD (KPIs, Charts, Images) from hidden container
+        const dashboardEl = document.getElementById('composed-dashboard-export');
+        // Wait just a bit for React to render the export component fully
+        await new Promise(r => setTimeout(r, 200));
+
+        if (dashboardEl) {
+             const canvas = await html2canvas(dashboardEl, {
+                 backgroundColor: '#0f172a', 
+                 scale: 1.5, // Good balance for A4
+                 width: 1920,
+                 windowWidth: 1920
+             });
+             const imgData = canvas.toDataURL('image/png');
+             const imgProps = pdf.getImageProperties(imgData);
+             const pdfImgWidth = pageWidth; // Full width
+             const pdfImgHeight = (imgProps.height * pdfImgWidth) / imgProps.width;
+             
+             // Cover Page / Main Dashboard
+             pdf.addImage(imgData, 'PNG', 0, 0, pdfImgWidth, pdfImgHeight);
+             
+             // Move cursor below image for next items if image is small, otherwise new page
+             if (pdfImgHeight > pageHeight - 30) {
+                pdf.addPage();
+                currentY = 20;
+             } else {
+                currentY = pdfImgHeight + 10;
+             }
+        }
+
+        // 2. TITLE FOR DETAIL SECTION
+        if (currentY + 20 > pageHeight) { pdf.addPage(); currentY = 20; }
+        
+        // --- CREDIT HEADER FOR DETAIL PAGES ---
+        pdf.setFontSize(9);
+        pdf.setTextColor(100, 100, 100);
+        pdf.text('Isometrico Manager - Software desenvolvido por Marconi Fabian', margin, currentY);
+        currentY += 6;
+
+        pdf.setFontSize(16);
+        pdf.setTextColor(0,0,0);
+        pdf.text('Relatório de Rastreabilidade de Spools', margin, currentY);
+        currentY += 8;
+        pdf.setFontSize(12);
+        pdf.text(`Local: ${projectLocation}`, margin, currentY);
+        currentY += 10;
+
+        // 3. TABLE HEADER
+        pdf.setFontSize(9);
+        pdf.setFillColor(240, 240, 240);
+        pdf.rect(margin, currentY, pageWidth - (margin * 2), 8, 'F');
+        pdf.setFont(undefined, 'bold');
+        
+        const col1 = margin + 2;
+        const col2 = margin + 25; // Spool
+        const col3 = margin + 50; // Nome
+        const col4 = margin + 110; // Comp
+        const col5 = margin + 135; // Status
+        const col6 = margin + 165; // Weld Info (Combined)
+
+        pdf.text("ID", col1, currentY + 5);
+        pdf.text("Spool", col2, currentY + 5);
+        pdf.text("Nome/Linha", col3, currentY + 5);
+        pdf.text("Comp (m)", col4, currentY + 5);
+        pdf.text("Status Tub.", col5, currentY + 5);
+        pdf.text("Soldador/Data", col6, currentY + 5);
+        
+        pdf.setFont(undefined, 'normal');
+        currentY += 10;
+
+        // 4. TABLE ROWS
+        pipes.forEach((pipe, index) => {
+            if (currentY > pageHeight - 15) {
+                pdf.addPage();
+                currentY = 20;
+                
+                // Header on new page
+                pdf.setFontSize(9);
+                pdf.setTextColor(100, 100, 100);
+                pdf.text('Isometrico Manager - Software desenvolvido por Marconi Fabian', margin, currentY);
+                currentY += 6;
+
+                pdf.setFillColor(240, 240, 240);
+                pdf.rect(margin, currentY, pageWidth - (margin * 2), 8, 'F');
+                pdf.setTextColor(0, 0, 0);
+                pdf.setFont(undefined, 'bold');
+                pdf.text("ID", col1, currentY + 5);
+                pdf.text("Spool", col2, currentY + 5);
+                pdf.text("Nome/Linha", col3, currentY + 5);
+                pdf.text("Comp (m)", col4, currentY + 5);
+                pdf.text("Status Tub.", col5, currentY + 5);
+                pdf.text("Soldador/Data", col6, currentY + 5);
+                pdf.setFont(undefined, 'normal');
+                currentY += 10;
+            }
+            
+            const statusLabel = STATUS_LABELS[pipe.status] || pipe.status;
+            const statusColorHex = STATUS_COLORS[pipe.status] || '#999999';
+            const rgb = hexToRgb(statusColorHex);
+            
+            // Weld Info Formatted
+            const welder = pipe.welderInfo?.welderId || '-';
+            const weldDate = pipe.welderInfo?.weldDate ? new Date(pipe.welderInfo.weldDate).toLocaleDateString() : '-';
+            const weldText = welder !== '-' ? `${welder} (${weldDate})` : '-';
+
+            pdf.setTextColor(0,0,0);
+            pdf.setFontSize(8);
+
+            // Row Data
+            pdf.text(pipe.id, col1, currentY);
+            pdf.text(pipe.spoolId || '-', col2, currentY);
+            pdf.text(pipe.name.substring(0, 25), col3, currentY);
+            pdf.text(pipe.length.toFixed(2), col4, currentY);
+
+            // --- STATUS BADGE (DRAWN BEHIND TEXT) ---
+            pdf.setFillColor(rgb.r, rgb.g, rgb.b);
+            // Draw a rounded rectangle background for status
+            // Adjust x and width to fit text
+            const badgeWidth = pdf.getTextWidth(statusLabel) + 4;
+            pdf.roundedRect(col5 - 1, currentY - 3, badgeWidth, 5, 1, 1, 'F');
+            
+            // Draw Status Text in White
+            pdf.setTextColor(255, 255, 255);
+            pdf.setFont(undefined, 'bold');
+            pdf.text(statusLabel, col5 + 1, currentY);
+
+            // Reset text color for rest of row
+            pdf.setTextColor(0, 0, 0);
+            pdf.setFont(undefined, 'normal');
+            
+            pdf.text(weldText, col6, currentY);
+            
+            // Divider Line
+            pdf.setDrawColor(230, 230, 230);
+            pdf.line(margin, currentY + 2, pageWidth - margin, currentY + 2);
+
+            currentY += 7;
+        });
+
+        pdf.save('relatorio-pipe-tracking.pdf');
+
+    } catch (err) {
+        console.error("Erro ao gerar PDF:", err);
+        alert("Erro ao gerar PDF.");
+    } finally {
+        setIsExporting(false);
     }
   };
 
@@ -229,7 +392,7 @@ export default function App() {
                     <div className="bg-blue-600 p-2 rounded-lg"><Cuboid className="text-white" size={24} /></div>
                     <div>
                         <h1 className="font-bold text-xl leading-none">Isometrico Manager</h1>
-                        <p className="text-[10px] text-slate-400">Marconi Fabian</p>
+                        <p className="text-[10px] text-slate-400">Software desenvolvido por Marconi Fabian</p>
                     </div>
                 </div>
                 <div className="flex items-center gap-2 bg-slate-800/50 p-1.5 px-3 rounded-lg border border-slate-700/50">
@@ -249,7 +412,7 @@ export default function App() {
                 <div className="h-6 w-px bg-slate-700 mx-1"></div>
                 <div className="bg-slate-800 p-1 rounded-lg flex gap-1 border border-slate-700">
                     <button onClick={() => { setViewMode('3d'); setIsDrawing(false); }} className={`px-3 py-1.5 text-sm font-bold rounded flex gap-2 items-center ${viewMode === '3d' && !isDrawing ? 'bg-slate-700 text-blue-400' : 'text-slate-400 hover:text-white'}`}><Cuboid size={16}/> 3D</button>
-                    <button onClick={() => { setViewMode('dashboard'); setIsDrawing(false); }} className={`px-3 py-1.5 text-sm font-bold rounded flex gap-2 items-center ${viewMode === 'dashboard' ? 'bg-slate-700 text-blue-400' : 'text-slate-400 hover:text-white'}`}><LayoutDashboard size={16}/> Painel</button>
+                    <button onClick={handleSwitchToDashboard} className={`px-3 py-1.5 text-sm font-bold rounded flex gap-2 items-center ${viewMode === 'dashboard' ? 'bg-slate-700 text-blue-400' : 'text-slate-400 hover:text-white'}`}><LayoutDashboard size={16}/> Painel</button>
                 </div>
                 <div className="h-6 w-px bg-slate-700 mx-2"></div>
                 <button onClick={handleNewProject} className="p-2 hover:bg-slate-800 rounded text-slate-400 hover:text-blue-400"><FilePlus size={20}/></button>
@@ -258,17 +421,38 @@ export default function App() {
         </header>
 
         <main className="flex-1 relative overflow-hidden flex">
-            {/* HIDDEN EXPORT TEMPLATE */}
-            <div id="composed-dashboard-export" style={{ position: 'fixed', top: 0, left: '-5000px', width: '1920px', height: '1080px', zIndex: -50, backgroundColor: '#0f172a', padding: '32px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
-                 <div className="flex justify-between items-center border-b border-blue-500/30 pb-4 shrink-0">
-                    <div><h1 className="text-5xl font-bold tracking-widest uppercase text-blue-400">RELATÓRIO DE STATUS</h1><p className="text-slate-400 text-xl mt-2">RASTREAMENTO DE TUBULAÇÃO</p></div>
-                    <div className="text-right"><div className="flex items-center justify-end gap-3 mb-2"><span className="text-slate-500 text-lg font-bold uppercase tracking-wider mr-2">LOCAL:</span><span className="px-4 py-1 rounded bg-blue-900/30 border border-blue-500/30 text-blue-300 font-bold uppercase text-3xl">{projectLocation}</span></div><p className="text-xl font-mono text-blue-300/80">{new Date().toLocaleDateString()}</p></div>
+            {/* HIDDEN EXPORT TEMPLATE - This constructs the visual PDF page 1 */}
+            <div id="composed-dashboard-export" style={{ position: 'fixed', top: 0, left: '-5000px', width: '1920px', minHeight: '1080px', zIndex: -50, backgroundColor: '#0f172a', padding: '40px', display: 'flex', flexDirection: 'column', gap: '32px' }}>
+                 {/* Header Report */}
+                 <div className="flex justify-between items-end border-b-2 border-slate-700 pb-6">
+                    <div>
+                        <h1 className="text-5xl font-bold tracking-widest uppercase text-blue-400">RELATÓRIO DE STATUS</h1>
+                        <p className="text-slate-400 text-2xl mt-2 tracking-wide font-light">RASTREAMENTO DE TUBULAÇÃO & CONTROLE DE MATERIAIS</p>
+                    </div>
+                    <div className="text-right">
+                        <div className="flex items-center justify-end gap-4 mb-2">
+                            <span className="text-slate-500 text-xl font-bold uppercase tracking-wider">LOCAL:</span>
+                            <span className="px-6 py-2 rounded bg-blue-900/30 border border-blue-500/30 text-blue-300 font-bold uppercase text-3xl shadow-lg shadow-blue-900/20">{projectLocation}</span>
+                        </div>
+                        <p className="text-xl font-mono text-slate-500 mt-2">Emitido em: <span className="text-white">{new Date().toLocaleDateString()}</span></p>
+                    </div>
                  </div>
-                 <div className="grid grid-cols-12 grid-rows-12 gap-6 flex-1 min-h-0 text-white">
-                      <div className="col-span-8 row-span-7 relative rounded-xl overflow-hidden border-2 border-slate-700 bg-black"><img id="export-main-img" className="w-full h-full object-cover" crossOrigin="anonymous" /></div>
-                      <div className="col-span-4 row-span-3 relative rounded-xl overflow-hidden border-2 border-slate-700 bg-slate-800 flex items-center justify-center">{secondaryImage ? <img src={secondaryImage} className="w-full h-full object-cover" /> : <div className="text-slate-600 font-mono text-xl">SEM FOTO</div>}</div>
-                      <div className="col-span-4 row-span-4 relative rounded-xl overflow-hidden border-2 border-slate-700 bg-slate-800 flex items-center justify-center">{mapImage ? <img src={mapImage} className="w-full h-full object-cover" /> : <div className="text-slate-600 font-mono text-xl">SEM MAPA</div>}</div>
-                      <div className="col-span-12 row-span-5 relative rounded-xl border-2 border-slate-700 bg-slate-800/50 p-6"><Dashboard pipes={pipes} exportMode={true} /></div>
+                 
+                 {/* Main Content Area - Just Render the Dashboard Component in Export Mode */}
+                 <div className="flex-1">
+                      <Dashboard 
+                        pipes={pipes} 
+                        exportMode={true} 
+                        secondaryImage={secondaryImage}
+                        mapImage={mapImage}
+                        sceneScreenshot={sceneScreenshot}
+                      />
+                 </div>
+
+                 {/* Footer Report */}
+                 <div className="mt-auto pt-6 border-t border-slate-800 flex justify-between text-slate-600 text-lg">
+                    <span>Isometrico Manager - Software desenvolvido por Marconi Fabian</span>
+                    <span>Documento Gerado Automaticamente</span>
                  </div>
             </div>
 
@@ -322,42 +506,16 @@ export default function App() {
 
                 {viewMode === 'dashboard' && (
                     <div className="absolute inset-0 z-10 bg-slate-950/95 backdrop-blur-sm overflow-y-auto p-4 animate-in fade-in">
-                        <div className="max-w-[1600px] mx-auto">
+                        <div className="max-w-[1600px] mx-auto h-full">
                             <Dashboard 
                                 pipes={pipes}
                                 onExportPDF={handleExportPDF} 
                                 isExporting={isExporting}
                                 secondaryImage={secondaryImage} onUploadSecondary={setSecondaryImage}
                                 mapImage={mapImage} onUploadMap={setMapImage}
+                                sceneScreenshot={sceneScreenshot}
                             />
-                            <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden mt-6">
-                                <table className="w-full text-sm text-left text-slate-400">
-                                    <thead className="bg-slate-800 text-slate-200 uppercase text-xs">
-                                        <tr>
-                                            <th className="p-3 w-10"><input type="checkbox" onChange={(e) => setSelectedIds(e.target.checked ? pipes.map(p=>p.id) : [])} checked={pipes.length > 0 && selectedIds.length === pipes.length} /></th>
-                                            <th className="p-3">ID</th>
-                                            <th className="p-3">Spool</th>
-                                            <th className="p-3">Nome</th>
-                                            <th className="p-3">Comp.</th>
-                                            <th className="p-3">Status Tub.</th>
-                                            <th className="p-3">Isolamento</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {pipesWithTopology.map(p => (
-                                            <tr key={p.id} className={`border-b border-slate-800 hover:bg-slate-800/50 cursor-pointer ${selectedIds.includes(p.id) ? 'bg-blue-900/20' : ''}`} onClick={() => handleSelectPipe(p.id, true)}>
-                                                <td className="p-3"><input type="checkbox" checked={selectedIds.includes(p.id)} readOnly /></td>
-                                                <td className="p-3 font-mono text-xs">{p.id}</td>
-                                                <td className="p-3 font-mono text-xs text-green-400">{p.spoolId || '-'}</td>
-                                                <td className="p-3 text-white">{p.name}</td>
-                                                <td className="p-3">{p.length.toFixed(2)}m</td>
-                                                <td className="p-3"><span className="px-2 py-0.5 rounded text-[10px] font-bold text-slate-900 uppercase" style={{backgroundColor: getStatusColor(p.status)}}>{STATUS_LABELS[p.status]}</span></td>
-                                                <td className="p-3 text-xs">{p.insulationStatus !== 'NONE' ? (INSULATION_LABELS[p.insulationStatus!] || p.insulationStatus) : '-'}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
+                            {/* Removed the extra table here, as it's now inside the Dashboard "Tracking" tab */}
                         </div>
                     </div>
                 )}
