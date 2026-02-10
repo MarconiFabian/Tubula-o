@@ -6,9 +6,250 @@ import { DatabaseModal } from './components/DatabaseModal';
 import { saveProjectToDB, getAllProjects, deleteProjectFromDB } from './utils/db';
 import { INITIAL_PIPES, STATUS_LABELS, STATUS_COLORS, INSULATION_LABELS } from './constants';
 import { PipeSegment, PipeStatus, Annotation, Accessory, AccessoryType } from './types';
-import { LayoutDashboard, Cuboid, PenTool, XCircle, FileDown, Save, FolderOpen, FilePlus, Loader2, MapPin, Database, Undo, Redo, Wrench, Grid as GridIcon, CircleDot, MousePointer2, Ruler, Calendar } from 'lucide-react';
+import { LayoutDashboard, Cuboid, PenTool, XCircle, FileDown, Save, FolderOpen, FilePlus, Loader2, MapPin, Database, Undo, Redo, Wrench, Grid as GridIcon, CircleDot, MousePointer2, Ruler, Calendar, Lock, User, LogOut, ChevronRight, UserPlus, ShieldAlert, Check, X, Users } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
+
+// --- TYPES FOR AUTH SYSTEM ---
+type UserRole = 'ADMIN' | 'USER';
+type UserStatus = 'APPROVED' | 'PENDING' | 'REJECTED';
+
+interface UserAccount {
+    username: string;
+    password: string;
+    role: UserRole;
+    status: UserStatus;
+    createdAt: string;
+}
+
+// --- ADMIN USER MANAGEMENT MODAL ---
+interface UserManagementModalProps {
+    isOpen: boolean;
+    onClose: () => void;
+    users: UserAccount[];
+    onApprove: (username: string) => void;
+    onReject: (username: string) => void;
+    onDelete: (username: string) => void;
+}
+
+const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen, onClose, users, onApprove, onReject, onDelete }) => {
+    if (!isOpen) return null;
+
+    const pendingUsers = users.filter(u => u.status === 'PENDING');
+    const activeUsers = users.filter(u => u.status === 'APPROVED');
+
+    return (
+        <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-slate-900 border border-slate-700 w-full max-w-2xl rounded-2xl shadow-2xl flex flex-col max-h-[80vh]">
+                <div className="p-6 border-b border-slate-700 flex justify-between items-center bg-slate-800/50 rounded-t-2xl">
+                    <div className="flex items-center gap-3">
+                        <div className="bg-blue-600 p-2 rounded-lg"><Users className="text-white" size={24} /></div>
+                        <div>
+                            <h2 className="text-xl font-bold text-white">Gestão de Acessos</h2>
+                            <p className="text-slate-400 text-sm">Aprovar ou remover usuários</p>
+                        </div>
+                    </div>
+                    <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors"><X size={24} /></button>
+                </div>
+
+                <div className="p-6 overflow-y-auto space-y-6">
+                    {/* PENDING REQUESTS */}
+                    <div>
+                        <h3 className="text-yellow-400 font-bold uppercase text-xs tracking-wider mb-3 flex items-center gap-2">
+                            <ShieldAlert size={14} /> Solicitações Pendentes ({pendingUsers.length})
+                        </h3>
+                        {pendingUsers.length === 0 ? (
+                            <p className="text-slate-500 text-sm italic bg-slate-950/50 p-3 rounded">Nenhuma solicitação pendente.</p>
+                        ) : (
+                            <div className="space-y-2">
+                                {pendingUsers.map(user => (
+                                    <div key={user.username} className="bg-slate-800 p-3 rounded-lg flex items-center justify-between border border-yellow-500/20">
+                                        <div>
+                                            <p className="font-bold text-white">{user.username}</p>
+                                            <p className="text-xs text-slate-400">Solicitado em: {new Date(user.createdAt).toLocaleDateString()}</p>
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <button onClick={() => onApprove(user.username)} className="bg-green-600 hover:bg-green-500 text-white p-2 rounded-lg" title="Aprovar"><Check size={16}/></button>
+                                            <button onClick={() => onReject(user.username)} className="bg-red-600 hover:bg-red-500 text-white p-2 rounded-lg" title="Rejeitar"><X size={16}/></button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="border-t border-slate-700"></div>
+
+                    {/* ACTIVE USERS */}
+                    <div>
+                        <h3 className="text-blue-400 font-bold uppercase text-xs tracking-wider mb-3 flex items-center gap-2">
+                            <Check size={14} /> Usuários Ativos ({activeUsers.length})
+                        </h3>
+                        <div className="space-y-2">
+                             {activeUsers.map(user => (
+                                <div key={user.username} className="bg-slate-950 p-3 rounded-lg flex items-center justify-between border border-slate-800">
+                                    <div className="flex items-center gap-3">
+                                        <div className={`w-2 h-2 rounded-full ${user.role === 'ADMIN' ? 'bg-purple-500' : 'bg-blue-500'}`}></div>
+                                        <div>
+                                            <p className="font-bold text-slate-200">{user.username} {user.role === 'ADMIN' && <span className="text-[10px] bg-purple-900/50 text-purple-300 px-1 rounded ml-1">ADMIN</span>}</p>
+                                            <p className="text-xs text-slate-500">Cadastrado em: {new Date(user.createdAt).toLocaleDateString()}</p>
+                                        </div>
+                                    </div>
+                                    {user.role !== 'ADMIN' && (
+                                        <button onClick={() => onDelete(user.username)} className="text-slate-600 hover:text-red-500 transition-colors p-2" title="Remover Acesso">
+                                            <X size={16}/>
+                                        </button>
+                                    )}
+                                </div>
+                             ))}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// --- LOGIN COMPONENT ---
+interface LoginProps {
+    onLogin: (user: UserAccount) => void;
+    users: UserAccount[];
+    onRegister: (u: UserAccount) => void;
+}
+
+const LoginScreen: React.FC<LoginProps> = ({ onLogin, users, onRegister }) => {
+    const [isRegistering, setIsRegistering] = useState(false);
+    const [username, setUsername] = useState('');
+    const [password, setPassword] = useState('');
+    const [error, setError] = useState('');
+    const [successMsg, setSuccessMsg] = useState('');
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        setError('');
+        setSuccessMsg('');
+
+        if (isRegistering) {
+            // REGISTRATION LOGIC
+            if (users.find(u => u.username.toLowerCase() === username.toLowerCase())) {
+                setError('Este nome de usuário já existe.');
+                return;
+            }
+            if (password.length < 4) {
+                setError('A senha deve ter pelo menos 4 caracteres.');
+                return;
+            }
+
+            const newUser: UserAccount = {
+                username,
+                password, // Note: In a real app, never store plain text passwords
+                role: 'USER',
+                status: 'PENDING',
+                createdAt: new Date().toISOString()
+            };
+
+            onRegister(newUser);
+            setSuccessMsg('Solicitação enviada! Aguarde a aprovação do administrador.');
+            setIsRegistering(false);
+            setUsername('');
+            setPassword('');
+        } else {
+            // LOGIN LOGIC
+            const user = users.find(u => u.username === username && u.password === password);
+            
+            if (user) {
+                if (user.status === 'APPROVED') {
+                    onLogin(user);
+                } else if (user.status === 'PENDING') {
+                    setError('Sua conta ainda está aguardando aprovação do administrador.');
+                } else {
+                    setError('Seu acesso foi negado pelo administrador.');
+                }
+            } else {
+                setError('Usuário ou senha incorretos.');
+            }
+        }
+    };
+
+    return (
+        <div className="h-screen w-screen bg-slate-950 flex items-center justify-center relative overflow-hidden">
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-blue-900/20 via-slate-950 to-slate-950"></div>
+            <div className="absolute top-0 left-0 w-full h-full opacity-10 pointer-events-none" style={{backgroundImage: 'linear-gradient(#334155 1px, transparent 1px), linear-gradient(90deg, #334155 1px, transparent 1px)', backgroundSize: '40px 40px'}}></div>
+
+            <div className="z-10 w-full max-w-md p-8 bg-slate-900/80 backdrop-blur-md rounded-2xl border border-slate-700 shadow-2xl animate-in fade-in zoom-in duration-500">
+                <div className="flex flex-col items-center mb-8">
+                    <div className="bg-blue-600 p-4 rounded-xl shadow-lg shadow-blue-500/20 mb-4">
+                        <Cuboid className="text-white" size={40} />
+                    </div>
+                    <h1 className="text-2xl font-bold text-white tracking-tight">Isometrico Manager</h1>
+                    <p className="text-slate-400 text-sm mt-1">Software por Marconi Fabian</p>
+                </div>
+
+                <h2 className="text-center text-white font-bold text-lg mb-4">{isRegistering ? 'Solicitar Acesso' : 'Login'}</h2>
+
+                {successMsg && (
+                    <div className="bg-green-500/10 border border-green-500/20 text-green-400 text-xs p-3 rounded-lg text-center font-bold mb-4">
+                        {successMsg}
+                    </div>
+                )}
+
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    <div>
+                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1 ml-1">Usuário</label>
+                        <div className="relative">
+                            <User className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
+                            <input 
+                                type="text" 
+                                value={username}
+                                onChange={(e) => setUsername(e.target.value)}
+                                className="w-full bg-slate-950 border border-slate-700 rounded-lg py-3 pl-10 pr-4 text-white placeholder-slate-600 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                                placeholder="Digite seu usuário..."
+                                required
+                            />
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1 ml-1">Senha</label>
+                        <div className="relative">
+                            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
+                            <input 
+                                type="password" 
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
+                                className="w-full bg-slate-950 border border-slate-700 rounded-lg py-3 pl-10 pr-4 text-white placeholder-slate-600 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                                placeholder="Digite sua senha..."
+                                required
+                            />
+                        </div>
+                    </div>
+
+                    {error && (
+                        <div className="bg-red-500/10 border border-red-500/20 text-red-400 text-xs p-3 rounded-lg text-center font-bold">
+                            {error}
+                        </div>
+                    )}
+
+                    <button 
+                        type="submit" 
+                        className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-lg shadow-lg shadow-blue-600/20 transition-all flex items-center justify-center gap-2 group mt-2"
+                    >
+                        {isRegistering ? 'Enviar Solicitação' : 'Acessar Sistema'} <ChevronRight size={18} className="group-hover:translate-x-1 transition-transform" />
+                    </button>
+                </form>
+
+                <div className="mt-6 text-center">
+                    <button 
+                        onClick={() => { setIsRegistering(!isRegistering); setError(''); setSuccessMsg(''); }}
+                        className="text-sm text-slate-400 hover:text-white underline underline-offset-4 transition-colors"
+                    >
+                        {isRegistering ? 'Já tenho conta? Fazer Login' : 'Não tem conta? Solicitar Acesso'}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
 
 // --- COMPLEX HISTORY HOOK (PIPES ONLY) ---
 interface ProjectState {
@@ -49,6 +290,52 @@ function useProjectHistory(initialPipes: PipeSegment[]) {
 }
 
 export default function App() {
+  // --- USER DATABASE & AUTH STATE ---
+  const [userDB, setUserDB] = useState<UserAccount[]>(() => {
+      try {
+          const saved = localStorage.getItem('iso-manager-users');
+          if (saved) return JSON.parse(saved);
+          // Default Seeding
+          return [
+              { username: 'Marconi Fabian', password: '2905', role: 'ADMIN', status: 'APPROVED', createdAt: new Date().toISOString() },
+              { username: 'Inspetor', password: 'iso123', role: 'USER', status: 'APPROVED', createdAt: new Date().toISOString() }
+          ];
+      } catch {
+          return [{ username: 'Marconi Fabian', password: '2905', role: 'ADMIN', status: 'APPROVED', createdAt: new Date().toISOString() }];
+      }
+  });
+
+  const [currentUser, setCurrentUser] = useState<UserAccount | null>(null);
+  const [isAdminPanelOpen, setIsAdminPanelOpen] = useState(false);
+
+  // Persist User DB
+  useEffect(() => {
+      localStorage.setItem('iso-manager-users', JSON.stringify(userDB));
+  }, [userDB]);
+
+  // Auth Handlers
+  const handleRegister = (newUser: UserAccount) => {
+      setUserDB(prev => [...prev, newUser]);
+  };
+
+  const handleApproveUser = (username: string) => {
+      setUserDB(prev => prev.map(u => u.username === username ? { ...u, status: 'APPROVED' } : u));
+  };
+
+  const handleRejectUser = (username: string) => {
+      setUserDB(prev => prev.map(u => u.username === username ? { ...u, status: 'REJECTED' } : u));
+  };
+
+  const handleDeleteUser = (username: string) => {
+      if (username === 'Marconi Fabian') {
+          alert("O Administrador principal não pode ser removido.");
+          return;
+      }
+      setUserDB(prev => prev.filter(u => u.username !== username));
+  };
+
+
+  // --- PROJECT STATE ---
   const initialPipes = useMemo(() => {
     try {
         const saved = localStorage.getItem('iso-manager-pipes');
@@ -400,9 +687,30 @@ export default function App() {
 
   const getStatusColor = (s:string) => STATUS_COLORS[s] || '#ccc';
 
+  // --- RETURN LOGIN SCREEN IF NOT AUTHENTICATED ---
+  if (!currentUser) {
+      return (
+          <LoginScreen 
+            onLogin={setCurrentUser} 
+            users={userDB}
+            onRegister={handleRegister}
+          />
+      );
+  }
+
   return (
     <div className="h-screen w-screen bg-slate-950 text-slate-100 flex flex-col overflow-hidden font-sans">
         <DatabaseModal isOpen={isDBModalOpen} onClose={() => setIsDBModalOpen(false)} projects={savedProjects} onSave={handleDBAction_Save} onLoad={handleDBAction_Load} onDelete={handleDBAction_Delete} />
+        
+        {/* ADMIN USER MANAGEMENT */}
+        <UserManagementModal 
+            isOpen={isAdminPanelOpen}
+            onClose={() => setIsAdminPanelOpen(false)}
+            users={userDB}
+            onApprove={handleApproveUser}
+            onReject={handleRejectUser}
+            onDelete={handleDeleteUser}
+        />
 
         <header className="h-16 bg-slate-900 border-b border-slate-800 px-6 flex items-center justify-between z-50">
             <div className="flex items-center gap-6">
@@ -436,6 +744,41 @@ export default function App() {
             </div>
             
             <div className="flex items-center gap-3">
+                {/* USER INFO */}
+                <div className="hidden md:flex flex-col items-end mr-2">
+                    <span className="text-xs text-slate-400 font-bold uppercase tracking-wider">Logado como:</span>
+                    <span className="text-sm font-bold text-blue-400 leading-none flex items-center gap-1">
+                        {currentUser.role === 'ADMIN' && <ShieldAlert size={12} className="text-purple-400"/>}
+                        {currentUser.username}
+                    </span>
+                </div>
+
+                {/* ADMIN BUTTON */}
+                {currentUser.role === 'ADMIN' && (
+                    <>
+                        <button 
+                            onClick={() => setIsAdminPanelOpen(true)}
+                            className="p-2 bg-purple-900/40 hover:bg-purple-800 border border-purple-500/30 rounded-lg text-purple-300 transition-colors relative"
+                            title="Gerenciar Usuários"
+                        >
+                            <Users size={18} />
+                            {userDB.filter(u => u.status === 'PENDING').length > 0 && (
+                                <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-pulse border border-black"></span>
+                            )}
+                        </button>
+                        <div className="h-6 w-px bg-slate-700 mx-1"></div>
+                    </>
+                )}
+
+                <button 
+                    onClick={() => setCurrentUser(null)} 
+                    className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-red-400 transition-colors mr-2 border border-transparent hover:border-slate-700" 
+                    title="Sair"
+                >
+                    <LogOut size={18} />
+                </button>
+                <div className="h-6 w-px bg-slate-700 mx-1"></div>
+
                 <div className="flex gap-1 mr-2">
                     <button onClick={undo} disabled={!canUndo} className="p-2 hover:bg-slate-800 rounded text-slate-400 hover:text-white disabled:opacity-30"><Undo size={18}/></button>
                     <button onClick={redo} disabled={!canRedo} className="p-2 hover:bg-slate-800 rounded text-slate-400 hover:text-white disabled:opacity-30"><Redo size={18}/></button>
