@@ -447,8 +447,9 @@ export default function App() {
     setPipes(prev => prev.map(p => p.id === updatedPipe.id ? { ...updatedPipe, length } : p));
   };
 
-  // MULTI-MOVE HANDLER: Moves all selected pipes by a delta vector
+  // MULTI-MOVE HANDLER: Moves all selected pipes AND annotations by a delta vector
   const handleMovePipes = (delta: {x:number, y:number, z:number}) => {
+    // 1. Mover tubos selecionados
     setPipes(prev => prev.map(p => {
         if (selectedIds.includes(p.id)) {
             const newStart = { x: p.start.x + delta.x, y: p.start.y + delta.y, z: p.start.z + delta.z };
@@ -456,6 +457,19 @@ export default function App() {
             return { ...p, start: newStart, end: newEnd };
         }
         return p;
+    }));
+
+    // 2. Mover anotações selecionadas
+    setAnnotations(prev => prev.map(a => {
+        if (selectedIds.includes(a.id)) {
+            const newPos = { 
+                x: a.position.x + delta.x, 
+                y: a.position.y + delta.y, 
+                z: a.position.z + delta.z 
+            };
+            return { ...a, position: newPos };
+        }
+        return a;
     }));
   };
 
@@ -477,7 +491,11 @@ export default function App() {
   };
 
   const handleDeleteSelected = useCallback(() => {
+      // Deletar tubos
       setPipes(prev => prev.filter(p => !selectedIds.includes(p.id)));
+      // Deletar anotações
+      setAnnotations(prev => prev.filter(a => !selectedIds.includes(a.id)));
+      
       setSelectedIds([]);
   }, [selectedIds, pipes]);
 
