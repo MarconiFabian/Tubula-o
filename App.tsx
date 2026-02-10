@@ -370,6 +370,13 @@ export default function App() {
             currentY += 7;
         });
 
+        // Final footer check if space allows, otherwise last page
+        if (currentY + 20 < pageHeight) {
+             pdf.setFontSize(8);
+             pdf.setTextColor(150, 150, 150);
+             pdf.text('Isometrico Manager - Software desenvolvido por Marconi Fabian', margin, pageHeight - 10);
+        }
+
         pdf.save('relatorio-pipe-tracking.pdf');
 
     } catch (err) {
