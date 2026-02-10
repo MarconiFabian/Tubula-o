@@ -8,7 +8,7 @@ import { Fittings, ConnectionNode } from './Fittings';
 import { AnnotationMarker, GhostMarker } from './AnnotationMarker';
 import { PipeSegment, PipeStatus, Annotation, AccessoryType } from '../../types';
 import { STATUS_COLORS, STATUS_LABELS, ALL_STATUSES } from '../../constants';
-import { Loader2 } from 'lucide-react';
+import { Loader2, UserCheck, Calendar } from 'lucide-react';
 
 interface SceneProps {
   pipes: PipeSegment[];
@@ -238,13 +238,31 @@ const SceneContent: React.FC<SceneProps & { lockedAxis: 'x'|'y'|'z'|null }> = ({
                                     </group>
                                 </TransformControls>
                                 <Html position={[midX, midY + 0.6, midZ]} center zIndexRange={[100, 0]} style={{ pointerEvents: 'auto' }}>
-                                    <div className="bg-slate-900/95 p-2 rounded-xl border border-slate-600 shadow-2xl backdrop-blur flex flex-col gap-2" onPointerDown={(e) => e.stopPropagation()}>
-                                         <div className="flex gap-1 justify-center">
+                                    <div className="bg-slate-900/95 p-2 rounded-xl border border-slate-600 shadow-2xl backdrop-blur flex flex-col gap-2 min-w-[140px]" onPointerDown={(e) => e.stopPropagation()}>
+                                         <div className="flex gap-1 justify-center mb-1">
                                             {ALL_STATUSES.map(status => (
                                                 <button key={status} onClick={(e) => { e.preventDefault(); e.stopPropagation(); onUpdatePipe({...pipe, status: status as PipeStatus})}} className={`w-6 h-6 rounded-full border-2 ${pipe.status === status ? 'border-white scale-110' : 'border-transparent opacity-70'}`} style={{backgroundColor: STATUS_COLORS[status]}} title={status} />
                                             ))}
                                          </div>
-                                         <div className="text-[10px] text-center text-slate-400 font-mono bg-black/30 rounded px-1">{pipe.spoolId ? `Spool: ${pipe.spoolId}` : 'No Spool'}</div>
+                                         <div className="text-[10px] text-center text-slate-400 font-mono bg-black/30 rounded px-1 py-0.5 border border-slate-700">{pipe.spoolId ? `Spool: ${pipe.spoolId}` : 'No Spool'}</div>
+                                         
+                                         {/* INSPECTOR INFO BLOCK */}
+                                         {(pipe.welderInfo?.welderId || pipe.welderInfo?.weldDate) && (
+                                            <div className="mt-1 pt-1 border-t border-slate-700/50 flex flex-col gap-1">
+                                                {pipe.welderInfo.welderId && (
+                                                    <div className="flex items-center gap-1.5 text-[10px] text-slate-200">
+                                                        <UserCheck size={10} className="text-blue-400" />
+                                                        <span className="font-bold">Insp:</span> {pipe.welderInfo.welderId}
+                                                    </div>
+                                                )}
+                                                {pipe.welderInfo.weldDate && (
+                                                    <div className="flex items-center gap-1.5 text-[10px] text-slate-400">
+                                                        <Calendar size={10} />
+                                                        <span>{new Date(pipe.welderInfo.weldDate).toLocaleDateString()}</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                         )}
                                     </div>
                                 </Html>
                             </group>

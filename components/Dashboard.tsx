@@ -12,7 +12,8 @@ interface DashboardProps {
   mapImage?: string | null;
   onUploadSecondary?: (img: string | null) => void;
   onUploadMap?: (img: string | null) => void;
-  sceneScreenshot?: string | null; // NOVA PROPRIEDADE
+  sceneScreenshot?: string | null;
+  onSelectPipe?: (id: string) => void; // Adicionado para permitir seleção
 }
 
 type TabType = 'overview' | 'tracking';
@@ -26,7 +27,8 @@ const Dashboard: React.FC<DashboardProps> = ({
     mapImage,
     onUploadSecondary,
     onUploadMap,
-    sceneScreenshot // Recebe a imagem
+    sceneScreenshot,
+    onSelectPipe
 }) => {
   const [activeTab, setActiveTab] = useState<TabType>('overview');
   const [searchTerm, setSearchTerm] = useState('');
@@ -301,7 +303,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
                     <input 
                         type="text" 
-                        placeholder="Buscar por Spool, ID da Linha ou Soldador..." 
+                        placeholder="Buscar por Spool, ID da Linha ou Inspetor..." 
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
                         className="w-full bg-slate-950 border border-slate-700 rounded-lg pl-10 pr-4 py-2 text-slate-200 focus:ring-2 focus:ring-blue-500 outline-none"
@@ -330,7 +332,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                                 <th className="p-4 border-b border-slate-800">Spool / ID</th>
                                 <th className="p-4 border-b border-slate-800">Linha / Descrição</th>
                                 <th className="p-4 border-b border-slate-800">Status</th>
-                                <th className="p-4 border-b border-slate-800"><div className="flex items-center gap-1"><UserCog size={14}/> Soldador</div></th>
+                                <th className="p-4 border-b border-slate-800"><div className="flex items-center gap-1"><UserCog size={14}/> Inspetor</div></th>
                                 <th className="p-4 border-b border-slate-800"><div className="flex items-center gap-1"><Calendar size={14}/> Data</div></th>
                                 <th className="p-4 border-b border-slate-800 text-center"><div className="flex items-center justify-center gap-1"><CheckSquare size={14}/> Insp.</div></th>
                             </tr>
@@ -342,12 +344,17 @@ const Dashboard: React.FC<DashboardProps> = ({
                                 </tr>
                             ) : (
                                 filteredPipes.map(pipe => (
-                                    <tr key={pipe.id} className="hover:bg-slate-800/50 transition-colors">
-                                        <td className="p-4 font-mono text-blue-300">
+                                    <tr 
+                                        key={pipe.id} 
+                                        className="hover:bg-slate-800/50 transition-colors cursor-pointer group"
+                                        onClick={() => onSelectPipe?.(pipe.id)}
+                                        title="Clique para editar informações"
+                                    >
+                                        <td className="p-4 font-mono text-blue-300 group-hover:text-blue-200">
                                             {pipe.spoolId ? <span className="bg-blue-900/30 px-2 py-1 rounded border border-blue-500/20">{pipe.spoolId}</span> : <span className="opacity-50">-</span>}
                                             <div className="text-[10px] text-slate-500 mt-1">{pipe.id}</div>
                                         </td>
-                                        <td className="p-4 text-slate-200 font-medium">
+                                        <td className="p-4 text-slate-200 font-medium group-hover:text-white">
                                             {pipe.name}
                                             <div className="text-xs text-slate-500">{pipe.length.toFixed(2)}m - {Math.round(pipe.diameter * 39.37)}" pol</div>
                                         </td>
@@ -357,7 +364,9 @@ const Dashboard: React.FC<DashboardProps> = ({
                                             </span>
                                         </td>
                                         <td className="p-4 text-slate-300">
-                                            {pipe.welderInfo?.welderId || '-'}
+                                            {pipe.welderInfo?.welderId ? (
+                                                <span className="text-white font-medium">{pipe.welderInfo.welderId}</span>
+                                            ) : '-'}
                                             {pipe.welderInfo?.electrodeBatch && <div className="text-[10px] text-slate-500">Lot: {pipe.welderInfo.electrodeBatch}</div>}
                                         </td>
                                         <td className="p-4 text-slate-300 font-mono text-xs">

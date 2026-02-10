@@ -39,7 +39,8 @@ const Sidebar: React.FC<SidebarProps> = ({ selectedPipes, onUpdateSingle, onUpda
     const baseWelderInfo = formData.welderInfo ? { ...formData.welderInfo } : {
         weldDate: new Date().toISOString().split('T')[0],
         electrodeBatch: '',
-        visualInspection: false
+        visualInspection: false,
+        welderId: ''
     };
     const updated = { 
       ...formData, 
@@ -295,7 +296,18 @@ const Sidebar: React.FC<SidebarProps> = ({ selectedPipes, onUpdateSingle, onUpda
             </h3>
             
             <div>
-              <label className="block text-xs text-slate-500 mb-1">Data da Solda</label>
+              <label className="block text-xs text-slate-500 mb-1">Inspetor de Solda</label>
+              <input 
+                type="text" 
+                value={formData.welderInfo?.welderId || ''}
+                onChange={(e) => handleWelderChange('welderId', e.target.value)}
+                className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded p-2 text-sm text-slate-900 dark:text-white outline-none"
+                placeholder="Nome do Inspetor"
+              />
+            </div>
+            
+            <div>
+              <label className="block text-xs text-slate-500 mb-1">Data da Solda / Inspeção</label>
               <input 
                 type="date" 
                 value={formData.welderInfo?.weldDate || ''}

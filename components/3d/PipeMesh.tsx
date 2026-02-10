@@ -1,5 +1,6 @@
 import React, { useMemo, useRef } from 'react';
 import * as THREE from 'three';
+import { Text, Billboard } from '@react-three/drei';
 import { PipeSegment } from '../../types';
 import { STATUS_COLORS, INSULATION_COLORS } from '../../constants';
 
@@ -59,7 +60,6 @@ const PipeMesh: React.FC<PipeMeshProps> = ({ data, isSelected, trimStart = 0, tr
                 rotation={rotation}
                 onPointerOver={() => document.body.style.cursor = 'pointer'}
                 onPointerOut={() => document.body.style.cursor = 'auto'}
-                // REMOVED onClick here to allow bubbling to parent Group in Scene.tsx
             >
                 <cylinderGeometry args={[data.diameter / 2, data.diameter / 2, geometryLength, 32]} />
                 <meshStandardMaterial
@@ -70,6 +70,25 @@ const PipeMesh: React.FC<PipeMeshProps> = ({ data, isSelected, trimStart = 0, tr
                     emissiveIntensity={isSelected ? 0.5 : 0}
                 />
             </mesh>
+            
+            {/* Length Label - Always facing camera (Billboard) and offset vertically in screen space */}
+            {geometryLength > 0.5 && (
+                <Billboard position={position}>
+                    <Text
+                        position={[0, data.diameter/2 + 0.25, 0]} // Offset "Up" in billboard space (screen Y)
+                        fontSize={0.25}
+                        color="white"
+                        anchorX="center"
+                        anchorY="bottom"
+                        outlineWidth={0.03}
+                        outlineColor="#000000"
+                        depthTest={false} // Ensure it renders on top of the pipe
+                        renderOrder={1000}
+                    >
+                        {data.length.toFixed(2)}m
+                    </Text>
+                </Billboard>
+            )}
             
             {/* Thermal Protection Layer */}
             {hasInsulation && (

@@ -48,6 +48,11 @@ export const PipeDrawer: React.FC<PipeDrawerProps> = ({ isDrawing, onAddPipe, on
     }
   }, [isDrawing]);
 
+  // Calculate total length of existing pipes for the tooltip
+  const existingTotalLength = useMemo(() => {
+      return pipes.reduce((acc, pipe) => acc + (pipe.length || 0), 0);
+  }, [pipes]);
+
   // Listen for Escape
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => { 
@@ -188,6 +193,10 @@ export const PipeDrawer: React.FC<PipeDrawerProps> = ({ isDrawing, onAddPipe, on
 
   if (!isDrawing) return null;
 
+  // Calculate Lengths for Display
+  const currentSegmentLength = startPoint ? startPoint.distanceTo(endPoint) : 0;
+  const projectTotalWithCurrent = existingTotalLength + currentSegmentLength;
+
   return (
     <group>
         {/* Invisible ground plane */}
@@ -241,8 +250,8 @@ export const PipeDrawer: React.FC<PipeDrawerProps> = ({ isDrawing, onAddPipe, on
                 </lineSegments>
             )}
             
-            <Html position={endPoint} style={{ pointerEvents: 'none' }}>
-                <div className="bg-slate-900/90 text-white text-xs px-2 py-1 rounded shadow-lg whitespace-nowrap transform -translate-x-1/2 -translate-y-full mt-[-20px] border border-slate-700 font-mono">
+            <Html position={endPoint} style={{ pointerEvents: 'none' }} zIndexRange={[100, 0]}>
+                <div className="bg-slate-900/90 text-white text-xs px-3 py-2 rounded-lg shadow-2xl backdrop-blur-md transform -translate-x-1/2 -translate-y-full mt-[-20px] border border-slate-700 font-mono flex flex-col gap-1 min-w-[140px]">
                     
                     {/* Visual Feedback for Connection */}
                     {!startPoint && snapPoint && (
@@ -251,18 +260,25 @@ export const PipeDrawer: React.FC<PipeDrawerProps> = ({ isDrawing, onAddPipe, on
                         </div>
                     )}
 
-                    <div>
-                        {endPoint.x.toFixed(1)}, {endPoint.y.toFixed(1)}, {endPoint.z.toFixed(1)}
-                    </div>
+                    <div className="text-slate-400 text-[10px]">Pos: {endPoint.x.toFixed(1)}, {endPoint.y.toFixed(1)}, {endPoint.z.toFixed(1)}</div>
+                    
                     {startPoint && (
-                         <div className="text-slate-400 text-[10px] mt-0.5 border-t border-slate-700 pt-0.5">
-                            L: {startPoint.distanceTo(endPoint).toFixed(2)}m
-                            {fixedLength && <span className="text-purple-400 ml-1 font-bold">(FIXED)</span>}
-                        </div>
+                        <>
+                         <div className="border-t border-slate-700 my-1"></div>
+                         <div className="flex justify-between items-center text-sm font-bold text-white">
+                            <span>Segmento:</span>
+                            <span className="text-blue-400">{currentSegmentLength.toFixed(2)}m {fixedLength && '🔒'}</span>
+                         </div>
+                         <div className="flex justify-between items-center text-[10px] text-slate-400">
+                            <span>Total Projeto:</span>
+                            <span className="text-slate-200">{projectTotalWithCurrent.toFixed(2)}m</span>
+                         </div>
+                        </>
                     )}
+
                     {lockedAxis && (
-                        <div className="text-green-400 font-bold mt-0.5 text-[10px] uppercase">
-                             LOCKED: {lockedAxis.toUpperCase()}
+                        <div className="text-green-400 font-bold mt-1 text-[10px] uppercase border-t border-white/10 pt-1 text-center">
+                             EIXO TRAVADO: {lockedAxis.toUpperCase()}
                         </div>
                     )}
                 </div>

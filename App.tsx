@@ -6,7 +6,7 @@ import { DatabaseModal } from './components/DatabaseModal';
 import { saveProjectToDB, getAllProjects, deleteProjectFromDB } from './utils/db';
 import { INITIAL_PIPES, STATUS_LABELS, STATUS_COLORS, INSULATION_LABELS } from './constants';
 import { PipeSegment, PipeStatus, Annotation, Accessory, AccessoryType } from './types';
-import { LayoutDashboard, Cuboid, PenTool, XCircle, FileDown, Save, FolderOpen, FilePlus, Loader2, MapPin, Database, Undo, Redo, Wrench, Grid as GridIcon, CircleDot, MousePointer2, Ruler } from 'lucide-react';
+import { LayoutDashboard, Cuboid, PenTool, XCircle, FileDown, Save, FolderOpen, FilePlus, Loader2, MapPin, Database, Undo, Redo, Wrench, Grid as GridIcon, CircleDot, MousePointer2, Ruler, Calendar } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
 
@@ -68,6 +68,8 @@ export default function App() {
   
   // Project Info
   const [projectLocation, setProjectLocation] = useState('ÁREA / SETOR 01');
+  // New Activity Date State - Defaults to Today
+  const [activityDate, setActivityDate] = useState(new Date().toISOString().split('T')[0]);
 
   // Selection & UI State
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -208,7 +210,7 @@ export default function App() {
 
   const handleNewProject = () => {
       if (confirm("Criar novo projeto?")) {
-          setPipes([]); setAnnotations([]); setSelectedIds([]); setSecondaryImage(null); setMapImage(null); setProjectLocation('ÁREA / SETOR 01');
+          setPipes([]); setAnnotations([]); setSelectedIds([]); setSecondaryImage(null); setMapImage(null); setProjectLocation('ÁREA / SETOR 01'); setActivityDate(new Date().toISOString().split('T')[0]);
       }
   };
 
@@ -231,6 +233,9 @@ export default function App() {
         const pageHeight = pdf.internal.pageSize.getHeight();
         const margin = 10;
         let currentY = 20;
+
+        // Formata a data de atividade para exibição (DD/MM/AAAA)
+        const formattedActivityDate = activityDate.split('-').reverse().join('/');
 
         // 1. CAPTURE THE WHOLE DASHBOARD (KPIs, Charts, Images) from hidden container
         const dashboardEl = document.getElementById('composed-dashboard-export');
@@ -276,12 +281,18 @@ export default function App() {
         currentY += 8;
         pdf.setFontSize(12);
         pdf.text(`Local: ${projectLocation}`, margin, currentY);
+        currentY += 6;
+        // Adding Activity Date to Detail Pages Header as well
+        pdf.setFontSize(10);
+        pdf.setTextColor(80, 80, 80);
+        pdf.text(`Data Atividade: ${formattedActivityDate}`, margin, currentY);
         currentY += 10;
 
         // 3. TABLE HEADER
         pdf.setFontSize(9);
         pdf.setFillColor(240, 240, 240);
         pdf.rect(margin, currentY, pageWidth - (margin * 2), 8, 'F');
+        pdf.setTextColor(0, 0, 0);
         pdf.setFont(undefined, 'bold');
         
         const col1 = margin + 2;
@@ -296,7 +307,7 @@ export default function App() {
         pdf.text("Nome/Linha", col3, currentY + 5);
         pdf.text("Comp (m)", col4, currentY + 5);
         pdf.text("Status Tub.", col5, currentY + 5);
-        pdf.text("Soldador/Data", col6, currentY + 5);
+        pdf.text("Inspetor/Data", col6, currentY + 5);
         
         pdf.setFont(undefined, 'normal');
         currentY += 10;
@@ -322,7 +333,7 @@ export default function App() {
                 pdf.text("Nome/Linha", col3, currentY + 5);
                 pdf.text("Comp (m)", col4, currentY + 5);
                 pdf.text("Status Tub.", col5, currentY + 5);
-                pdf.text("Soldador/Data", col6, currentY + 5);
+                pdf.text("Inspetor/Data", col6, currentY + 5);
                 pdf.setFont(undefined, 'normal');
                 currentY += 10;
             }
@@ -331,7 +342,7 @@ export default function App() {
             const statusColorHex = STATUS_COLORS[pipe.status] || '#999999';
             const rgb = hexToRgb(statusColorHex);
             
-            // Weld Info Formatted
+            // Weld Info Formatted (Now treated as Inspector)
             const welder = pipe.welderInfo?.welderId || '-';
             const weldDate = pipe.welderInfo?.weldDate ? new Date(pipe.welderInfo.weldDate).toLocaleDateString() : '-';
             const weldText = welder !== '-' ? `${welder} (${weldDate})` : '-';
@@ -402,10 +413,24 @@ export default function App() {
                         <p className="text-[10px] text-slate-400">Software desenvolvido por Marconi Fabian</p>
                     </div>
                 </div>
+                
+                {/* LOCATION & DATE INPUTS */}
                 <div className="flex items-center gap-2 bg-slate-800/50 p-1.5 px-3 rounded-lg border border-slate-700/50">
                      <div className="flex flex-col justify-center">
                         <label className="text-[9px] font-bold text-slate-500 uppercase leading-none mb-0.5 flex items-center gap-1"><MapPin size={10} /> Local</label>
-                        <input type="text" value={projectLocation} onChange={(e) => setProjectLocation(e.target.value)} className="text-sm font-bold bg-transparent border-none text-white focus:ring-0 w-64 p-0 leading-none uppercase" />
+                        <input type="text" value={projectLocation} onChange={(e) => setProjectLocation(e.target.value)} className="text-sm font-bold bg-transparent border-none text-white focus:ring-0 w-48 lg:w-64 p-0 leading-none uppercase" />
+                     </div>
+                     
+                     <div className="h-8 w-px bg-slate-700/50 mx-2"></div>
+                     
+                     <div className="flex flex-col justify-center">
+                        <label className="text-[9px] font-bold text-slate-500 uppercase leading-none mb-0.5 flex items-center gap-1"><Calendar size={10} /> Data Atividade</label>
+                        <input 
+                            type="date" 
+                            value={activityDate} 
+                            onChange={(e) => setActivityDate(e.target.value)} 
+                            className="text-sm font-bold bg-transparent border-none text-white focus:ring-0 p-0 leading-none w-auto [color-scheme:dark]" 
+                        />
                      </div>
                 </div>
             </div>
@@ -442,6 +467,8 @@ export default function App() {
                             <span className="px-6 py-2 rounded bg-blue-900/30 border border-blue-500/30 text-blue-300 font-bold uppercase text-3xl shadow-lg shadow-blue-900/20">{projectLocation}</span>
                         </div>
                         <p className="text-xl font-mono text-slate-500 mt-2">Emitido em: <span className="text-white">{new Date().toLocaleDateString()}</span></p>
+                        {/* ADICIONADO: Data da Atividade abaixo da Data de Emissão */}
+                        <p className="text-xl font-mono text-slate-500 mt-1">Data Atividade: <span className="text-white">{activityDate.split('-').reverse().join('/')}</span></p>
                     </div>
                  </div>
                  
@@ -453,6 +480,7 @@ export default function App() {
                         secondaryImage={secondaryImage}
                         mapImage={mapImage}
                         sceneScreenshot={sceneScreenshot}
+                        onSelectPipe={(id) => handleSelectPipe(id)}
                       />
                  </div>
 
@@ -521,8 +549,8 @@ export default function App() {
                                 secondaryImage={secondaryImage} onUploadSecondary={setSecondaryImage}
                                 mapImage={mapImage} onUploadMap={setMapImage}
                                 sceneScreenshot={sceneScreenshot}
+                                onSelectPipe={(id) => handleSelectPipe(id)}
                             />
-                            {/* Removed the extra table here, as it's now inside the Dashboard "Tracking" tab */}
                         </div>
                     </div>
                 )}
