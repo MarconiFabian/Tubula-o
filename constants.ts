@@ -37,8 +37,20 @@ export const INSULATION_LABELS: Record<string, string> = {
   'FINISHED': 'Isol. Finalizado'
 };
 
+// Diâmetros Comerciais (Polegadas -> Metros aprox. OD)
+export const PIPE_DIAMETERS: Record<string, number> = {
+  '10"': 0.2730,
+  '8"': 0.2032,
+  '6"': 0.1683,
+  '4"': 0.1143,
+  '1"': 0.0334,
+  '3/4"': 0.0267
+};
+
 // Safe, ordered list of statuses for iteration
 export const ALL_STATUSES = ['PENDING', 'MOUNTED', 'WELDED', 'HYDROTEST'];
 export const ALL_INSULATION_STATUSES = ['NONE', 'PENDING', 'INSTALLING', 'FINISHED'];
+// Lista ordenada de diâmetros para Selects
+export const AVAILABLE_DIAMETERS = ['10"', '8"', '6"', '4"', '1"', '3/4"'];
 
 export const INITIAL_PIPES: PipeSegment[] = [];

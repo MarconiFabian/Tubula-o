@@ -4,9 +4,9 @@ import Dashboard from './components/Dashboard';
 import Sidebar from './components/Sidebar';
 import { DatabaseModal } from './components/DatabaseModal';
 import { saveProjectToDB, getAllProjects, deleteProjectFromDB } from './utils/db';
-import { INITIAL_PIPES, STATUS_LABELS, STATUS_COLORS, INSULATION_LABELS } from './constants';
+import { INITIAL_PIPES, STATUS_LABELS, STATUS_COLORS, INSULATION_LABELS, PIPE_DIAMETERS, AVAILABLE_DIAMETERS } from './constants';
 import { PipeSegment, PipeStatus, Annotation, Accessory, AccessoryType } from './types';
-import { LayoutDashboard, Cuboid, PenTool, XCircle, FileDown, Save, FolderOpen, FilePlus, Loader2, MapPin, Database, Undo, Redo, Wrench, Grid as GridIcon, CircleDot, MousePointer2, Ruler, Calendar, Lock, User, LogOut, ChevronRight, UserPlus, ShieldAlert, Check, X, Users } from 'lucide-react';
+import { LayoutDashboard, Cuboid, PenTool, XCircle, FileDown, Save, FolderOpen, FilePlus, Loader2, MapPin, Database, Undo, Redo, Wrench, Grid as GridIcon, CircleDot, MousePointer2, Ruler, Calendar, Lock, User, LogOut, ChevronRight, UserPlus, ShieldAlert, Check, X, Users, CircleDashed } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
 
@@ -363,6 +363,11 @@ export default function App() {
   const [viewMode, setViewMode] = useState<'3d' | 'dashboard'>('3d');
   const [isDrawing, setIsDrawing] = useState(false);
   const [isFixedLength, setIsFixedLength] = useState(false);
+  
+  // NEW: State for current diameter Selection
+  const [selectedDiameter, setSelectedDiameter] = useState<number>(PIPE_DIAMETERS['8"']);
+  const [selectedDiameterLabel, setSelectedDiameterLabel] = useState<string>('8"');
+
   const [isExporting, setIsExporting] = useState(false);
   const [sceneScreenshot, setSceneScreenshot] = useState<string | null>(null);
   
@@ -488,7 +493,7 @@ export default function App() {
         id: `P-${Math.floor(Math.random() * 10000)}`,
         name: `Nova Linha ${pipes.length + 1}`,
         start, end, 
-        diameter: 0.2032, // 8 inches
+        diameter: selectedDiameter, // Use selected diameter
         status: 'PENDING' as PipeStatus, 
         length
     };
@@ -887,7 +892,28 @@ export default function App() {
                                     </>
                                 )}
                                 {isDrawing && (
-                                    <div className="flex bg-slate-800 rounded-lg p-1 border border-slate-700">
+                                    <div className="flex bg-slate-800 rounded-lg p-1 border border-slate-700 items-center gap-2">
+                                        
+                                        {/* SELETOR DE DIÂMETRO */}
+                                        <div className="flex items-center gap-1 bg-slate-700 px-2 py-1 rounded">
+                                            <span className="text-[10px] font-bold text-slate-300 uppercase">Bitola:</span>
+                                            <select 
+                                                value={selectedDiameterLabel}
+                                                onChange={(e) => {
+                                                    const label = e.target.value;
+                                                    setSelectedDiameterLabel(label);
+                                                    setSelectedDiameter(PIPE_DIAMETERS[label]);
+                                                }}
+                                                className="bg-slate-600 text-white text-xs font-bold rounded border-none focus:ring-0 cursor-pointer"
+                                            >
+                                                {AVAILABLE_DIAMETERS.map(d => (
+                                                    <option key={d} value={d}>{d}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+
+                                        <div className="h-6 w-px bg-slate-600"></div>
+
                                         <button onClick={() => setIsFixedLength(false)} className={`px-3 py-1.5 text-xs font-bold rounded ${!isFixedLength ? 'bg-slate-600 text-white' : 'text-slate-400'}`}>Livre</button>
                                         <button onClick={() => setIsFixedLength(true)} className={`px-3 py-1.5 text-xs font-bold rounded ${isFixedLength ? 'bg-purple-600 text-white' : 'text-slate-400'}`}>Fixo 6m</button>
                                     </div>

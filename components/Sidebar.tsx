@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { PipeSegment, PipeStatus, InsulationStatus } from '../types';
-import { STATUS_LABELS, STATUS_COLORS, ALL_STATUSES, INSULATION_LABELS, INSULATION_COLORS, ALL_INSULATION_STATUSES } from '../constants';
-import { X, CheckCircle, AlertCircle, FileText, Ruler, MessageSquare, Trash2, Shield, Wrench, Layers, MapPin, Hash } from 'lucide-react';
+import { STATUS_LABELS, STATUS_COLORS, ALL_STATUSES, INSULATION_LABELS, INSULATION_COLORS, ALL_INSULATION_STATUSES, AVAILABLE_DIAMETERS, PIPE_DIAMETERS } from '../constants';
+import { X, CheckCircle, AlertCircle, FileText, Ruler, MessageSquare, Trash2, Shield, Wrench, Layers, MapPin, Hash, CircleDashed } from 'lucide-react';
 
 interface SidebarProps {
   selectedPipes: PipeSegment[]; // Array of selected pipes
@@ -50,6 +50,12 @@ const Sidebar: React.FC<SidebarProps> = ({ selectedPipes, onUpdateSingle, onUpda
     onUpdateSingle(updated);
   };
 
+  // Helper para encontrar label do diametro pelo valor
+  const getDiameterLabel = (val: number) => {
+    const entry = Object.entries(PIPE_DIAMETERS).find(([_, v]) => Math.abs(v - val) < 0.001);
+    return entry ? entry[0] : 'Custom';
+  };
+
   // --- RENDER BATCH MODE ---
   if (isBatch) {
       return (
@@ -71,6 +77,27 @@ const Sidebar: React.FC<SidebarProps> = ({ selectedPipes, onUpdateSingle, onUpda
                         <p className="font-bold text-lg">{selectedPipes.length} Tubos Selecionados</p>
                         <p className="text-sm opacity-80">As alterações abaixo serão aplicadas a todos os itens.</p>
                     </div>
+                </div>
+
+                {/* Batch Diameter */}
+                <div>
+                     <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-1">
+                        <CircleDashed size={12} /> Definir Diâmetro (Bitola)
+                     </label>
+                     <select 
+                        className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded p-2 text-sm text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500"
+                        onChange={(e) => {
+                            if (e.target.value) {
+                                onUpdateBatch({ diameter: parseFloat(e.target.value) });
+                            }
+                        }}
+                        defaultValue=""
+                     >
+                        <option value="" disabled>Selecione para alterar todos...</option>
+                        {AVAILABLE_DIAMETERS.map(label => (
+                            <option key={label} value={PIPE_DIAMETERS[label]}>{label}</option>
+                        ))}
+                     </select>
                 </div>
 
                 {/* Batch Spool */}
@@ -200,13 +227,29 @@ const Sidebar: React.FC<SidebarProps> = ({ selectedPipes, onUpdateSingle, onUpda
             />
           </div>
 
-          <div>
-            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1">
-              <Ruler size={12} /> Comprimento Calculado (3D)
-            </label>
-            <div className="text-slate-900 dark:text-white font-mono text-lg font-bold">
-              {(formData.length || 0).toFixed(3)} metros
-            </div>
+          <div className="flex gap-4">
+              <div className="flex-1">
+                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1 mb-1">
+                  <Ruler size={12} /> Comprimento (m)
+                </label>
+                <div className="text-slate-900 dark:text-white font-mono text-lg font-bold">
+                  {(formData.length || 0).toFixed(3)} m
+                </div>
+              </div>
+              <div className="flex-1">
+                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1 mb-1">
+                  <CircleDashed size={12} /> Bitola
+                </label>
+                 <select 
+                        className="w-full bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded p-1.5 text-sm text-slate-900 dark:text-white outline-none font-bold"
+                        value={getDiameterLabel(formData.diameter)}
+                        onChange={(e) => handleSingleChange('diameter', PIPE_DIAMETERS[e.target.value])}
+                     >
+                        {AVAILABLE_DIAMETERS.map(label => (
+                            <option key={label} value={label}>{label}</option>
+                        ))}
+                 </select>
+              </div>
           </div>
         </div>
 
