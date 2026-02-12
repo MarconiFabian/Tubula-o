@@ -13,7 +13,9 @@ interface DashboardProps {
   onUploadSecondary?: (img: string | null) => void;
   onUploadMap?: (img: string | null) => void;
   sceneScreenshot?: string | null;
-  onSelectPipe?: (id: string) => void; // Adicionado para permitir seleção
+  onSelectPipe?: (id: string, multi?: boolean) => void; // Adicionado para permitir seleção
+  selectedIds?: string[];
+  onSetSelection?: (ids: string[]) => void;
 }
 
 type TabType = 'overview' | 'tracking';
@@ -28,7 +30,9 @@ const Dashboard: React.FC<DashboardProps> = ({
     onUploadSecondary,
     onUploadMap,
     sceneScreenshot,
-    onSelectPipe
+    onSelectPipe,
+    selectedIds = [],
+    onSetSelection
 }) => {
   const [activeTab, setActiveTab] = useState<TabType>('overview');
   const [searchTerm, setSearchTerm] = useState('');
@@ -94,6 +98,24 @@ const Dashboard: React.FC<DashboardProps> = ({
           return matchesSearch && matchesStatus;
       });
   }, [pipes, searchTerm, statusFilter]);
+
+  // --- SELECTION LOGIC ---
+  const allFilteredSelected = filteredPipes.length > 0 && filteredPipes.every(p => selectedIds.includes(p.id));
+  
+  const handleSelectAll = () => {
+      if (!onSetSelection) return;
+      
+      if (allFilteredSelected) {
+          // Desmarcar todos os visíveis
+          const newSelection = selectedIds.filter(id => !filteredPipes.find(p => p.id === id));
+          onSetSelection(newSelection);
+      } else {
+          // Marcar todos os visíveis
+          const newIds = filteredPipes.map(p => p.id);
+          const combined = Array.from(new Set([...selectedIds, ...newIds]));
+          onSetSelection(combined);
+      }
+  };
 
   return (
     <div className={`flex flex-col gap-6 w-full ${exportMode ? 'p-0' : ''}`}>
@@ -329,6 +351,16 @@ const Dashboard: React.FC<DashboardProps> = ({
                     <table className="w-full text-left border-collapse">
                         <thead className="bg-slate-950 text-slate-400 uppercase text-xs font-bold tracking-wider">
                             <tr>
+                                <th className="p-4 border-b border-slate-800 w-12 text-center">
+                                    {/* SELECT ALL CHECKBOX */}
+                                    <input 
+                                        type="checkbox" 
+                                        className="w-4 h-4 rounded border-slate-600 bg-slate-800 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                        checked={allFilteredSelected && filteredPipes.length > 0}
+                                        onChange={handleSelectAll}
+                                        title="Selecionar Todos Visíveis"
+                                    />
+                                </th>
                                 <th className="p-4 border-b border-slate-800">Spool / ID</th>
                                 <th className="p-4 border-b border-slate-800">Linha / Descrição</th>
                                 <th className="p-4 border-b border-slate-800">Status</th>
@@ -340,51 +372,66 @@ const Dashboard: React.FC<DashboardProps> = ({
                         <tbody className="divide-y divide-slate-800 text-sm">
                             {filteredPipes.length === 0 ? (
                                 <tr>
-                                    <td colSpan={6} className="p-8 text-center text-slate-500 italic">Nenhum registro encontrado.</td>
+                                    <td colSpan={7} className="p-8 text-center text-slate-500 italic">Nenhum registro encontrado.</td>
                                 </tr>
                             ) : (
-                                filteredPipes.map(pipe => (
-                                    <tr 
-                                        key={pipe.id} 
-                                        className="hover:bg-slate-800/50 transition-colors cursor-pointer group"
-                                        onClick={() => onSelectPipe?.(pipe.id)}
-                                        title="Clique para editar informações"
-                                    >
-                                        <td className="p-4 font-mono text-blue-300 group-hover:text-blue-200">
-                                            {pipe.spoolId ? <span className="bg-blue-900/30 px-2 py-1 rounded border border-blue-500/20">{pipe.spoolId}</span> : <span className="opacity-50">-</span>}
-                                            <div className="text-[10px] text-slate-500 mt-1">{pipe.id}</div>
-                                        </td>
-                                        <td className="p-4 text-slate-200 font-medium group-hover:text-white">
-                                            {pipe.name}
-                                            <div className="text-xs text-slate-500">{pipe.length.toFixed(2)}m - {Math.round(pipe.diameter * 39.37)}" pol</div>
-                                        </td>
-                                        <td className="p-4">
-                                            <span className="px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wide border border-black/20 shadow-sm" style={{ backgroundColor: STATUS_COLORS[pipe.status], color: '#fff' }}>
-                                                {STATUS_LABELS[pipe.status]}
-                                            </span>
-                                        </td>
-                                        <td className="p-4 text-slate-300">
-                                            {pipe.welderInfo?.welderId ? (
-                                                <span className="text-white font-medium">{pipe.welderInfo.welderId}</span>
-                                            ) : '-'}
-                                            {pipe.welderInfo?.electrodeBatch && <div className="text-[10px] text-slate-500">Lot: {pipe.welderInfo.electrodeBatch}</div>}
-                                        </td>
-                                        <td className="p-4 text-slate-300 font-mono text-xs">
-                                            {pipe.welderInfo?.weldDate ? new Date(pipe.welderInfo.weldDate).toLocaleDateString() : '-'}
-                                        </td>
-                                        <td className="p-4 text-center">
-                                            {pipe.welderInfo?.visualInspection ? (
-                                                <div className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-green-500/20 text-green-400 border border-green-500/30">
-                                                    <CheckSquare size={14} />
-                                                </div>
-                                            ) : (
-                                                <div className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-slate-800 text-slate-600 border border-slate-700">
-                                                    <div className="w-1.5 h-1.5 rounded-full bg-slate-600"></div>
-                                                </div>
-                                            )}
-                                        </td>
-                                    </tr>
-                                ))
+                                filteredPipes.map(pipe => {
+                                    const isSelected = selectedIds.includes(pipe.id);
+                                    return (
+                                        <tr 
+                                            key={pipe.id} 
+                                            className={`transition-colors cursor-pointer group ${isSelected ? 'bg-blue-900/20 hover:bg-blue-900/30' : 'hover:bg-slate-800/50'}`}
+                                            onClick={() => onSelectPipe?.(pipe.id, false)}
+                                            title="Clique para editar informações"
+                                        >
+                                            {/* ROW CHECKBOX */}
+                                            <td className="p-4 text-center" onClick={(e) => e.stopPropagation()}>
+                                                <input 
+                                                    type="checkbox" 
+                                                    className="w-4 h-4 rounded border-slate-600 bg-slate-800 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                                    checked={isSelected}
+                                                    onChange={(e) => {
+                                                        // Use the multiselect flag (true) to toggle this specific ID
+                                                        onSelectPipe?.(pipe.id, true);
+                                                    }}
+                                                />
+                                            </td>
+                                            <td className="p-4 font-mono text-blue-300 group-hover:text-blue-200">
+                                                {pipe.spoolId ? <span className="bg-blue-900/30 px-2 py-1 rounded border border-blue-500/20">{pipe.spoolId}</span> : <span className="opacity-50">-</span>}
+                                                <div className="text-[10px] text-slate-500 mt-1">{pipe.id}</div>
+                                            </td>
+                                            <td className="p-4 text-slate-200 font-medium group-hover:text-white">
+                                                {pipe.name}
+                                                <div className="text-xs text-slate-500">{pipe.length.toFixed(2)}m - {Math.round(pipe.diameter * 39.37)}" pol</div>
+                                            </td>
+                                            <td className="p-4">
+                                                <span className="px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wide border border-black/20 shadow-sm" style={{ backgroundColor: STATUS_COLORS[pipe.status], color: '#fff' }}>
+                                                    {STATUS_LABELS[pipe.status]}
+                                                </span>
+                                            </td>
+                                            <td className="p-4 text-slate-300">
+                                                {pipe.welderInfo?.welderId ? (
+                                                    <span className="text-white font-medium">{pipe.welderInfo.welderId}</span>
+                                                ) : '-'}
+                                                {pipe.welderInfo?.electrodeBatch && <div className="text-[10px] text-slate-500">Lot: {pipe.welderInfo.electrodeBatch}</div>}
+                                            </td>
+                                            <td className="p-4 text-slate-300 font-mono text-xs">
+                                                {pipe.welderInfo?.weldDate ? new Date(pipe.welderInfo.weldDate).toLocaleDateString() : '-'}
+                                            </td>
+                                            <td className="p-4 text-center">
+                                                {pipe.welderInfo?.visualInspection ? (
+                                                    <div className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-green-500/20 text-green-400 border border-green-500/30">
+                                                        <CheckSquare size={14} />
+                                                    </div>
+                                                ) : (
+                                                    <div className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-slate-800 text-slate-600 border border-slate-700">
+                                                        <div className="w-1.5 h-1.5 rounded-full bg-slate-600"></div>
+                                                    </div>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    );
+                                })
                             )}
                         </tbody>
                     </table>

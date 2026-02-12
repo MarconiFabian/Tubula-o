@@ -147,6 +147,35 @@ const Sidebar: React.FC<SidebarProps> = ({ selectedPipes, onUpdateSingle, onUpda
                     </div>
                 </div>
 
+                {/* Batch Insulation Status */}
+                <div>
+                     <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-1">
+                        <Shield size={12} /> Definir Proteção Térmica (Todos)
+                     </label>
+                     <div className="grid grid-cols-1 gap-2">
+                        {ALL_INSULATION_STATUSES.map((insKey) => {
+                            const color = INSULATION_COLORS[insKey];
+                            const isNone = insKey === 'NONE';
+
+                            return (
+                                <button
+                                    key={insKey}
+                                    onClick={() => onUpdateBatch({ insulationStatus: insKey as InsulationStatus })}
+                                    className="flex items-center gap-3 px-3 py-2 rounded-md text-xs font-bold transition-all border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm"
+                                >
+                                    <div 
+                                        className={`w-3 h-3 rounded-full border border-black/10`}
+                                        style={{ backgroundColor: isNone ? 'transparent' : color, border: isNone ? '1px solid #94a3b8' : 'none' }} 
+                                    />
+                                    <span className="text-slate-700 dark:text-slate-300">
+                                        {INSULATION_LABELS[insKey]}
+                                    </span>
+                                </button>
+                            )
+                        })}
+                    </div>
+                </div>
+
                  {/* Batch Note */}
                  <div className="space-y-2">
                     <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1">

@@ -11,9 +11,11 @@ interface PipeMeshProps {
   trimStart?: number;
   trimEnd?: number;
   customColor?: string; // New prop for overriding status color (e.g. Spool View)
+  opacity?: number;
+  transparent?: boolean;
 }
 
-const PipeMesh: React.FC<PipeMeshProps> = ({ data, isSelected, trimStart = 0, trimEnd = 0, customColor }) => {
+const PipeMesh: React.FC<PipeMeshProps> = ({ data, isSelected, trimStart = 0, trimEnd = 0, customColor, opacity = 1, transparent = false }) => {
   const meshRef = useRef<THREE.Mesh>(null);
 
   // Calculate geometry and orientation
@@ -68,11 +70,13 @@ const PipeMesh: React.FC<PipeMeshProps> = ({ data, isSelected, trimStart = 0, tr
                     metalness={0.6}
                     emissive={isSelected ? color : '#000000'}
                     emissiveIntensity={isSelected ? 0.5 : 0}
+                    transparent={transparent}
+                    opacity={opacity}
                 />
             </mesh>
             
             {/* Length Label - Always facing camera (Billboard) and offset vertically in screen space */}
-            {geometryLength > 0.5 && (
+            {geometryLength > 0.5 && !transparent && (
                 <Billboard position={position}>
                     <Text
                         position={[0, data.diameter/2 + 0.25, 0]} // Offset "Up" in billboard space (screen Y)
@@ -102,7 +106,7 @@ const PipeMesh: React.FC<PipeMeshProps> = ({ data, isSelected, trimStart = 0, tr
                     <meshStandardMaterial
                         color={insulationColor}
                         transparent
-                        opacity={0.3}
+                        opacity={transparent ? 0.15 : 0.3}
                         roughness={0.1}
                         metalness={0.1}
                         side={THREE.DoubleSide}

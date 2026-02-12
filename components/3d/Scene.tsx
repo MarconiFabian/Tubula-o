@@ -28,6 +28,10 @@ interface SceneProps {
   onUndo?: () => void;
   onRedo?: () => void;
   colorMode?: 'STATUS' | 'SPOOL';
+  // Copy/Paste Props
+  pastePreview?: PipeSegment[] | null;
+  onPasteMove?: (pos: {x:number, y:number, z:number}) => void;
+  onPasteConfirm?: () => void;
 }
 
 const stringToColor = (str: string) => {
@@ -165,7 +169,8 @@ const KeyboardManager = ({ selectedIds, pipes, onUpdatePipe, onUndo, onRedo }:
 const SceneContent: React.FC<SceneProps & { lockedAxis: 'x'|'y'|'z'|null, selectionBox: any, onSetSelectionBox: any }> = ({ 
   pipes, annotations = [], selectedIds, onSelectPipe, onSetSelection, isDrawing, onAddPipe, onUpdatePipe, onMovePipes, onCancelDraw, lockedAxis, fixedLength,
   onAddAnnotation, onUpdateAnnotation, onDeleteAnnotation, onUndo, onRedo,
-  colorMode = 'STATUS', selectionBox, onSetSelectionBox
+  colorMode = 'STATUS', selectionBox, onSetSelectionBox,
+  pastePreview, onPasteMove, onPasteConfirm
 }) => {
     const { camera, gl, size } = useThree();
     const [isDragging, setIsDragging] = useState(false);
@@ -267,6 +272,21 @@ const SceneContent: React.FC<SceneProps & { lockedAxis: 'x'|'y'|'z'|null, select
         return { connections: map, trims: pipeTrims };
     }, [pipes]);
     
+    // Logic for Paste Mode: Intercept movement
+    const handlePastePointerMove = (e: ThreeEvent<PointerEvent>) => {
+        if (pastePreview && onPasteMove) {
+            e.stopPropagation();
+            const snap = (v:number) => Math.round(v * 2) / 2;
+            const pt = e.point.clone();
+            // Snap to grid
+            pt.x = snap(pt.x);
+            pt.y = snap(pt.y);
+            pt.z = snap(pt.z);
+            
+            onPasteMove({ x: pt.x, y: pt.y, z: pt.z });
+        }
+    }
+
     const handlePointerMove = (e: ThreeEvent<PointerEvent>) => {
         if (isQPressed && !isDrawing) {
             e.stopPropagation();
@@ -277,6 +297,12 @@ const SceneContent: React.FC<SceneProps & { lockedAxis: 'x'|'y'|'z'|null, select
     };
 
     const handleGlobalClick = (e: ThreeEvent<MouseEvent>) => {
+        if (pastePreview && onPasteConfirm) {
+            e.stopPropagation();
+            onPasteConfirm();
+            return;
+        }
+
         if (isQPressed && onAddAnnotation) {
             e.stopPropagation();
             onAddAnnotation(e.point);
@@ -286,6 +312,12 @@ const SceneContent: React.FC<SceneProps & { lockedAxis: 'x'|'y'|'z'|null, select
     const handlePipeClick = (e: ThreeEvent<MouseEvent>, pipe: PipeSegment) => {
         e.stopPropagation();
         
+        // Se estiver em modo de colagem, o clique confirma a colagem (tratado no global ou aqui se clicar num tubo existente)
+        if (pastePreview && onPasteConfirm) {
+             onPasteConfirm();
+             return;
+        }
+
         if (isQPressed) {
              onAddAnnotation?.(e.point);
         } else {
@@ -317,6 +349,39 @@ const SceneContent: React.FC<SceneProps & { lockedAxis: 'x'|'y'|'z'|null, select
             <Grid infiniteGrid fadeDistance={500} sectionColor="#475569" cellColor="#1e293b" position={[0, -0.01, 0]} onClick={handleGlobalClick} onPointerMove={handlePointerMove} />
             <axesHelper args={[2]} position={[-6, 0, -6]} />
 
+            {/* PASTE PREVIEW GHOSTS */}
+            {pastePreview && (
+                <group>
+                    {/* Invisible plane to catch mouse events everywhere during paste */}
+                    <mesh 
+                        visible={false} 
+                        rotation={[-Math.PI / 2, 0, 0]} 
+                        position={[0, 0, 0]} 
+                        onPointerMove={handlePastePointerMove}
+                        onClick={handleGlobalClick}
+                    >
+                        <planeGeometry args={[10000, 10000]} />
+                    </mesh>
+
+                    {pastePreview.map((pipe) => {
+                        // Calcular conexões virtuais para o preview? 
+                        // Por simplicidade, renderizamos apenas os segmentos retos fantasmas
+                        return (
+                            <PipeMesh 
+                                key={pipe.id} 
+                                data={pipe} 
+                                isSelected={false} 
+                                onSelect={() => {}} 
+                                customColor="#facc15" // Yellow ghost
+                                transparent={true}
+                                opacity={0.5}
+                            />
+                        )
+                    })}
+                </group>
+            )}
+
+
             {annotations.map(ann => (
                 <AnnotationMarker 
                     key={ann.id} 
@@ -331,7 +396,7 @@ const SceneContent: React.FC<SceneProps & { lockedAxis: 'x'|'y'|'z'|null, select
             {ghostPos && isQPressed && <GhostMarker position={ghostPos} />}
 
             {/* GIZMO DE TRANSFORMAÇÃO PARA MÚLTIPLOS OU ÚNICOS ITENS (TUBOS E ANOTAÇÕES) */}
-            {onMovePipes && selectedIds.length > 0 && !isDrawing && (
+            {onMovePipes && selectedIds.length > 0 && !isDrawing && !pastePreview && (
                 <MultiSelectControls 
                     selectedIds={selectedIds} 
                     pipes={pipes} 
@@ -393,7 +458,7 @@ const SceneContent: React.FC<SceneProps & { lockedAxis: 'x'|'y'|'z'|null, select
     );
 }
 
-const Scene: React.FC<SceneProps & { fixedLength?: boolean, onUndo?: ()=>void, onRedo?: ()=>void, colorMode?: 'STATUS'|'SPOOL', onMovePipes?: (d:any)=>void, onSetSelection?: (ids:string[])=>void }> = (props) => {
+const Scene: React.FC<SceneProps & { fixedLength?: boolean, onUndo?: ()=>void, onRedo?: ()=>void, colorMode?: 'STATUS'|'SPOOL', onMovePipes?: (d:any)=>void, onSetSelection?: (ids:string[])=>void, pastePreview?: PipeSegment[] | null, onPasteMove?: any, onPasteConfirm?: any }> = (props) => {
   const [lockedAxis, setLockedAxis] = useState<'x'|'y'|'z'|null>(null);
   const [selectionBox, setSelectionBox] = useState({ x: 0, y: 0, w: 0, h: 0, isSelecting: false, startX: 0, startY: 0 });
 
@@ -413,7 +478,8 @@ const Scene: React.FC<SceneProps & { fixedLength?: boolean, onUndo?: ()=>void, o
 
   // --- BOX SELECTION EVENT HANDLERS ON PARENT DIV ---
   const handleMouseDown = (e: React.MouseEvent) => {
-      if (props.isDrawing || e.button !== 0) return;
+      // Se estiver desenhando OU colando, não inicia box selection
+      if (props.isDrawing || props.pastePreview || e.button !== 0) return;
       
       const rect = e.currentTarget.getBoundingClientRect();
       const x = e.clientX - rect.left;
@@ -480,6 +546,8 @@ const Scene: React.FC<SceneProps & { fixedLength?: boolean, onUndo?: ()=>void, o
                     <p>Clique: Selecionar (Ctrl: Múltiplo)</p>
                     <p className="text-blue-400 font-bold">Arraste no fundo: Seleção em Caixa</p>
                     <p className="text-purple-400 font-bold">Segure Q + Clique: Marcar Obs.</p>
+                    <p>Ctrl + C: Copiar Seleção</p>
+                    <p>Ctrl + V: Colar (Mouse posiciona)</p>
                     <p>Ctrl + Z: Desfazer</p>
                     <p>Del: Excluir</p>
                     {props.colorMode === 'SPOOL' && <p className="text-green-400 font-bold mt-1">VISTA POR SPOOL ATIVA</p>}
@@ -495,8 +563,8 @@ const Scene: React.FC<SceneProps & { fixedLength?: boolean, onUndo?: ()=>void, o
       </div>
       <div className="flex-1 relative">
           <Canvas camera={{ position: [8, 8, 8], fov: 50, near: 0.1, far: 5000 }} shadows gl={{ preserveDrawingBuffer: true, antialias: true }} onPointerMissed={(e) => {
-              // Se clicar no vazio SEM arrastar (box w=0), limpa seleção
-              if (!props.isDrawing && !selectionBox.isSelecting && e.type === 'click') {
+              // Se clicar no vazio SEM arrastar (box w=0) e SEM colar, limpa seleção
+              if (!props.isDrawing && !selectionBox.isSelecting && !props.pastePreview && e.type === 'click') {
                   props.onSelectPipe(null);
               }
           }}>

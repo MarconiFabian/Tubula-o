@@ -6,7 +6,7 @@ import { DatabaseModal } from './components/DatabaseModal';
 import { saveProjectToDB, getAllProjects, deleteProjectFromDB } from './utils/db';
 import { INITIAL_PIPES, STATUS_LABELS, STATUS_COLORS, INSULATION_LABELS, PIPE_DIAMETERS, AVAILABLE_DIAMETERS } from './constants';
 import { PipeSegment, PipeStatus, Annotation, Accessory, AccessoryType } from './types';
-import { LayoutDashboard, Cuboid, PenTool, XCircle, FileDown, Save, FolderOpen, FilePlus, Loader2, MapPin, Database, Undo, Redo, Wrench, Grid as GridIcon, CircleDot, MousePointer2, Ruler, Calendar, Lock, User, LogOut, ChevronRight, UserPlus, ShieldAlert, Check, X, Users, CircleDashed } from 'lucide-react';
+import { LayoutDashboard, Cuboid, PenTool, XCircle, FileDown, Save, FolderOpen, FilePlus, Loader2, MapPin, Database, Undo, Redo, Wrench, Grid as GridIcon, CircleDot, MousePointer2, Ruler, Calendar, Lock, User, LogOut, ChevronRight, UserPlus, ShieldAlert, Check, X, Users, CircleDashed, Copy, ClipboardPaste } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
 
@@ -368,6 +368,11 @@ export default function App() {
   const [selectedDiameter, setSelectedDiameter] = useState<number>(PIPE_DIAMETERS['8"']);
   const [selectedDiameterLabel, setSelectedDiameterLabel] = useState<string>('8"');
 
+  // --- COPY / PASTE STATE ---
+  const [clipboard, setClipboard] = useState<PipeSegment[] | null>(null);
+  const [pastePreview, setPastePreview] = useState<PipeSegment[] | null>(null);
+  const [pasteCentroid, setPasteCentroid] = useState<{x:number, y:number, z:number} | null>(null);
+
   const [isExporting, setIsExporting] = useState(false);
   const [sceneScreenshot, setSceneScreenshot] = useState<string | null>(null);
   
@@ -423,6 +428,8 @@ export default function App() {
       setSecondaryImage(project.secondaryImage || null);
       setMapImage(project.mapImage || null);
       setSelectedIds([]);
+      setClipboard(null);
+      setPastePreview(null);
       setIsDBModalOpen(false);
   };
 
@@ -434,17 +441,22 @@ export default function App() {
   const selectedPipes = useMemo(() => pipes.filter(p => selectedIds.includes(p.id)), [pipes, selectedIds]);
 
   const handleSelectPipe = useCallback((id: string | null, multiSelect: boolean = false) => {
+      // If pasting, don't allow selection
+      if (pastePreview) return;
+
       if (id === null) {
           if (!multiSelect) setSelectedIds([]);
           return;
       }
       setSelectedIds(prev => multiSelect ? (prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]) : [id]);
-  }, []);
+  }, [pastePreview]);
   
   // NEW: Optimized batch selection handler
   const handleSetSelection = useCallback((ids: string[]) => {
+      // If pasting, don't allow selection
+      if (pastePreview) return;
       setSelectedIds(ids);
-  }, []);
+  }, [pastePreview]);
 
   // Annotations
   const handleAddAnnotation = (pos: {x:number, y:number, z:number}) => setAnnotations(prev => [...prev, { id: `A-${Date.now()}`, position: pos, text: '' }]);
@@ -501,13 +513,98 @@ export default function App() {
   };
 
   const handleDeleteSelected = useCallback(() => {
+      if (pastePreview) {
+          setPastePreview(null); // Cancel paste
+          return;
+      }
       // Deletar tubos
       setPipes(prev => prev.filter(p => !selectedIds.includes(p.id)));
       // Deletar anotações
       setAnnotations(prev => prev.filter(a => !selectedIds.includes(a.id)));
       
       setSelectedIds([]);
+  }, [selectedIds, pipes, pastePreview]);
+
+  // --- COPY / PASTE LOGIC ---
+  const handleCopy = useCallback(() => {
+      if (selectedIds.length === 0) return;
+      const toCopy = pipes.filter(p => selectedIds.includes(p.id));
+      if (toCopy.length === 0) return;
+      
+      // Calculate Centroid of copied group for relative positioning
+      let cx = 0, cy = 0, cz = 0;
+      let count = 0;
+      toCopy.forEach(p => {
+          cx += p.start.x + p.end.x;
+          cy += p.start.y + p.end.y;
+          cz += p.start.z + p.end.z;
+          count += 2;
+      });
+      
+      if (count > 0) {
+          setPasteCentroid({ x: cx/count, y: cy/count, z: cz/count });
+      }
+      
+      setClipboard(toCopy);
+      // alert(`Copiado ${toCopy.length} itens para área de transferência.`);
   }, [selectedIds, pipes]);
+
+  const handlePasteStart = useCallback(() => {
+      if (!clipboard || clipboard.length === 0 || !pasteCentroid) return;
+      
+      // Create preview instances (ghosts)
+      const preview = clipboard.map(p => ({
+          ...p,
+          id: `PREVIEW-${p.id}`,
+          status: 'PENDING' as PipeStatus, // Reset status
+          // Keeps original position initially, will be moved by mouse
+      }));
+      
+      setPastePreview(preview);
+      setSelectedIds([]); // Clear selection when pasting starts
+      setIsDrawing(false);
+  }, [clipboard, pasteCentroid]);
+
+  const handlePasteMove = useCallback((targetPos: {x:number, y:number, z:number}) => {
+      if (!pastePreview || !pasteCentroid) return;
+
+      const deltaX = targetPos.x - pasteCentroid.x;
+      const deltaY = targetPos.y - pasteCentroid.y;
+      const deltaZ = targetPos.z - pasteCentroid.z;
+
+      // Update positions relative to the cursor (which acts as the new centroid)
+      setPastePreview(prev => {
+          if(!prev) return null;
+          // We need to map from the ORIGINAL clipboard positions, not the current preview positions (to avoid drift)
+          // But since we updated preview state, we can't access original clipboard easily inside setter without dependency
+          // So we simply update based on clipboard state which is stable during paste operation
+          return clipboard!.map(p => ({
+              ...p,
+              id: `NEW-${p.id}-${Date.now()}`,
+              start: { x: p.start.x + deltaX, y: p.start.y + deltaY, z: p.start.z + deltaZ },
+              end: { x: p.end.x + deltaX, y: p.end.y + deltaY, z: p.end.z + deltaZ }
+          }));
+      });
+  }, [clipboard, pasteCentroid, pastePreview]);
+
+  const handlePasteConfirm = useCallback(() => {
+      if (!pastePreview) return;
+      
+      // Generate final unique IDs and add to main pipe list
+      const finalPipes = pastePreview.map(p => ({
+          ...p,
+          id: `P-${Math.floor(Math.random() * 1000000)}`,
+          name: `${p.name} (Cópia)`
+      }));
+      
+      setPipes(prev => [...prev, ...finalPipes]);
+      setPastePreview(null); // Exit paste mode
+      
+      // Select the newly pasted pipes
+      setSelectedIds(finalPipes.map(p => p.id));
+      
+  }, [pastePreview]);
+
 
   // Topology for table
   const pipesWithTopology = useMemo(() => {
@@ -523,17 +620,43 @@ export default function App() {
     });
   }, [pipes]);
 
-  // Keyboard Delete
+  // Keyboard Delete & Copy/Paste
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-        if (viewMode !== '3d' || isDrawing || selectedIds.length === 0) return;
         const target = e.target as HTMLElement;
         if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
-        if (e.key === 'Delete' || e.key === 'Backspace') handleDeleteSelected();
+        
+        // Delete
+        if (e.key === 'Delete' || e.key === 'Backspace') {
+            if (viewMode === '3d' && !isDrawing) handleDeleteSelected();
+        }
+
+        // Copy (Ctrl+C)
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') {
+            e.preventDefault();
+            handleCopy();
+        }
+
+        // Paste (Ctrl+V)
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') {
+            e.preventDefault();
+            if (pastePreview) {
+                // If already previewing, confirm paste
+                handlePasteConfirm();
+            } else {
+                // Start pasting
+                handlePasteStart();
+            }
+        }
+        
+        // Cancel (Esc)
+        if (e.key === 'Escape' && pastePreview) {
+            setPastePreview(null);
+        }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [viewMode, isDrawing, selectedIds, handleDeleteSelected]);
+  }, [viewMode, isDrawing, selectedIds, handleDeleteSelected, handleCopy, handlePasteStart, handlePasteConfirm, pastePreview]);
 
   const handleNewProject = () => {
       if (confirm("Criar novo projeto?")) {
@@ -863,7 +986,9 @@ export default function App() {
                         secondaryImage={secondaryImage}
                         mapImage={mapImage}
                         sceneScreenshot={sceneScreenshot}
-                        onSelectPipe={(id) => handleSelectPipe(id)}
+                        onSelectPipe={handleSelectPipe}
+                        selectedIds={selectedIds}
+                        onSetSelection={handleSetSelection}
                       />
                  </div>
 
@@ -889,6 +1014,22 @@ export default function App() {
                                              <button onClick={() => setColorMode('STATUS')} className={`px-3 py-1.5 text-xs font-bold rounded ${colorMode === 'STATUS' ? 'bg-slate-600 text-white' : 'text-slate-400'}`}>Status</button>
                                              <button onClick={() => setColorMode('SPOOL')} className={`px-3 py-1.5 text-xs font-bold rounded flex items-center gap-1 ${colorMode === 'SPOOL' ? 'bg-green-600 text-white' : 'text-slate-400'}`}><GridIcon size={14}/> Spools</button>
                                         </div>
+                                        
+                                        {/* Copy/Paste Indicators */}
+                                        {clipboard && clipboard.length > 0 && (
+                                            <div className="flex bg-slate-800 rounded-lg p-1 border border-slate-700 items-center px-3 gap-2">
+                                                <div className="text-[10px] text-slate-400 font-bold uppercase flex items-center gap-1">
+                                                    <ClipboardPaste size={12}/> Copiado ({clipboard.length})
+                                                </div>
+                                                <button onClick={handlePasteStart} className="text-xs bg-blue-600 text-white px-2 py-1 rounded font-bold hover:bg-blue-500">Colar (Ctrl+V)</button>
+                                            </div>
+                                        )}
+                                        {pastePreview && (
+                                            <div className="flex bg-yellow-900/50 border border-yellow-500/50 text-yellow-200 rounded-lg px-3 py-1 items-center gap-2 animate-pulse">
+                                                 <span className="text-xs font-bold">MODO COLAGEM</span>
+                                                 <span className="text-[10px]">Clique para fixar ou ESC cancelar</span>
+                                            </div>
+                                        )}
                                     </>
                                 )}
                                 {isDrawing && (
@@ -940,6 +1081,9 @@ export default function App() {
                                 onUndo={undo}
                                 onRedo={redo}
                                 colorMode={colorMode}
+                                pastePreview={pastePreview}
+                                onPasteMove={handlePasteMove}
+                                onPasteConfirm={handlePasteConfirm}
                             />
                         </div>
                     </div>
@@ -955,14 +1099,16 @@ export default function App() {
                                 secondaryImage={secondaryImage} onUploadSecondary={setSecondaryImage}
                                 mapImage={mapImage} onUploadMap={setMapImage}
                                 sceneScreenshot={sceneScreenshot}
-                                onSelectPipe={(id) => handleSelectPipe(id)}
+                                onSelectPipe={handleSelectPipe}
+                                selectedIds={selectedIds}
+                                onSetSelection={handleSetSelection}
                             />
                         </div>
                     </div>
                 )}
             </div>
 
-            {selectedPipes.length > 0 && !isDrawing && (
+            {selectedPipes.length > 0 && !isDrawing && !pastePreview && (
                 <div className="w-96 relative z-20 shadow-2xl border-l border-slate-700">
                     <Sidebar 
                         selectedPipes={selectedPipes}
