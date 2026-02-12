@@ -342,6 +342,11 @@ const SceneContent: React.FC<SceneProps & { lockedAxis: 'x'|'y'|'z'|null, select
                 mouseButtons={{LEFT: -1 as unknown as THREE.MOUSE, MIDDLE: THREE.MOUSE.ROTATE, RIGHT: THREE.MOUSE.PAN}} 
                 minDistance={0.1}
                 maxDistance={5000}
+                enableDamping={true} // Suaviza o movimento
+                dampingFactor={0.05} // Fator de amortecimento
+                zoomSpeed={1.5} // Zoom mais rápido
+                rotateSpeed={0.8}
+                panSpeed={0.8}
             />
             <ambientLight intensity={0.5} />
             <pointLight position={[10, 10, 10]} intensity={1} castShadow />
@@ -562,7 +567,7 @@ const Scene: React.FC<SceneProps & { fixedLength?: boolean, onUndo?: ()=>void, o
           </div>
       </div>
       <div className="flex-1 relative">
-          <Canvas camera={{ position: [8, 8, 8], fov: 50, near: 0.1, far: 5000 }} shadows gl={{ preserveDrawingBuffer: true, antialias: true }} onPointerMissed={(e) => {
+          <Canvas camera={{ position: [8, 8, 8], fov: 50, near: 0.05, far: 5000 }} shadows gl={{ preserveDrawingBuffer: true, antialias: true }} onPointerMissed={(e) => {
               // Se clicar no vazio SEM arrastar (box w=0) e SEM colar, limpa seleção
               if (!props.isDrawing && !selectionBox.isSelecting && !props.pastePreview && e.type === 'click') {
                   props.onSelectPipe(null);
