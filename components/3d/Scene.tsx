@@ -344,9 +344,9 @@ const SceneContent: React.FC<SceneProps & { lockedAxis: 'x'|'y'|'z'|null, select
                 maxDistance={5000}
                 enableDamping={true} // Suaviza o movimento
                 dampingFactor={0.05} // Fator de amortecimento
-                zoomSpeed={1.5} // Zoom mais rápido
+                zoomSpeed={2.5} // Zoom mais rápido
                 rotateSpeed={0.8}
-                panSpeed={0.8}
+                panSpeed={1.2}
             />
             <ambientLight intensity={0.5} />
             <pointLight position={[10, 10, 10]} intensity={1} castShadow />
