@@ -1,12 +1,13 @@
+
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import Scene from './components/3d/Scene';
 import Dashboard from './components/Dashboard';
 import Sidebar from './components/Sidebar';
 import { DatabaseModal } from './components/DatabaseModal';
 import { saveProjectToDB, getAllProjects, deleteProjectFromDB } from './utils/db';
-import { INITIAL_PIPES, STATUS_LABELS, STATUS_COLORS, INSULATION_LABELS, PIPE_DIAMETERS, AVAILABLE_DIAMETERS } from './constants';
+import { INITIAL_PIPES, STATUS_LABELS, STATUS_COLORS, INSULATION_LABELS, PIPE_DIAMETERS, AVAILABLE_DIAMETERS, ALL_STATUSES, ALL_INSULATION_STATUSES, INSULATION_COLORS } from './constants';
 import { PipeSegment, PipeStatus, Annotation, Accessory, AccessoryType } from './types';
-import { LayoutDashboard, Cuboid, PenTool, XCircle, FileDown, Save, FolderOpen, FilePlus, Loader2, MapPin, Database, Undo, Redo, Wrench, Grid as GridIcon, CircleDot, MousePointer2, Ruler, Calendar, Lock, User, LogOut, ChevronRight, UserPlus, ShieldAlert, Check, X, Users, CircleDashed, Copy, ClipboardPaste } from 'lucide-react';
+import { LayoutDashboard, Cuboid, PenTool, XCircle, FileDown, Save, FolderOpen, FilePlus, Loader2, MapPin, Database, Undo, Redo, Wrench, Grid as GridIcon, CircleDot, MousePointer2, Ruler, Calendar, Lock, User, LogOut, ChevronRight, UserPlus, ShieldAlert, Check, X, Users, CircleDashed, Copy, ClipboardPaste, Activity, Package, AlertCircle, Image as ImageIcon, Shield, Building2 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
 
@@ -53,7 +54,6 @@ const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen, onClo
                 </div>
 
                 <div className="p-6 overflow-y-auto space-y-6">
-                    {/* PENDING REQUESTS */}
                     <div>
                         <h3 className="text-yellow-400 font-bold uppercase text-xs tracking-wider mb-3 flex items-center gap-2">
                             <ShieldAlert size={14} /> Solicitações Pendentes ({pendingUsers.length})
@@ -77,10 +77,7 @@ const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen, onClo
                             </div>
                         )}
                     </div>
-
                     <div className="border-t border-slate-700"></div>
-
-                    {/* ACTIVE USERS */}
                     <div>
                         <h3 className="text-blue-400 font-bold uppercase text-xs tracking-wider mb-3 flex items-center gap-2">
                             <Check size={14} /> Usuários Ativos ({activeUsers.length})
@@ -128,9 +125,7 @@ const LoginScreen: React.FC<LoginProps> = ({ onLogin, users, onRegister }) => {
         e.preventDefault();
         setError('');
         setSuccessMsg('');
-
         if (isRegistering) {
-            // REGISTRATION LOGIC
             if (users.find(u => u.username.toLowerCase() === username.toLowerCase())) {
                 setError('Este nome de usuário já existe.');
                 return;
@@ -139,43 +134,26 @@ const LoginScreen: React.FC<LoginProps> = ({ onLogin, users, onRegister }) => {
                 setError('A senha deve ter pelo menos 4 caracteres.');
                 return;
             }
-
             const newUser: UserAccount = {
-                username,
-                password, // Note: In a real app, never store plain text passwords
-                role: 'USER',
-                status: 'PENDING',
-                createdAt: new Date().toISOString()
+                username, password, role: 'USER', status: 'PENDING', createdAt: new Date().toISOString()
             };
-
             onRegister(newUser);
             setSuccessMsg('Solicitação enviada! Aguarde a aprovação do administrador.');
             setIsRegistering(false);
-            setUsername('');
-            setPassword('');
+            setUsername(''); setPassword('');
         } else {
-            // LOGIN LOGIC
             const user = users.find(u => u.username === username && u.password === password);
-            
             if (user) {
-                if (user.status === 'APPROVED') {
-                    onLogin(user);
-                } else if (user.status === 'PENDING') {
-                    setError('Sua conta ainda está aguardando aprovação do administrador.');
-                } else {
-                    setError('Seu acesso foi negado pelo administrador.');
-                }
-            } else {
-                setError('Usuário ou senha incorretos.');
-            }
+                if (user.status === 'APPROVED') { onLogin(user); } 
+                else if (user.status === 'PENDING') { setError('Sua conta ainda está aguardando aprovação do administrador.'); } 
+                else { setError('Seu acesso foi negado pelo administrador.'); }
+            } else { setError('Usuário ou senha incorretos.'); }
         }
     };
 
     return (
         <div className="h-screen w-screen bg-slate-950 flex items-center justify-center relative overflow-hidden">
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-blue-900/20 via-slate-950 to-slate-950"></div>
-            <div className="absolute top-0 left-0 w-full h-full opacity-10 pointer-events-none" style={{backgroundImage: 'linear-gradient(#334155 1px, transparent 1px), linear-gradient(90deg, #334155 1px, transparent 1px)', backgroundSize: '40px 40px'}}></div>
-
             <div className="z-10 w-full max-w-md p-8 bg-slate-900/80 backdrop-blur-md rounded-2xl border border-slate-700 shadow-2xl animate-in fade-in zoom-in duration-500">
                 <div className="flex flex-col items-center mb-8">
                     <div className="bg-blue-600 p-4 rounded-xl shadow-lg shadow-blue-500/20 mb-4">
@@ -184,65 +162,30 @@ const LoginScreen: React.FC<LoginProps> = ({ onLogin, users, onRegister }) => {
                     <h1 className="text-2xl font-bold text-white tracking-tight">Isometrico Manager</h1>
                     <p className="text-slate-400 text-sm mt-1">Software por Marconi Fabian</p>
                 </div>
-
                 <h2 className="text-center text-white font-bold text-lg mb-4">{isRegistering ? 'Solicitar Acesso' : 'Login'}</h2>
-
-                {successMsg && (
-                    <div className="bg-green-500/10 border border-green-500/20 text-green-400 text-xs p-3 rounded-lg text-center font-bold mb-4">
-                        {successMsg}
-                    </div>
-                )}
-
+                {successMsg && <div className="bg-green-500/10 border border-green-500/20 text-green-400 text-xs p-3 rounded-lg text-center font-bold mb-4">{successMsg}</div>}
                 <form onSubmit={handleSubmit} className="space-y-4">
                     <div>
                         <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1 ml-1">Usuário</label>
                         <div className="relative">
                             <User className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
-                            <input 
-                                type="text" 
-                                value={username}
-                                onChange={(e) => setUsername(e.target.value)}
-                                className="w-full bg-slate-950 border border-slate-700 rounded-lg py-3 pl-10 pr-4 text-white placeholder-slate-600 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-                                placeholder="Digite seu usuário..."
-                                required
-                            />
+                            <input type="text" value={username} onChange={(e) => setUsername(e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded-lg py-3 pl-10 pr-4 text-white focus:ring-2 focus:ring-blue-500 outline-none transition-all" placeholder="Usuário" required />
                         </div>
                     </div>
-                    
                     <div>
                         <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1 ml-1">Senha</label>
                         <div className="relative">
                             <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
-                            <input 
-                                type="password" 
-                                value={password}
-                                onChange={(e) => setPassword(e.target.value)}
-                                className="w-full bg-slate-950 border border-slate-700 rounded-lg py-3 pl-10 pr-4 text-white placeholder-slate-600 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-                                placeholder="Digite sua senha..."
-                                required
-                            />
+                            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded-lg py-3 pl-10 pr-4 text-white focus:ring-2 focus:ring-blue-500 outline-none transition-all" placeholder="Senha" required />
                         </div>
                     </div>
-
-                    {error && (
-                        <div className="bg-red-500/10 border border-red-500/20 text-red-400 text-xs p-3 rounded-lg text-center font-bold">
-                            {error}
-                        </div>
-                    )}
-
-                    <button 
-                        type="submit" 
-                        className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-lg shadow-lg shadow-blue-600/20 transition-all flex items-center justify-center gap-2 group mt-2"
-                    >
+                    {error && <div className="bg-red-500/10 border border-red-500/20 text-red-400 text-xs p-3 rounded-lg text-center font-bold">{error}</div>}
+                    <button type="submit" className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-lg shadow-lg shadow-blue-600/20 transition-all flex items-center justify-center gap-2 group mt-2">
                         {isRegistering ? 'Enviar Solicitação' : 'Acessar Sistema'} <ChevronRight size={18} className="group-hover:translate-x-1 transition-transform" />
                     </button>
                 </form>
-
                 <div className="mt-6 text-center">
-                    <button 
-                        onClick={() => { setIsRegistering(!isRegistering); setError(''); setSuccessMsg(''); }}
-                        className="text-sm text-slate-400 hover:text-white underline underline-offset-4 transition-colors"
-                    >
+                    <button onClick={() => { setIsRegistering(!isRegistering); setError(''); setSuccessMsg(''); }} className="text-sm text-slate-400 hover:text-white underline underline-offset-4 transition-colors">
                         {isRegistering ? 'Já tenho conta? Fazer Login' : 'Não tem conta? Solicitar Acesso'}
                     </button>
                 </div>
@@ -251,17 +194,12 @@ const LoginScreen: React.FC<LoginProps> = ({ onLogin, users, onRegister }) => {
     );
 };
 
-// --- COMPLEX HISTORY HOOK (PIPES ONLY) ---
-interface ProjectState {
-    pipes: PipeSegment[];
-}
-
+// --- COMPLEX HISTORY HOOK ---
+interface ProjectState { pipes: PipeSegment[]; }
 function useProjectHistory(initialPipes: PipeSegment[]) {
     const [history, setHistory] = useState<ProjectState[]>([{ pipes: initialPipes }]);
     const [currentIndex, setCurrentIndex] = useState(0);
-
     const currentState = history[currentIndex];
-
     const pushState = (newState: ProjectState) => {
         const newHistory = history.slice(0, currentIndex + 1);
         newHistory.push(newState);
@@ -269,83 +207,45 @@ function useProjectHistory(initialPipes: PipeSegment[]) {
         setHistory(newHistory);
         setCurrentIndex(newHistory.length - 1);
     };
-
     const undo = () => { if (currentIndex > 0) setCurrentIndex(prev => prev - 1); };
     const redo = () => { if (currentIndex < history.length - 1) setCurrentIndex(prev => prev + 1); };
-
-    // Helpers to update specific parts while keeping history sync
     const setPipes = (newPipes: PipeSegment[] | ((prev: PipeSegment[]) => PipeSegment[])) => {
         const resolvedPipes = typeof newPipes === 'function' ? newPipes(currentState.pipes) : newPipes;
         pushState({ ...currentState, pipes: resolvedPipes });
     };
-
-    return {
-        pipes: currentState.pipes,
-        setPipes,
-        undo,
-        redo,
-        canUndo: currentIndex > 0,
-        canRedo: currentIndex < history.length - 1
-    };
+    return { pipes: currentState.pipes, setPipes, undo, redo, canUndo: currentIndex > 0, canRedo: currentIndex < history.length - 1 };
 }
 
 export default function App() {
-  // --- USER DATABASE & AUTH STATE ---
   const [userDB, setUserDB] = useState<UserAccount[]>(() => {
       try {
           const saved = localStorage.getItem('iso-manager-users');
           if (saved) return JSON.parse(saved);
-          // Default Seeding
           return [
               { username: 'Marconi Fabian', password: '2905', role: 'ADMIN', status: 'APPROVED', createdAt: new Date().toISOString() },
               { username: 'Inspetor', password: 'iso123', role: 'USER', status: 'APPROVED', createdAt: new Date().toISOString() }
           ];
-      } catch {
-          return [{ username: 'Marconi Fabian', password: '2905', role: 'ADMIN', status: 'APPROVED', createdAt: new Date().toISOString() }];
-      }
+      } catch { return [{ username: 'Marconi Fabian', password: '2905', role: 'ADMIN', status: 'APPROVED', createdAt: new Date().toISOString() }]; }
   });
-
   const [currentUser, setCurrentUser] = useState<UserAccount | null>(null);
   const [isAdminPanelOpen, setIsAdminPanelOpen] = useState(false);
+  useEffect(() => { localStorage.setItem('iso-manager-users', JSON.stringify(userDB)); }, [userDB]);
 
-  // Persist User DB
-  useEffect(() => {
-      localStorage.setItem('iso-manager-users', JSON.stringify(userDB));
-  }, [userDB]);
-
-  // Auth Handlers
-  const handleRegister = (newUser: UserAccount) => {
-      setUserDB(prev => [...prev, newUser]);
-  };
-
-  const handleApproveUser = (username: string) => {
-      setUserDB(prev => prev.map(u => u.username === username ? { ...u, status: 'APPROVED' } : u));
-  };
-
-  const handleRejectUser = (username: string) => {
-      setUserDB(prev => prev.map(u => u.username === username ? { ...u, status: 'REJECTED' } : u));
-  };
-
+  const handleRegister = (newUser: UserAccount) => setUserDB(prev => [...prev, newUser]);
+  const handleApproveUser = (username: string) => setUserDB(prev => prev.map(u => u.username === username ? { ...u, status: 'APPROVED' } : u));
+  const handleRejectUser = (username: string) => setUserDB(prev => prev.map(u => u.username === username ? { ...u, status: 'REJECTED' } : u));
   const handleDeleteUser = (username: string) => {
-      if (username === 'Marconi Fabian') {
-          alert("O Administrador principal não pode ser removido.");
-          return;
-      }
+      if (username === 'Marconi Fabian') return alert("O Administrador principal não pode ser removido.");
       setUserDB(prev => prev.filter(u => u.username !== username));
   };
 
-
-  // --- PROJECT STATE ---
   const initialPipes = useMemo(() => {
     try {
         const saved = localStorage.getItem('iso-manager-pipes');
         return saved ? JSON.parse(saved) : INITIAL_PIPES;
     } catch { return INITIAL_PIPES; }
   }, []);
-
-  // --- HISTORY STATE ---
   const { pipes, setPipes, undo, redo, canUndo, canRedo } = useProjectHistory(initialPipes);
-
   const [annotations, setAnnotations] = useState<Annotation[]>(() => {
     try {
         const saved = localStorage.getItem('iso-manager-annotations');
@@ -353,649 +253,366 @@ export default function App() {
     } catch { return []; }
   });
   
-  // Project Info
+  // Project Infos
   const [projectLocation, setProjectLocation] = useState('ÁREA / SETOR 01');
-  // New Activity Date State - Defaults to Today
+  const [projectClient, setProjectClient] = useState('VALE'); // Alterado para VALE como padrão
   const [activityDate, setActivityDate] = useState(new Date().toISOString().split('T')[0]);
-
-  // Selection & UI State
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [viewMode, setViewMode] = useState<'3d' | 'dashboard'>('3d');
   const [isDrawing, setIsDrawing] = useState(false);
-  const [isFixedLength, setIsFixedLength] = useState(false);
-  
-  // NEW: State for current diameter Selection
+  const [fixedLengthValue, setFixedLengthValue] = useState<number>(0);
   const [selectedDiameter, setSelectedDiameter] = useState<number>(PIPE_DIAMETERS['8"']);
   const [selectedDiameterLabel, setSelectedDiameterLabel] = useState<string>('8"');
-
-  // --- COPY / PASTE STATE ---
   const [clipboard, setClipboard] = useState<PipeSegment[] | null>(null);
   const [pastePreview, setPastePreview] = useState<PipeSegment[] | null>(null);
   const [pasteCentroid, setPasteCentroid] = useState<{x:number, y:number, z:number} | null>(null);
-
   const [isExporting, setIsExporting] = useState(false);
   const [sceneScreenshot, setSceneScreenshot] = useState<string | null>(null);
-  
-  // New UI States for Improvements
   const [colorMode, setColorMode] = useState<'STATUS' | 'SPOOL'>('STATUS');
-  
-  // Images
   const [secondaryImage, setSecondaryImage] = useState<string | null>(null);
   const [mapImage, setMapImage] = useState<string | null>(null);
-  
-  // Database UI
   const [isDBModalOpen, setIsDBModalOpen] = useState(false);
   const [savedProjects, setSavedProjects] = useState<any[]>([]);
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Auto-save (Draft)
-  useEffect(() => { localStorage.setItem('iso-manager-pipes', JSON.stringify(pipes)); }, [pipes]);
-  useEffect(() => { localStorage.setItem('iso-manager-annotations', JSON.stringify(annotations)); }, [annotations]);
-
-  // DB Load
-  useEffect(() => { if (isDBModalOpen) { getAllProjects().then(setSavedProjects); } }, [isDBModalOpen]);
-
-  // --- HANDLERS ---
-  const handleSwitchToDashboard = () => {
-      // Capture 3D Scene
-      const canvas = document.querySelector('canvas');
-      if (canvas) {
-          try {
-             // Scene.tsx uses preserveDrawingBuffer: true, so this works
-             const data = canvas.toDataURL('image/png');
-             setSceneScreenshot(data);
-          } catch(e) {
-              console.error("Failed to capture 3D scene", e);
-          }
-      }
-      setViewMode('dashboard');
-      setIsDrawing(false);
-  };
-
-  const handleDBAction_Save = async (name: string) => {
-      await saveProjectToDB({
-          id: crypto.randomUUID(), name, updatedAt: new Date(), pipes, annotations, location: projectLocation, secondaryImage, mapImage
-      });
-      alert('Salvo!');
-      getAllProjects().then(setSavedProjects);
-  };
-
-  const handleDBAction_Load = (project: any) => {
-      setPipes(project.pipes || []);
-      setAnnotations(project.annotations || []);
-      setProjectLocation(project.location || '');
-      setSecondaryImage(project.secondaryImage || null);
-      setMapImage(project.mapImage || null);
-      setSelectedIds([]);
-      setClipboard(null);
-      setPastePreview(null);
-      setIsDBModalOpen(false);
-  };
-
-  const handleDBAction_Delete = async (id: string) => {
-      await deleteProjectFromDB(id);
-      getAllProjects().then(setSavedProjects);
-  };
-
   const selectedPipes = useMemo(() => pipes.filter(p => selectedIds.includes(p.id)), [pipes, selectedIds]);
 
-  const handleSelectPipe = useCallback((id: string | null, multiSelect: boolean = false) => {
-      // If pasting, don't allow selection
-      if (pastePreview) return;
-
-      if (id === null) {
-          if (!multiSelect) setSelectedIds([]);
-          return;
-      }
-      setSelectedIds(prev => multiSelect ? (prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]) : [id]);
-  }, [pastePreview]);
-  
-  // NEW: Optimized batch selection handler
-  const handleSetSelection = useCallback((ids: string[]) => {
-      // If pasting, don't allow selection
-      if (pastePreview) return;
-      setSelectedIds(ids);
-  }, [pastePreview]);
-
-  // Annotations
-  const handleAddAnnotation = (pos: {x:number, y:number, z:number}) => setAnnotations(prev => [...prev, { id: `A-${Date.now()}`, position: pos, text: '' }]);
-  const handleUpdateAnnotation = (id: string, text: string) => setAnnotations(prev => prev.map(a => a.id === id ? { ...a, text } : a));
-  const handleDeleteAnnotation = (id: string) => setAnnotations(prev => prev.filter(a => a.id !== id));
-
-  // Pipes Logic
-  const handleUpdateSinglePipe = (updatedPipe: PipeSegment) => {
-    const length = Math.sqrt(Math.pow(updatedPipe.end.x - updatedPipe.start.x, 2) + Math.pow(updatedPipe.end.y - updatedPipe.start.y, 2) + Math.pow(updatedPipe.end.z - updatedPipe.start.z, 2));
-    setPipes(prev => prev.map(p => p.id === updatedPipe.id ? { ...updatedPipe, length } : p));
-  };
-
-  // MULTI-MOVE HANDLER: Moves all selected pipes AND annotations by a delta vector
-  const handleMovePipes = (delta: {x:number, y:number, z:number}) => {
-    // 1. Mover tubos selecionados
-    setPipes(prev => prev.map(p => {
-        if (selectedIds.includes(p.id)) {
-            const newStart = { x: p.start.x + delta.x, y: p.start.y + delta.y, z: p.start.z + delta.z };
-            const newEnd = { x: p.end.x + delta.x, y: p.end.y + delta.y, z: p.end.z + delta.z };
-            return { ...p, start: newStart, end: newEnd };
-        }
-        return p;
-    }));
-
-    // 2. Mover anotações selecionadas
-    setAnnotations(prev => prev.map(a => {
-        if (selectedIds.includes(a.id)) {
-            const newPos = { 
-                x: a.position.x + delta.x, 
-                y: a.position.y + delta.y, 
-                z: a.position.z + delta.z 
-            };
-            return { ...a, position: newPos };
-        }
-        return a;
-    }));
-  };
-
-  const handleBatchUpdate = (updates: Partial<PipeSegment>) => {
-      setPipes(prev => prev.map(p => selectedIds.includes(p.id) ? { ...p, ...updates } : p));
-  };
-
-  const handleAddPipe = (start: {x:number, y:number, z:number}, end: {x:number, y:number, z:number}) => {
-    const length = Math.sqrt(Math.pow(end.x - start.x, 2) + Math.pow(end.y - start.y, 2) + Math.pow(end.z - start.z, 2));
-    const newPipe: PipeSegment = {
-        id: `P-${Math.floor(Math.random() * 10000)}`,
-        name: `Nova Linha ${pipes.length + 1}`,
-        start, end, 
-        diameter: selectedDiameter, // Use selected diameter
-        status: 'PENDING' as PipeStatus, 
-        length
-    };
-    setPipes(prev => [...prev, newPipe]);
-  };
-
-  const handleDeleteSelected = useCallback(() => {
-      if (pastePreview) {
-          setPastePreview(null); // Cancel paste
-          return;
-      }
-      // Deletar tubos
-      setPipes(prev => prev.filter(p => !selectedIds.includes(p.id)));
-      // Deletar anotações
-      setAnnotations(prev => prev.filter(a => !selectedIds.includes(a.id)));
-      
-      setSelectedIds([]);
-  }, [selectedIds, pipes, pastePreview]);
-
-  // --- COPY / PASTE LOGIC ---
-  const handleCopy = useCallback(() => {
-      if (selectedIds.length === 0) return;
-      const toCopy = pipes.filter(p => selectedIds.includes(p.id));
-      if (toCopy.length === 0) return;
-      
-      // Calculate Centroid of copied group for relative positioning
-      let cx = 0, cy = 0, cz = 0;
-      let count = 0;
-      toCopy.forEach(p => {
-          cx += p.start.x + p.end.x;
-          cy += p.start.y + p.end.y;
-          cz += p.start.z + p.end.z;
-          count += 2;
+  const reportStats = useMemo(() => {
+      const totalLength = pipes.reduce((acc, p) => acc + (p?.length || 0), 0);
+      const totalPipes = pipes.length;
+      const pipeCounts: Record<string, number> = {};
+      ALL_STATUSES.forEach(s => pipeCounts[s] = 0);
+      pipes.forEach(p => { if (p.status) pipeCounts[p.status] = (pipeCounts[p.status] || 0) + 1; });
+      const insulationCounts: Record<string, number> = {};
+      ALL_INSULATION_STATUSES.forEach(s => insulationCounts[s] = 0);
+      pipes.forEach(p => { 
+          const status = p.insulationStatus || 'NONE';
+          insulationCounts[status] = (insulationCounts[status] || 0) + 1; 
       });
-      
-      if (count > 0) {
-          setPasteCentroid({ x: cx/count, y: cy/count, z: cz/count });
-      }
-      
-      setClipboard(toCopy);
-      // alert(`Copiado ${toCopy.length} itens para área de transferência.`);
-  }, [selectedIds, pipes]);
-
-  const handlePasteStart = useCallback(() => {
-      if (!clipboard || clipboard.length === 0 || !pasteCentroid) return;
-      
-      // Create preview instances (ghosts)
-      const preview = clipboard.map(p => ({
-          ...p,
-          id: `PREVIEW-${p.id}`,
-          status: 'PENDING' as PipeStatus, // Reset status
-          // Keeps original position initially, will be moved by mouse
-      }));
-      
-      setPastePreview(preview);
-      setSelectedIds([]); // Clear selection when pasting starts
-      setIsDrawing(false);
-  }, [clipboard, pasteCentroid]);
-
-  const handlePasteMove = useCallback((targetPos: {x:number, y:number, z:number}) => {
-      if (!pastePreview || !pasteCentroid) return;
-
-      const deltaX = targetPos.x - pasteCentroid.x;
-      const deltaY = targetPos.y - pasteCentroid.y;
-      const deltaZ = targetPos.z - pasteCentroid.z;
-
-      // Update positions relative to the cursor (which acts as the new centroid)
-      setPastePreview(prev => {
-          if(!prev) return null;
-          // We need to map from the ORIGINAL clipboard positions, not the current preview positions (to avoid drift)
-          // But since we updated preview state, we can't access original clipboard easily inside setter without dependency
-          // So we simply update based on clipboard state which is stable during paste operation
-          return clipboard!.map(p => ({
-              ...p,
-              id: `NEW-${p.id}-${Date.now()}`,
-              start: { x: p.start.x + deltaX, y: p.start.y + deltaY, z: p.start.z + deltaZ },
-              end: { x: p.end.x + deltaX, y: p.end.y + deltaY, z: p.end.z + deltaZ }
-          }));
+      const bom: Record<string, number> = {};
+      pipes.forEach(p => {
+          const inches = Math.round(p.diameter * 39.37);
+          const label = `${inches}"`;
+          bom[label] = (bom[label] || 0) + p.length;
       });
-  }, [clipboard, pasteCentroid, pastePreview]);
-
-  const handlePasteConfirm = useCallback(() => {
-      if (!pastePreview) return;
-      
-      // Generate final unique IDs and add to main pipe list
-      const finalPipes = pastePreview.map(p => ({
-          ...p,
-          id: `P-${Math.floor(Math.random() * 1000000)}`,
-          name: `${p.name} (Cópia)`
-      }));
-      
-      setPipes(prev => [...prev, ...finalPipes]);
-      setPastePreview(null); // Exit paste mode
-      
-      // Select the newly pasted pipes
-      setSelectedIds(finalPipes.map(p => p.id));
-      
-  }, [pastePreview]);
-
-
-  // Topology for table
-  const pipesWithTopology = useMemo(() => {
-    return pipes.map(pipe => {
-        let elbows = 0;
-        pipes.forEach(other => {
-            if (pipe.id === other.id) return;
-            const distStart = Math.hypot(pipe.start.x - other.end.x, pipe.start.y - other.end.y, pipe.start.z - other.end.z);
-            const distEnd = Math.hypot(pipe.end.x - other.start.x, pipe.end.y - other.start.y, pipe.end.z - other.start.z);
-            if (distStart < 0.1 || distEnd < 0.1) elbows++;
-        });
-        return { ...pipe, elbows };
-    });
+      const completedWeight = (pipeCounts['WELDED'] * 0.8) + (pipeCounts['HYDROTEST'] * 1.0) + (pipeCounts['MOUNTED'] * 0.3);
+      const progress = totalPipes > 0 ? (completedWeight / totalPipes) * 100 : 0;
+      return { pipeCounts, insulationCounts, total: totalPipes, totalLength, progress, bom };
   }, [pipes]);
 
-  // Keyboard Delete & Copy/Paste
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-        const target = e.target as HTMLElement;
-        if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
-        
-        // Delete
-        if (e.key === 'Delete' || e.key === 'Backspace') {
-            if (viewMode === '3d' && !isDrawing) handleDeleteSelected();
-        }
+  useEffect(() => { localStorage.setItem('iso-manager-pipes', JSON.stringify(pipes)); }, [pipes]);
+  useEffect(() => { localStorage.setItem('iso-manager-annotations', JSON.stringify(annotations)); }, [annotations]);
+  useEffect(() => { if (isDBModalOpen) { getAllProjects().then(setSavedProjects); } }, [isDBModalOpen]);
 
-        // Copy (Ctrl+C)
-        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') {
-            e.preventDefault();
-            handleCopy();
-        }
-
-        // Paste (Ctrl+V)
-        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') {
-            e.preventDefault();
-            if (pastePreview) {
-                // If already previewing, confirm paste
-                handlePasteConfirm();
-            } else {
-                // Start pasting
-                handlePasteStart();
-            }
-        }
-        
-        // Cancel (Esc)
-        if (e.key === 'Escape' && pastePreview) {
-            setPastePreview(null);
-        }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [viewMode, isDrawing, selectedIds, handleDeleteSelected, handleCopy, handlePasteStart, handlePasteConfirm, pastePreview]);
-
-  const handleNewProject = () => {
-      if (confirm("Criar novo projeto?")) {
-          setPipes([]); setAnnotations([]); setSelectedIds([]); setSecondaryImage(null); setMapImage(null); setProjectLocation('ÁREA / SETOR 01'); setActivityDate(new Date().toISOString().split('T')[0]);
-      }
+  const handleSwitchToDashboard = () => {
+      const canvas = document.querySelector('canvas');
+      if (canvas) { try { setSceneScreenshot(canvas.toDataURL('image/png')); } catch(e) { console.error(e); } }
+      setViewMode('dashboard'); setIsDrawing(false);
   };
 
-  // Helper Hex to RGB
-  const hexToRgb = (hex: string) => {
-      const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-      return result ? {
-        r: parseInt(result[1], 16),
-        g: parseInt(result[2], 16),
-        b: parseInt(result[3], 16)
-      } : { r: 150, g: 150, b: 150 };
-  }
-
-  // PDF Export
-  const handleExportPDF = async () => {
-    setIsExporting(true);
-    try {
-        const pdf = new jsPDF('p', 'mm', 'a4');
-        const pageWidth = pdf.internal.pageSize.getWidth();
-        const pageHeight = pdf.internal.pageSize.getHeight();
-        const margin = 10;
-        let currentY = 20;
-
-        // Formata a data de atividade para exibição (DD/MM/AAAA)
-        const formattedActivityDate = activityDate.split('-').reverse().join('/');
-
-        // 1. CAPTURE THE WHOLE DASHBOARD (KPIs, Charts, Images) from hidden container
-        const dashboardEl = document.getElementById('composed-dashboard-export');
-        // Wait just a bit for React to render the export component fully
-        await new Promise(r => setTimeout(r, 200));
-
-        if (dashboardEl) {
-             const canvas = await html2canvas(dashboardEl, {
-                 backgroundColor: '#0f172a', 
-                 scale: 1.5, // Good balance for A4
-                 width: 1920,
-                 windowWidth: 1920
-             });
-             const imgData = canvas.toDataURL('image/png');
-             const imgProps = pdf.getImageProperties(imgData);
-             const pdfImgWidth = pageWidth; // Full width
-             const pdfImgHeight = (imgProps.height * pdfImgWidth) / imgProps.width;
-             
-             // Cover Page / Main Dashboard
-             pdf.addImage(imgData, 'PNG', 0, 0, pdfImgWidth, pdfImgHeight);
-             
-             // Move cursor below image for next items if image is small, otherwise new page
-             if (pdfImgHeight > pageHeight - 30) {
-                pdf.addPage();
-                currentY = 20;
-             } else {
-                currentY = pdfImgHeight + 10;
-             }
-        }
-
-        // 2. TITLE FOR DETAIL SECTION
-        if (currentY + 20 > pageHeight) { pdf.addPage(); currentY = 20; }
-        
-        // --- CREDIT HEADER FOR DETAIL PAGES ---
-        pdf.setFontSize(9);
-        pdf.setTextColor(100, 100, 100);
-        pdf.text('Isometrico Manager - Software desenvolvido por Marconi Fabian', margin, currentY);
-        currentY += 6;
-
-        pdf.setFontSize(16);
-        pdf.setTextColor(0,0,0);
-        pdf.text('Relatório de Rastreabilidade de Spools', margin, currentY);
-        currentY += 8;
-        pdf.setFontSize(12);
-        pdf.text(`Local: ${projectLocation}`, margin, currentY);
-        currentY += 6;
-        // Adding Activity Date to Detail Pages Header as well
-        pdf.setFontSize(10);
-        pdf.setTextColor(80, 80, 80);
-        pdf.text(`Data Atividade: ${formattedActivityDate}`, margin, currentY);
-        currentY += 10;
-
-        // 3. TABLE HEADER
-        pdf.setFontSize(9);
-        pdf.setFillColor(240, 240, 240);
-        pdf.rect(margin, currentY, pageWidth - (margin * 2), 8, 'F');
-        pdf.setTextColor(0, 0, 0);
-        pdf.setFont(undefined, 'bold');
-        
-        const col1 = margin + 2;
-        const col2 = margin + 25; // Spool
-        const col3 = margin + 50; // Nome
-        const col4 = margin + 110; // Comp
-        const col5 = margin + 135; // Status
-        const col6 = margin + 165; // Weld Info (Combined)
-
-        pdf.text("ID", col1, currentY + 5);
-        pdf.text("Spool", col2, currentY + 5);
-        pdf.text("Nome/Linha", col3, currentY + 5);
-        pdf.text("Comp (m)", col4, currentY + 5);
-        pdf.text("Status Tub.", col5, currentY + 5);
-        pdf.text("Inspetor/Data", col6, currentY + 5);
-        
-        pdf.setFont(undefined, 'normal');
-        currentY += 10;
-
-        // 4. TABLE ROWS
-        pipes.forEach((pipe, index) => {
-            if (currentY > pageHeight - 15) {
-                pdf.addPage();
-                currentY = 20;
-                
-                // Header on new page
-                pdf.setFontSize(9);
-                pdf.setTextColor(100, 100, 100);
-                pdf.text('Isometrico Manager - Software desenvolvido por Marconi Fabian', margin, currentY);
-                currentY += 6;
-
-                pdf.setFillColor(240, 240, 240);
-                pdf.rect(margin, currentY, pageWidth - (margin * 2), 8, 'F');
-                pdf.setTextColor(0, 0, 0);
-                pdf.setFont(undefined, 'bold');
-                pdf.text("ID", col1, currentY + 5);
-                pdf.text("Spool", col2, currentY + 5);
-                pdf.text("Nome/Linha", col3, currentY + 5);
-                pdf.text("Comp (m)", col4, currentY + 5);
-                pdf.text("Status Tub.", col5, currentY + 5);
-                pdf.text("Inspetor/Data", col6, currentY + 5);
-                pdf.setFont(undefined, 'normal');
-                currentY += 10;
-            }
-            
-            const statusLabel = STATUS_LABELS[pipe.status] || pipe.status;
-            const statusColorHex = STATUS_COLORS[pipe.status] || '#999999';
-            const rgb = hexToRgb(statusColorHex);
-            
-            // Weld Info Formatted (Now treated as Inspector)
-            const welder = pipe.welderInfo?.welderId || '-';
-            const weldDate = pipe.welderInfo?.weldDate ? new Date(pipe.welderInfo.weldDate).toLocaleDateString() : '-';
-            const weldText = welder !== '-' ? `${welder} (${weldDate})` : '-';
-
-            pdf.setTextColor(0,0,0);
-            pdf.setFontSize(8);
-
-            // Row Data
-            pdf.text(pipe.id, col1, currentY);
-            pdf.text(pipe.spoolId || '-', col2, currentY);
-            pdf.text(pipe.name.substring(0, 25), col3, currentY);
-            pdf.text(pipe.length.toFixed(2), col4, currentY);
-
-            // --- STATUS BADGE (DRAWN BEHIND TEXT) ---
-            pdf.setFillColor(rgb.r, rgb.g, rgb.b);
-            // Draw a rounded rectangle background for status
-            // Adjust x and width to fit text
-            const badgeWidth = pdf.getTextWidth(statusLabel) + 4;
-            pdf.roundedRect(col5 - 1, currentY - 3, badgeWidth, 5, 1, 1, 'F');
-            
-            // Draw Status Text in White
-            pdf.setTextColor(255, 255, 255);
-            pdf.setFont(undefined, 'bold');
-            pdf.text(statusLabel, col5 + 1, currentY);
-
-            // Reset text color for rest of row
-            pdf.setTextColor(0, 0, 0);
-            pdf.setFont(undefined, 'normal');
-            
-            pdf.text(weldText, col6, currentY);
-            
-            // Divider Line
-            pdf.setDrawColor(230, 230, 230);
-            pdf.line(margin, currentY + 2, pageWidth - margin, currentY + 2);
-
-            currentY += 7;
-        });
-
-        // Final footer check if space allows, otherwise last page
-        if (currentY + 20 < pageHeight) {
-             pdf.setFontSize(8);
-             pdf.setTextColor(150, 150, 150);
-             pdf.text('Isometrico Manager - Software desenvolvido por Marconi Fabian', margin, pageHeight - 10);
-        }
-
-        pdf.save('relatorio-pipe-tracking.pdf');
-
-    } catch (err) {
-        console.error("Erro ao gerar PDF:", err);
-        alert("Erro ao gerar PDF.");
-    } finally {
-        setIsExporting(false);
+  const handleNewProject = () => {
+    if (confirm('Deseja iniciar um novo projeto? Os dados atuais não salvos no banco de dados serão perdidos.')) {
+      setPipes([]); setAnnotations([]); setSelectedIds([]); setSecondaryImage(null); setMapImage(null); setProjectLocation('ÁREA / SETOR 01'); setProjectClient('VALE');
     }
   };
 
-  const getStatusColor = (s:string) => STATUS_COLORS[s] || '#ccc';
+  const handleDBAction_Save = async (name: string) => {
+      await saveProjectToDB({ id: crypto.randomUUID(), name, updatedAt: new Date(), pipes, annotations, location: projectLocation, client: projectClient, secondaryImage, mapImage });
+      alert('Salvo!'); getAllProjects().then(setSavedProjects);
+  };
+  const handleDBAction_Load = (project: any) => {
+      setPipes(project.pipes || []); setAnnotations(project.annotations || []); setProjectLocation(project.location || '');
+      setProjectClient(project.client || 'VALE');
+      setSecondaryImage(project.secondaryImage || null); setMapImage(project.mapImage || null);
+      setSelectedIds([]); setClipboard(null); setPastePreview(null); setIsDBModalOpen(false);
+  };
+  const handleDBAction_Delete = async (id: string) => { await deleteProjectFromDB(id); getAllProjects().then(setSavedProjects); };
 
-  // --- RETURN LOGIN SCREEN IF NOT AUTHENTICATED ---
-  if (!currentUser) {
-      return (
-          <LoginScreen 
-            onLogin={setCurrentUser} 
-            users={userDB}
-            onRegister={handleRegister}
-          />
-      );
-  }
+  const handleSelectPipe = useCallback((id: string | null, multi: boolean = false) => {
+      if (pastePreview) return;
+      if (id === null) { if (!multi) setSelectedIds([]); return; }
+      setSelectedIds(prev => multi ? (prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]) : [id]);
+  }, [pastePreview]);
+  const handleSetSelection = useCallback((ids: string[]) => { if (!pastePreview) setSelectedIds(ids); }, [pastePreview]);
+
+  const handleAddAnnotation = (pos: {x:number, y:number, z:number}) => setAnnotations(prev => [...prev, { id: `A-${Date.now()}`, position: pos, text: '' }]);
+  const handleUpdateAnnotation = (id: string, text: string) => setAnnotations(prev => prev.map(a => a.id === id ? { ...a, text } : a));
+  const handleDeleteAnnotation = (id: string) => setAnnotations(prev => prev.filter(a => a.id !== id));
+  const handleUpdateSinglePipe = (p: PipeSegment) => {
+    const length = Math.sqrt(Math.pow(p.end.x - p.start.x, 2) + Math.pow(p.end.y - p.start.y, 2) + Math.pow(p.end.z - p.start.z, 2));
+    setPipes(prev => prev.map(old => old.id === p.id ? { ...p, length } : old));
+  };
+  const handleMovePipes = (delta: {x:number, y:number, z:number}) => {
+    setPipes(prev => prev.map(p => selectedIds.includes(p.id) ? { ...p, start: {x:p.start.x+delta.x, y:p.start.y+delta.y, z:p.start.z+delta.z}, end: {x:p.end.x+delta.x, y:p.end.y+delta.y, z:p.end.z+delta.z} } : p));
+    setAnnotations(prev => prev.map(a => selectedIds.includes(a.id) ? { ...a, position: {x:a.position.x+delta.x, y:a.position.y+delta.y, z:a.position.z+delta.z} } : a));
+  };
+  const handleBatchUpdate = (u: Partial<PipeSegment>) => setPipes(prev => prev.map(p => selectedIds.includes(p.id) ? { ...p, ...u } : p));
+  const handleAddPipe = (start: any, end: any) => {
+    const length = Math.sqrt(Math.pow(end.x-start.x, 2)+Math.pow(end.y-start.y, 2)+Math.pow(end.z-start.z, 2));
+    const newP: PipeSegment = { id: `P-${Math.floor(Math.random()*10000)}`, name: `Nova Linha ${pipes.length+1}`, start, end, diameter: selectedDiameter, status: 'PENDING' as PipeStatus, length };
+    setPipes(prev => [...prev, newP]);
+  };
+  const handleDeleteSelected = useCallback(() => {
+      if (pastePreview) return setPastePreview(null);
+      setPipes(prev => prev.filter(p => !selectedIds.includes(p.id)));
+      setAnnotations(prev => prev.filter(a => !selectedIds.includes(a.id)));
+      setSelectedIds([]);
+  }, [selectedIds, pastePreview]);
+
+  const handleCopy = useCallback(() => {
+      const toCopy = pipes.filter(p => selectedIds.includes(p.id));
+      if (toCopy.length === 0) return;
+      let cx=0, cy=0, cz=0, count=0;
+      toCopy.forEach(p => { cx+=p.start.x+p.end.x; cy+=p.start.y+p.end.y; cz+=p.start.z+p.end.z; count+=2; });
+      if (count>0) setPasteCentroid({ x:cx/count, y:cy/count, z:cz/count });
+      setClipboard(toCopy);
+  }, [selectedIds, pipes]);
+  const handlePasteStart = useCallback(() => {
+      if (!clipboard || !pasteCentroid) return;
+      setPastePreview(clipboard.map(p => ({ ...p, id: `PREVIEW-${p.id}`, status: 'PENDING' as PipeStatus })));
+      setSelectedIds([]); setIsDrawing(false);
+  }, [clipboard, pasteCentroid]);
+  const handlePasteMove = useCallback((target: any) => {
+      if (!pastePreview || !pasteCentroid) return;
+      const dx=target.x-pasteCentroid.x, dy=target.y-pasteCentroid.y, dz=target.z-pasteCentroid.z;
+      setPastePreview(clipboard!.map(p => ({ ...p, id: `NEW-${p.id}-${Date.now()}`, start: {x:p.start.x+dx, y:p.start.y+dy, z:p.start.z+dz}, end: {x:p.end.x+dx, y:p.end.y+dy, z:p.end.z+dz} })));
+  }, [clipboard, pasteCentroid, pastePreview]);
+  const handlePasteConfirm = useCallback(() => {
+      if (!pastePreview) return;
+      const final = pastePreview.map(p => ({ ...p, id: `P-${Math.floor(Math.random()*1000000)}`, name: `${p.name} (Cópia)` }));
+      setPipes(prev => [...prev, ...final]); setPastePreview(null); setSelectedIds(final.map(p => p.id));
+  }, [pastePreview]);
+
+  const handleExportPDF = async () => {
+    setIsExporting(true);
+    try {
+        if (viewMode === '3d') {
+            const canvas = document.querySelector('canvas');
+            if (canvas) setSceneScreenshot(canvas.toDataURL('image/png'));
+            await new Promise(r => setTimeout(r, 200));
+        }
+        const pdf = new jsPDF('p', 'mm', 'a4');
+        const pageWidth = pdf.internal.pageSize.getWidth(), pageHeight = pdf.internal.pageSize.getHeight(), margin = 10;
+        let currentY = 20;
+
+        const dashboardEl = document.getElementById('composed-dashboard-export');
+        await new Promise(r => setTimeout(r, 600));
+        if (dashboardEl) {
+             const canvas = await html2canvas(dashboardEl, { backgroundColor: '#0f172a', scale: 1.5, width: 1920, windowWidth: 1920 });
+             const imgData = canvas.toDataURL('image/png');
+             const imgProps = pdf.getImageProperties(imgData);
+             const pdfImgWidth = pageWidth;
+             const pdfImgHeight = (imgProps.height * pdfImgWidth) / imgProps.width;
+             pdf.addImage(imgData, 'PNG', 0, 0, pdfImgWidth, pdfImgHeight);
+             if (pdfImgHeight > pageHeight - 30) { pdf.addPage(); currentY = 20; } else { currentY = pdfImgHeight + 10; }
+        }
+
+        if (currentY + 20 > pageHeight) { pdf.addPage(); currentY = 20; }
+        pdf.setFontSize(9); pdf.setTextColor(100); pdf.text('Isometrico Manager - Software desenvolvido por Marconi Fabian', margin, currentY); currentY += 6;
+        pdf.setFontSize(16); pdf.setTextColor(0); pdf.text('Relatório de Rastreabilidade Detalhada', margin, currentY); currentY += 8;
+        pdf.setFontSize(12); pdf.text(`Local: ${projectLocation} | Cliente: ${projectClient} | Data: ${activityDate.split('-').reverse().join('/')}`, margin, currentY); currentY += 10;
+
+        pdf.setFontSize(9); pdf.setFillColor(240); pdf.rect(margin, currentY, pageWidth - (margin * 2), 8, 'F');
+        pdf.setTextColor(0); pdf.setFont(undefined, 'bold');
+        const col1 = margin + 2, col2 = margin + 22, col3 = margin + 47, col4 = margin + 102, col5 = margin + 120, col6 = margin + 145, col7 = margin + 170;
+        pdf.text("ID", col1, currentY + 5); pdf.text("Spool", col2, currentY + 5); pdf.text("Linha/Desc", col3, currentY + 5); pdf.text("Comp(m)", col4, currentY + 5); pdf.text("Status", col5, currentY + 5); pdf.text("Isolamento", col6, currentY + 5); pdf.text("Insp/Data", col7, currentY + 5);
+        pdf.setFont(undefined, 'normal'); currentY += 10;
+
+        pipes.forEach((pipe) => {
+            if (currentY > pageHeight - 15) { pdf.addPage(); currentY = 20; pdf.setFillColor(240); pdf.rect(margin, currentY, pageWidth - (margin * 2), 8, 'F'); pdf.setFont(undefined, 'bold'); pdf.text("ID", col1, currentY+5); pdf.text("Status", col5, currentY+5); pdf.setFont(undefined, 'normal'); currentY += 10; }
+            const statusLabel = STATUS_LABELS[pipe.status] || pipe.status, statusRgb = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(STATUS_COLORS[pipe.status] || '#999')!;
+            const insLabel = INSULATION_LABELS[pipe.insulationStatus || 'NONE'], insColor = INSULATION_COLORS[pipe.insulationStatus || 'NONE'] === 'transparent' ? '#94a3b8' : INSULATION_COLORS[pipe.insulationStatus || 'NONE'];
+            const welder = pipe.welderInfo?.welderId || '-', weldDate = pipe.welderInfo?.weldDate ? new Date(pipe.welderInfo.weldDate).toLocaleDateString() : '-';
+            pdf.setTextColor(0); pdf.setFontSize(8); pdf.text(pipe.id, col1, currentY); pdf.text(pipe.spoolId || '-', col2, currentY); pdf.text(pipe.name.substring(0, 22), col3, currentY); pdf.text(pipe.length.toFixed(2), col4, currentY);
+            pdf.setFillColor(parseInt(statusRgb[1],16), parseInt(statusRgb[2],16), parseInt(statusRgb[3],16)); pdf.roundedRect(col5-1, currentY-3, pdf.getTextWidth(statusLabel)+4, 5, 1, 1, 'F'); pdf.setTextColor(255); pdf.setFont(undefined, 'bold'); pdf.text(statusLabel, col5+1, currentY);
+            pdf.setTextColor(0); pdf.setFont(undefined, 'normal'); pdf.text(insLabel, col6, currentY); pdf.text(`${welder}(${weldDate})`, col7, currentY);
+            pdf.setDrawColor(230); pdf.line(margin, currentY + 2, pageWidth - margin, currentY + 2); currentY += 7;
+        });
+        pdf.save('relatorio-pipe-tracking.pdf');
+    } catch (err) { console.error(err); alert("Erro ao gerar PDF."); } finally { setIsExporting(false); }
+  };
+
+  if (!currentUser) return <LoginScreen onLogin={setCurrentUser} users={userDB} onRegister={handleRegister} />;
 
   return (
     <div className="h-screen w-screen bg-slate-950 text-slate-100 flex flex-col overflow-hidden font-sans">
         <DatabaseModal isOpen={isDBModalOpen} onClose={() => setIsDBModalOpen(false)} projects={savedProjects} onSave={handleDBAction_Save} onLoad={handleDBAction_Load} onDelete={handleDBAction_Delete} />
-        
-        {/* ADMIN USER MANAGEMENT */}
-        <UserManagementModal 
-            isOpen={isAdminPanelOpen}
-            onClose={() => setIsAdminPanelOpen(false)}
-            users={userDB}
-            onApprove={handleApproveUser}
-            onReject={handleRejectUser}
-            onDelete={handleDeleteUser}
-        />
+        <UserManagementModal isOpen={isAdminPanelOpen} onClose={() => setIsAdminPanelOpen(false)} users={userDB} onApprove={handleApproveUser} onReject={handleRejectUser} onDelete={handleDeleteUser} />
 
         <header className="h-16 bg-slate-900 border-b border-slate-800 px-6 flex items-center justify-between z-50">
             <div className="flex items-center gap-6">
                 <div className="flex items-center gap-3">
                     <div className="bg-blue-600 p-2 rounded-lg"><Cuboid className="text-white" size={24} /></div>
-                    <div>
-                        <h1 className="font-bold text-xl leading-none">Isometrico Manager</h1>
-                        <p className="text-[10px] text-slate-400">Software desenvolvido por Marconi Fabian</p>
-                    </div>
+                    <div><h1 className="font-bold text-xl leading-none">Isometrico Manager</h1><p className="text-[10px] text-slate-400">Software por Marconi Fabian</p></div>
                 </div>
                 
-                {/* LOCATION & DATE INPUTS */}
+                {/* ÁREA DE CABEÇALHO COM CLIENTE, LOCAL E DATA */}
                 <div className="flex items-center gap-2 bg-slate-800/50 p-1.5 px-3 rounded-lg border border-slate-700/50">
-                     <div className="flex flex-col justify-center">
-                        <label className="text-[9px] font-bold text-slate-500 uppercase leading-none mb-0.5 flex items-center gap-1"><MapPin size={10} /> Local</label>
-                        <input type="text" value={projectLocation} onChange={(e) => setProjectLocation(e.target.value)} className="text-sm font-bold bg-transparent border-none text-white focus:ring-0 w-48 lg:w-64 p-0 leading-none uppercase" />
+                     {/* CAMPO CLIENTE */}
+                     <div className="flex flex-col">
+                        <label className="text-[9px] font-bold text-slate-500 uppercase flex items-center gap-1"><Building2 size={10} /> Cliente</label>
+                        <input type="text" value={projectClient} onChange={(e) => setProjectClient(e.target.value)} className="text-sm font-bold bg-transparent border-none text-white focus:ring-0 w-32 uppercase p-0 leading-tight" placeholder="NOME DO CLIENTE" />
                      </div>
-                     
                      <div className="h-8 w-px bg-slate-700/50 mx-2"></div>
                      
-                     <div className="flex flex-col justify-center">
-                        <label className="text-[9px] font-bold text-slate-500 uppercase leading-none mb-0.5 flex items-center gap-1"><Calendar size={10} /> Data Atividade</label>
-                        <input 
-                            type="date" 
-                            value={activityDate} 
-                            onChange={(e) => setActivityDate(e.target.value)} 
-                            className="text-sm font-bold bg-transparent border-none text-white focus:ring-0 p-0 leading-none w-auto [color-scheme:dark]" 
-                        />
+                     {/* CAMPO LOCAL */}
+                     <div className="flex flex-col">
+                        <label className="text-[9px] font-bold text-slate-500 uppercase flex items-center gap-1"><MapPin size={10} /> Local</label>
+                        <input type="text" value={projectLocation} onChange={(e) => setProjectLocation(e.target.value)} className="text-sm font-bold bg-transparent border-none text-white focus:ring-0 w-48 uppercase p-0 leading-tight" placeholder="ÁREA / SETOR" />
+                     </div>
+                     <div className="h-8 w-px bg-slate-700/50 mx-2"></div>
+                     
+                     {/* CAMPO DATA */}
+                     <div className="flex flex-col">
+                        <label className="text-[9px] font-bold text-slate-500 uppercase flex items-center gap-1"><Calendar size={10} /> Data Atividade</label>
+                        <input type="date" value={activityDate} onChange={(e) => setActivityDate(e.target.value)} className="text-sm font-bold bg-transparent border-none text-white focus:ring-0 p-0 [color-scheme:dark] leading-tight" />
                      </div>
                 </div>
             </div>
             
             <div className="flex items-center gap-3">
-                {/* USER INFO */}
-                <div className="hidden md:flex flex-col items-end mr-2">
-                    <span className="text-xs text-slate-400 font-bold uppercase tracking-wider">Logado como:</span>
-                    <span className="text-sm font-bold text-blue-400 leading-none flex items-center gap-1">
-                        {currentUser.role === 'ADMIN' && <ShieldAlert size={12} className="text-purple-400"/>}
-                        {currentUser.username}
-                    </span>
-                </div>
-
-                {/* ADMIN BUTTON */}
-                {currentUser.role === 'ADMIN' && (
-                    <>
-                        <button 
-                            onClick={() => setIsAdminPanelOpen(true)}
-                            className="p-2 bg-purple-900/40 hover:bg-purple-800 border border-purple-500/30 rounded-lg text-purple-300 transition-colors relative"
-                            title="Gerenciar Usuários"
-                        >
-                            <Users size={18} />
-                            {userDB.filter(u => u.status === 'PENDING').length > 0 && (
-                                <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-pulse border border-black"></span>
-                            )}
-                        </button>
-                        <div className="h-6 w-px bg-slate-700 mx-1"></div>
-                    </>
-                )}
-
-                <button 
-                    onClick={() => setCurrentUser(null)} 
-                    className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-red-400 transition-colors mr-2 border border-transparent hover:border-slate-700" 
-                    title="Sair"
-                >
-                    <LogOut size={18} />
-                </button>
+                <div className="hidden md:flex flex-col items-end mr-2"><span className="text-xs text-slate-400 font-bold uppercase">Logado:</span>
+                <span className="text-sm font-bold text-blue-400 leading-none">{currentUser.username}</span></div>
+                {currentUser.role === 'ADMIN' && <button onClick={() => setIsAdminPanelOpen(true)} className="p-2 bg-purple-900/40 border border-purple-500/30 rounded-lg text-purple-300 relative"><Users size={18} />{userDB.filter(u=>u.status==='PENDING').length>0 && <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-pulse border border-black"></span>}</button>}
+                <button onClick={() => setCurrentUser(null)} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-red-400 transition-colors"><LogOut size={18} /></button>
                 <div className="h-6 w-px bg-slate-700 mx-1"></div>
-
-                <div className="flex gap-1 mr-2">
-                    <button onClick={undo} disabled={!canUndo} className="p-2 hover:bg-slate-800 rounded text-slate-400 hover:text-white disabled:opacity-30"><Undo size={18}/></button>
-                    <button onClick={redo} disabled={!canRedo} className="p-2 hover:bg-slate-800 rounded text-slate-400 hover:text-white disabled:opacity-30"><Redo size={18}/></button>
-                </div>
                 <button onClick={() => setIsDBModalOpen(true)} className="flex items-center gap-2 bg-blue-900/40 hover:bg-blue-800 text-blue-300 border border-blue-500/30 px-4 py-2 rounded-lg font-bold"><Database size={18} /> Projetos</button>
-                <div className="h-6 w-px bg-slate-700 mx-1"></div>
                 <div className="bg-slate-800 p-1 rounded-lg flex gap-1 border border-slate-700">
-                    <button onClick={() => { setViewMode('3d'); setIsDrawing(false); }} className={`px-3 py-1.5 text-sm font-bold rounded flex gap-2 items-center ${viewMode === '3d' && !isDrawing ? 'bg-slate-700 text-blue-400' : 'text-slate-400 hover:text-white'}`}><Cuboid size={16}/> 3D</button>
-                    <button onClick={handleSwitchToDashboard} className={`px-3 py-1.5 text-sm font-bold rounded flex gap-2 items-center ${viewMode === 'dashboard' ? 'bg-slate-700 text-blue-400' : 'text-slate-400 hover:text-white'}`}><LayoutDashboard size={16}/> Painel</button>
+                    <button onClick={() => { setViewMode('3d'); setIsDrawing(false); }} className={`px-3 py-1.5 text-sm font-bold rounded ${viewMode === '3d' && !isDrawing ? 'bg-slate-700 text-blue-400' : 'text-slate-400 hover:text-white'}`}><Cuboid size={16}/></button>
+                    <button onClick={handleSwitchToDashboard} className={`px-3 py-1.5 text-sm font-bold rounded ${viewMode === 'dashboard' ? 'bg-slate-700 text-blue-400' : 'text-slate-400 hover:text-white'}`}><LayoutDashboard size={16}/></button>
                 </div>
-                <div className="h-6 w-px bg-slate-700 mx-2"></div>
                 <button onClick={handleNewProject} className="p-2 hover:bg-slate-800 rounded text-slate-400 hover:text-blue-400"><FilePlus size={20}/></button>
                 <button onClick={handleExportPDF} disabled={isExporting} className="bg-red-600 hover:bg-red-700 px-4 py-2 rounded-lg font-bold flex items-center gap-2 text-sm">{isExporting ? <Loader2 className="animate-spin" size={18}/> : <FileDown size={18}/>} PDF</button>
             </div>
         </header>
 
         <main className="flex-1 relative overflow-hidden flex">
-            {/* HIDDEN EXPORT TEMPLATE - This constructs the visual PDF page 1 */}
-            <div id="composed-dashboard-export" style={{ position: 'fixed', top: 0, left: '-5000px', width: '1920px', minHeight: '1080px', zIndex: -50, backgroundColor: '#0f172a', padding: '40px', display: 'flex', flexDirection: 'column', gap: '32px' }}>
-                 {/* Header Report */}
-                 <div className="flex justify-between items-end border-b-2 border-slate-700 pb-6">
-                    <div>
-                        <h1 className="text-5xl font-bold tracking-widest uppercase text-blue-400">RELATÓRIO DE STATUS</h1>
-                        <p className="text-slate-400 text-2xl mt-2 tracking-wide font-light">RASTREAMENTO DE TUBULAÇÃO & CONTROLE DE MATERIAIS</p>
-                    </div>
-                    <div className="text-right">
-                        <div className="flex items-center justify-end gap-4 mb-2">
-                            <span className="text-slate-500 text-xl font-bold uppercase tracking-wider">LOCAL:</span>
-                            <span className="px-6 py-2 rounded bg-blue-900/30 border border-blue-500/30 text-blue-300 font-bold uppercase text-3xl shadow-lg shadow-blue-900/20">{projectLocation}</span>
-                        </div>
-                        <p className="text-xl font-mono text-slate-500 mt-2">Emitido em: <span className="text-white">{new Date().toLocaleDateString()}</span></p>
-                        {/* ADICIONADO: Data da Atividade abaixo da Data de Emissão */}
-                        <p className="text-xl font-mono text-slate-500 mt-1">Data Atividade: <span className="text-white">{activityDate.split('-').reverse().join('/')}</span></p>
-                    </div>
-                 </div>
-                 
-                 {/* Main Content Area - Just Render the Dashboard Component in Export Mode */}
-                 <div className="flex-1">
-                      <Dashboard 
-                        pipes={pipes} 
-                        exportMode={true} 
-                        secondaryImage={secondaryImage}
-                        mapImage={mapImage}
-                        sceneScreenshot={sceneScreenshot}
-                        onSelectPipe={handleSelectPipe}
-                        selectedIds={selectedIds}
-                        onSetSelection={handleSetSelection}
-                      />
+            <div id="composed-dashboard-export" style={{ position: 'fixed', top: 0, left: '-5000px', width: '1920px', minHeight: '1080px', zIndex: -50, backgroundColor: '#0f172a', padding: '60px', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: '40px' }}>
+                 <div className="flex justify-between items-start border-b border-slate-700 pb-6">
+                    <div><h1 className="text-6xl font-bold text-white tracking-tight leading-none mb-2">RELATÓRIO DE STATUS</h1><p className="text-slate-400 text-xl font-medium tracking-widest uppercase">Gerenciamento de Montagem e Soldagem</p></div>
+                    <div className="text-right text-2xl font-light text-slate-400 tracking-[0.2em] uppercase">Marconi Fabian - Isometrico Manager</div>
                  </div>
 
-                 {/* Footer Report */}
-                 <div className="mt-auto pt-6 border-t border-slate-800 flex justify-between text-slate-600 text-lg">
-                    <span>Isometrico Manager - Software desenvolvido por Marconi Fabian</span>
-                    <span>Documento Gerado Automaticamente</span>
+                 {/* KPI ROW */}
+                 <div className="grid grid-cols-4 gap-6">
+                    <div className="bg-slate-800/40 border border-slate-700 p-8 rounded-2xl flex flex-col items-center">
+                         <Ruler className="text-blue-400 mb-2" size={40} />
+                         <span className="text-slate-500 text-sm font-bold uppercase tracking-wider">Total Metros</span>
+                         <div className="text-5xl font-bold text-white">{reportStats.totalLength.toFixed(2)}m</div>
+                    </div>
+                    <div className="bg-slate-800/40 border border-slate-700 p-8 rounded-2xl flex flex-col items-center">
+                         <Package className="text-purple-400 mb-2" size={40} />
+                         <span className="text-slate-500 text-sm font-bold uppercase tracking-wider">Total Spools</span>
+                         <div className="text-5xl font-bold text-white">{reportStats.total}</div>
+                    </div>
+                    <div className="bg-slate-800/40 border border-slate-700 p-8 rounded-2xl flex flex-col items-center">
+                         <Activity className="text-green-400 mb-2" size={40} />
+                         <span className="text-slate-500 text-sm font-bold uppercase tracking-wider">Progresso Físico</span>
+                         <div className="text-5xl font-bold text-green-400">{reportStats.progress.toFixed(1)}%</div>
+                    </div>
+                    <div className="bg-slate-800/40 border border-slate-700 p-8 rounded-2xl flex flex-col items-center">
+                         <AlertCircle className="text-red-400 mb-2" size={40} />
+                         <span className="text-slate-500 text-sm font-bold uppercase tracking-wider">Pendentes</span>
+                         <div className="text-5xl font-bold text-white">{reportStats.pipeCounts['PENDING']}</div>
+                    </div>
+                 </div>
+
+                 <div className="grid grid-cols-2 gap-8 flex-1">
+                    <div className="flex flex-col gap-2">
+                         <h3 className="text-xl font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2"><Cuboid size={20}/> Vista Principal 3D</h3>
+                         <div className="flex-1 bg-slate-800/50 rounded-xl border border-slate-700 relative overflow-hidden flex items-center justify-center p-2 min-h-[450px]">
+                            {sceneScreenshot ? <img src={sceneScreenshot} className="w-full h-full object-cover rounded-lg" /> : <div className="text-slate-600 flex flex-col items-center"><Cuboid size={64} className="mb-2 opacity-50"/><span>Sem Captura 3D</span></div>}
+                         </div>
+                    </div>
+
+                    <div className="flex flex-col gap-2">
+                         <h3 className="text-xl font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2"><ImageIcon size={20}/> Foto da Obra</h3>
+                         <div className="flex-1 bg-slate-800/50 rounded-xl border border-slate-700 relative overflow-hidden flex items-center justify-center p-2 min-h-[450px]">
+                            {secondaryImage ? <img src={secondaryImage} className="w-full h-full object-cover rounded-lg" /> : <div className="text-slate-600 flex flex-col items-center"><div className="w-16 h-16 border-2 border-slate-600 border-dashed rounded flex items-center justify-center mb-2"><div className="w-2 h-2 bg-slate-600 rounded-full"></div></div><span>Sem Foto</span></div>}
+                         </div>
+                    </div>
+
+                    <div className="flex flex-col gap-6">
+                        <div className="flex flex-col gap-2">
+                            <h3 className="text-xl font-bold text-slate-300 uppercase tracking-wider">Informações do Projeto</h3>
+                            <div className="bg-slate-800/50 rounded-xl border border-slate-700 p-6">
+                                <table className="w-full text-xl text-left">
+                                    <tbody className="divide-y divide-slate-700/50">
+                                        <tr><td className="py-3 text-slate-400 font-bold uppercase w-1/3">Cliente</td><td className="py-3 text-white uppercase font-bold text-blue-400">{projectClient}</td></tr>
+                                        <tr><td className="py-3 text-slate-400 font-bold uppercase">Área/Setor</td><td className="py-3 text-white uppercase font-medium">{projectLocation}</td></tr>
+                                        <tr><td className="py-3 text-slate-400 font-bold uppercase">Responsável</td><td className="py-3 text-white font-medium">{currentUser?.username}</td></tr>
+                                        <tr><td className="py-3 text-slate-400 font-bold uppercase">Data Ref.</td><td className="py-3 text-white font-medium">{activityDate.split('-').reverse().join('/')}</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        {/* BOM TABLE */}
+                        <div className="flex flex-col gap-2 flex-1">
+                            <h3 className="text-xl font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2"><Package size={20}/> Resumo de Materiais (BOM)</h3>
+                            <div className="bg-slate-800/50 rounded-xl border border-slate-700 overflow-hidden">
+                                <table className="w-full text-xl text-left">
+                                    <thead className="bg-slate-900/80 text-slate-400 uppercase text-sm font-bold">
+                                        <tr><th className="p-4">Item / Descrição</th><th className="p-4 text-right">Qtd. Est.</th><th className="p-4 text-center">Unid.</th></tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-700/50">
+                                        {Object.entries(reportStats.bom).map(([label, length]) => (
+                                            <tr key={label}><td className="p-4 text-white font-medium">Tubo Aço Carbono - <span className="text-blue-400">{label}</span></td><td className="p-4 text-right font-mono text-white">{(length as number).toFixed(2)}</td><td className="p-4 text-center text-slate-500">Metros</td></tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="flex flex-col gap-6">
+                        <div className="flex flex-col gap-2">
+                             <h3 className="text-xl font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2"><MapPin size={20}/> Mapa de Localização</h3>
+                             <div className="bg-slate-800/50 rounded-xl border border-slate-700 p-2 min-h-[250px] relative overflow-hidden flex items-center justify-center">
+                                {mapImage ? <img src={mapImage} className="w-full h-full object-cover rounded-lg opacity-80" /> : <svg width="200" height="150" viewBox="0 0 200 150" className="opacity-20"><path d="M20,100 Q60,20 100,100 T180,100" fill="none" stroke="white" strokeWidth="2" /><circle cx="100" cy="80" r="8" fill="red" /></svg>}
+                             </div>
+                        </div>
+
+                        <div className="flex flex-col gap-2">
+                             <h3 className="text-xl font-bold text-slate-300 uppercase tracking-wider">Status Físico & Proteção Térmica</h3>
+                             <div className="grid grid-cols-2 gap-4">
+                                <div className="bg-slate-800/50 rounded-xl border border-slate-700 p-4 h-[250px] flex flex-col">
+                                    <div className="text-[10px] font-bold text-blue-400 uppercase mb-2 text-center">Montagem/Solda</div>
+                                    <div className="flex-1 flex items-end justify-around gap-2">
+                                        {ALL_STATUSES.map(status => {
+                                            const height = (reportStats.pipeCounts[status] / Math.max(1, reportStats.total)) * 100;
+                                            return (
+                                                <div key={status} className="flex flex-col items-center flex-1 h-full justify-end">
+                                                    <span className="text-white font-bold text-[10px] mb-1">{reportStats.pipeCounts[status]}</span>
+                                                    <div className="w-full rounded-t-sm opacity-80" style={{ height: `${Math.max(height, 5)}%`, backgroundColor: STATUS_COLORS[status] }}></div>
+                                                    <span className="text-[8px] text-slate-500 font-bold uppercase text-center mt-1 truncate w-full">{STATUS_LABELS[status].split(' ')[0]}</span>
+                                                </div>
+                                            )
+                                        })}
+                                    </div>
+                                </div>
+                                <div className="bg-slate-800/50 rounded-xl border border-slate-700 p-4 h-[250px] flex flex-col">
+                                    <div className="text-[10px] font-bold text-purple-400 uppercase mb-2 text-center">Isolamento</div>
+                                    <div className="flex-1 flex items-end justify-around gap-2">
+                                        {ALL_INSULATION_STATUSES.map(status => {
+                                            const count = reportStats.insulationCounts[status];
+                                            const height = (count / Math.max(1, reportStats.total)) * 100;
+                                            const color = INSULATION_COLORS[status] === 'transparent' ? '#475569' : INSULATION_COLORS[status];
+                                            return (
+                                                <div key={status} className="flex flex-col items-center flex-1 h-full justify-end">
+                                                    <span className="text-white font-bold text-[10px] mb-1">{count}</span>
+                                                    <div className="w-full rounded-t-sm opacity-80" style={{ height: `${Math.max(height, 5)}%`, backgroundColor: color }}></div>
+                                                    <span className="text-[8px] text-slate-500 font-bold uppercase text-center mt-1 truncate w-full">{INSULATION_LABELS[status].replace('Isol. ', '')}</span>
+                                                </div>
+                                            )
+                                        })}
+                                    </div>
+                                </div>
+                             </div>
+                        </div>
+                    </div>
+                 </div>
+                 <div className="mt-4 pt-4 border-t border-slate-800 flex justify-between text-slate-500 font-mono text-lg">
+                    <span>Relatório Automático Isometrico Manager - Marconi Fabian</span><span>Página 1 de 2</span>
                  </div>
             </div>
 
@@ -1007,84 +624,39 @@ export default function App() {
                                 <button onClick={() => { setIsDrawing(!isDrawing); if(isDrawing) { setSelectedIds([]); setViewMode('3d'); }}} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold shadow-lg ${isDrawing ? 'bg-red-500 text-white' : 'bg-blue-600 text-white'}`}>
                                     {isDrawing ? <><XCircle size={18} /> PARAR</> : <><PenTool size={18} /> DESENHAR</>}
                                 </button>
-                                {/* Tool Buttons */}
                                 {!isDrawing && (
                                     <>
                                         <div className="flex bg-slate-800 rounded-lg p-1 border border-slate-700" title="Modo de Cores">
                                              <button onClick={() => setColorMode('STATUS')} className={`px-3 py-1.5 text-xs font-bold rounded ${colorMode === 'STATUS' ? 'bg-slate-600 text-white' : 'text-slate-400'}`}>Status</button>
                                              <button onClick={() => setColorMode('SPOOL')} className={`px-3 py-1.5 text-xs font-bold rounded flex items-center gap-1 ${colorMode === 'SPOOL' ? 'bg-green-600 text-white' : 'text-slate-400'}`}><GridIcon size={14}/> Spools</button>
                                         </div>
-                                        
-                                        {/* Copy/Paste Indicators */}
                                         {clipboard && clipboard.length > 0 && (
                                             <div className="flex bg-slate-800 rounded-lg p-1 border border-slate-700 items-center px-3 gap-2">
-                                                <div className="text-[10px] text-slate-400 font-bold uppercase flex items-center gap-1">
-                                                    <ClipboardPaste size={12}/> Copiado ({clipboard.length})
-                                                </div>
-                                                <button onClick={handlePasteStart} className="text-xs bg-blue-600 text-white px-2 py-1 rounded font-bold hover:bg-blue-500">Colar (Ctrl+V)</button>
-                                            </div>
-                                        )}
-                                        {pastePreview && (
-                                            <div className="flex bg-yellow-900/50 border border-yellow-500/50 text-yellow-200 rounded-lg px-3 py-1 items-center gap-2 animate-pulse">
-                                                 <span className="text-xs font-bold">MODO COLAGEM</span>
-                                                 <span className="text-[10px]">Clique para fixar ou ESC cancelar</span>
+                                                <div className="text-[10px] text-slate-400 font-bold uppercase flex items-center gap-1"><ClipboardPaste size={12}/> Copiado ({clipboard.length})</div>
+                                                <button onClick={handlePasteStart} className="text-xs bg-blue-600 text-white px-2 py-1 rounded font-bold hover:bg-blue-500">Colar</button>
                                             </div>
                                         )}
                                     </>
                                 )}
                                 {isDrawing && (
                                     <div className="flex bg-slate-800 rounded-lg p-1 border border-slate-700 items-center gap-2">
-                                        
-                                        {/* SELETOR DE DIÂMETRO */}
                                         <div className="flex items-center gap-1 bg-slate-700 px-2 py-1 rounded">
                                             <span className="text-[10px] font-bold text-slate-300 uppercase">Bitola:</span>
-                                            <select 
-                                                value={selectedDiameterLabel}
-                                                onChange={(e) => {
-                                                    const label = e.target.value;
-                                                    setSelectedDiameterLabel(label);
-                                                    setSelectedDiameter(PIPE_DIAMETERS[label]);
-                                                }}
-                                                className="bg-slate-600 text-white text-xs font-bold rounded border-none focus:ring-0 cursor-pointer"
-                                            >
-                                                {AVAILABLE_DIAMETERS.map(d => (
-                                                    <option key={d} value={d}>{d}</option>
-                                                ))}
+                                            <select value={selectedDiameterLabel} onChange={(e) => { setSelectedDiameterLabel(e.target.value); setSelectedDiameter(PIPE_DIAMETERS[e.target.value]); }} className="bg-slate-600 text-white text-xs font-bold rounded border-none focus:ring-0 cursor-pointer">
+                                                {AVAILABLE_DIAMETERS.map(d => (<option key={d} value={d}>{d}</option>))}
                                             </select>
                                         </div>
-
                                         <div className="h-6 w-px bg-slate-600"></div>
-
-                                        <button onClick={() => setIsFixedLength(false)} className={`px-3 py-1.5 text-xs font-bold rounded ${!isFixedLength ? 'bg-slate-600 text-white' : 'text-slate-400'}`}>Livre</button>
-                                        <button onClick={() => setIsFixedLength(true)} className={`px-3 py-1.5 text-xs font-bold rounded ${isFixedLength ? 'bg-purple-600 text-white' : 'text-slate-400'}`}>Fixo 6m</button>
+                                        <button onClick={() => setFixedLengthValue(0)} className={`px-3 py-1.5 text-xs font-bold rounded ${fixedLengthValue === 0 ? 'bg-slate-600 text-white' : 'text-slate-400'}`}>Livre</button>
+                                        <button onClick={() => setFixedLengthValue(6)} className={`px-3 py-1.5 text-xs font-bold rounded ${fixedLengthValue === 6 ? 'bg-purple-600 text-white' : 'text-slate-400'}`}>Fixo 6m</button>
+                                        <button onClick={() => setFixedLengthValue(12)} className={`px-3 py-1.5 text-xs font-bold rounded ${fixedLengthValue === 12 ? 'bg-purple-600 text-white' : 'text-slate-400'}`}>Fixo 12m</button>
                                     </div>
                                 )}
                             </div>
                         </div>
 
                         <div className="flex-1 rounded-xl overflow-hidden border border-slate-700 shadow-2xl relative">
-                            <Scene 
-                                pipes={pipes}
-                                annotations={annotations}
-                                selectedIds={selectedIds}
-                                onSelectPipe={handleSelectPipe}
-                                onSetSelection={handleSetSelection}
-                                isDrawing={isDrawing}
-                                onAddPipe={handleAddPipe}
-                                onUpdatePipe={handleUpdateSinglePipe}
-                                onMovePipes={handleMovePipes}
-                                onCancelDraw={() => setIsDrawing(false)}
-                                fixedLength={isFixedLength}
-                                onAddAnnotation={handleAddAnnotation}
-                                onUpdateAnnotation={handleUpdateAnnotation}
-                                onDeleteAnnotation={handleDeleteAnnotation}
-                                onUndo={undo}
-                                onRedo={redo}
-                                colorMode={colorMode}
-                                pastePreview={pastePreview}
-                                onPasteMove={handlePasteMove}
-                                onPasteConfirm={handlePasteConfirm}
-                            />
+                            <Scene pipes={pipes} annotations={annotations} selectedIds={selectedIds} onSelectPipe={handleSelectPipe} onSetSelection={handleSetSelection} isDrawing={isDrawing} onAddPipe={handleAddPipe} onUpdatePipe={handleUpdateSinglePipe} onMovePipes={handleMovePipes} onCancelDraw={() => setIsDrawing(false)} fixedLength={fixedLengthValue} onAddAnnotation={handleAddAnnotation} onUpdateAnnotation={handleUpdateAnnotation} onDeleteAnnotation={handleDeleteAnnotation} onUndo={undo} onRedo={redo} colorMode={colorMode} pastePreview={pastePreview} onPasteMove={handlePasteMove} onPasteConfirm={handlePasteConfirm} />
                         </div>
                     </div>
                 </div>
@@ -1092,31 +664,14 @@ export default function App() {
                 {viewMode === 'dashboard' && (
                     <div className="absolute inset-0 z-10 bg-slate-950/95 backdrop-blur-sm overflow-y-auto p-4 animate-in fade-in">
                         <div className="max-w-[1600px] mx-auto h-full">
-                            <Dashboard 
-                                pipes={pipes}
-                                onExportPDF={handleExportPDF} 
-                                isExporting={isExporting}
-                                secondaryImage={secondaryImage} onUploadSecondary={setSecondaryImage}
-                                mapImage={mapImage} onUploadMap={setMapImage}
-                                sceneScreenshot={sceneScreenshot}
-                                onSelectPipe={handleSelectPipe}
-                                selectedIds={selectedIds}
-                                onSetSelection={handleSetSelection}
-                            />
+                            <Dashboard pipes={pipes} onExportPDF={handleExportPDF} isExporting={isExporting} secondaryImage={secondaryImage} onUploadSecondary={setSecondaryImage} mapImage={mapImage} onUploadMap={setMapImage} sceneScreenshot={sceneScreenshot} onSelectPipe={handleSelectPipe} selectedIds={selectedIds} onSetSelection={handleSetSelection} />
                         </div>
                     </div>
                 )}
             </div>
-
             {selectedPipes.length > 0 && !isDrawing && !pastePreview && (
                 <div className="w-96 relative z-20 shadow-2xl border-l border-slate-700">
-                    <Sidebar 
-                        selectedPipes={selectedPipes}
-                        onUpdateSingle={handleUpdateSinglePipe}
-                        onUpdateBatch={handleBatchUpdate}
-                        onDelete={handleDeleteSelected}
-                        onClose={() => setSelectedIds([])} 
-                    />
+                    <Sidebar selectedPipes={selectedPipes} onUpdateSingle={handleUpdateSinglePipe} onUpdateBatch={handleBatchUpdate} onDelete={handleDeleteSelected} onClose={() => setSelectedIds([])} />
                 </div>
             )}
         </main>

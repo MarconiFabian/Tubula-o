@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { ThreeEvent, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
@@ -11,7 +12,7 @@ interface PipeDrawerProps {
   onCancel: () => void;
   pipes: PipeSegment[];
   lockedAxis: 'x' | 'y' | 'z' | null;
-  fixedLength?: boolean;
+  fixedLength?: number; // 0 for free, or specific length like 6 or 12
 }
 
 // Helper: Calculate the closest point on a specific axis line to the mouse ray
@@ -34,7 +35,7 @@ const projectRayToAxis = (ray: THREE.Ray, origin: Vector3, axisDir: Vector3): Ve
     return origin.clone().add(axisDir.clone().multiplyScalar(t));
 };
 
-export const PipeDrawer: React.FC<PipeDrawerProps> = ({ isDrawing, onAddPipe, onCancel, pipes, lockedAxis, fixedLength = false }) => {
+export const PipeDrawer: React.FC<PipeDrawerProps> = ({ isDrawing, onAddPipe, onCancel, pipes, lockedAxis, fixedLength = 0 }) => {
   const [startPoint, setStartPoint] = useState<Vector3 | null>(null);
   const [endPoint, setEndPoint] = useState<Vector3>(new Vector3(0,0,0));
   const [snapPoint, setSnapPoint] = useState<Vector3 | null>(null);
@@ -159,16 +160,16 @@ export const PipeDrawer: React.FC<PipeDrawerProps> = ({ isDrawing, onAddPipe, on
     target.z = snap(target.z);
 
     // 4. Apply Fixed Length Override
-    if (fixedLength && startPoint) {
+    if (fixedLength > 0 && startPoint) {
         const direction = new THREE.Vector3().subVectors(target, startPoint);
         if (direction.lengthSq() > 0.001) {
-            direction.normalize().multiplyScalar(6.0); // Strict 6m
+            direction.normalize().multiplyScalar(fixedLength); // Strict fixed length
             target.copy(startPoint).add(direction);
         }
     }
 
     // 5. Final Selection logic
-    if (snapped && startPoint && !fixedLength) {
+    if (snapped && startPoint && fixedLength === 0) {
         setEndPoint(snapped);
     } else {
         setEndPoint(target);
@@ -179,7 +180,7 @@ export const PipeDrawer: React.FC<PipeDrawerProps> = ({ isDrawing, onAddPipe, on
     if (!isDrawing) return;
     e.stopPropagation();
     
-    const pointToUse = (fixedLength && startPoint) ? endPoint : (snapPoint || endPoint);
+    const pointToUse = (fixedLength > 0 && startPoint) ? endPoint : (snapPoint || endPoint);
 
     if (startPoint && startPoint.distanceTo(pointToUse) < 0.01) return;
 
@@ -267,7 +268,7 @@ export const PipeDrawer: React.FC<PipeDrawerProps> = ({ isDrawing, onAddPipe, on
                          <div className="border-t border-slate-700 my-1"></div>
                          <div className="flex justify-between items-center text-sm font-bold text-white">
                             <span>Segmento:</span>
-                            <span className="text-blue-400">{currentSegmentLength.toFixed(2)}m {fixedLength && '🔒'}</span>
+                            <span className="text-blue-400">{currentSegmentLength.toFixed(2)}m {fixedLength > 0 && '🔒'}</span>
                          </div>
                          <div className="flex justify-between items-center text-[10px] text-slate-400">
                             <span>Total Projeto:</span>

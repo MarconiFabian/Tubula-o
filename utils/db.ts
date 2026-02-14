@@ -1,3 +1,4 @@
+
 import { openDB, DBSchema } from 'idb';
 import { PipeSegment, Annotation } from '../types';
 
@@ -8,6 +9,7 @@ interface ProjectData {
   pipes: PipeSegment[];
   annotations: Annotation[];
   location: string;
+  client: string; // Adicionado campo para o cliente
   secondaryImage: string | null;
   mapImage: string | null;
 }
