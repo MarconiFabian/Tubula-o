@@ -1,6 +1,8 @@
+
 import React, { useMemo, useState } from 'react';
 import * as THREE from 'three';
 import { ThreeEvent } from '@react-three/fiber';
+import { Text, Billboard } from '@react-three/drei';
 import { PipeSegment, PipeStatus } from '../../types';
 import { STATUS_COLORS, INSULATION_COLORS } from '../../constants';
 
@@ -61,8 +63,13 @@ export const Fittings: React.FC<FittingsProps> = ({ pipes, connections, onSelect
         const p1 = node.connectedPipes[0];
         const p2 = node.connectedPipes[1];
         
+        // Calcular o ângulo real entre os tubos
+        // Como os vetores apontam para FORA do nó, o dot product de tubos retos é -1 (180 graus)
         const dot = p1.vector.dot(p2.vector);
-        const isStraight = dot < -0.99; 
+        const angleRadians = Math.acos(THREE.MathUtils.clamp(dot, -1, 1));
+        const angleDegrees = Math.round(180 - (angleRadians * (180 / Math.PI)));
+        
+        const isStraight = angleDegrees < 1; 
 
         const radius = Math.max(p1.pipe.diameter, p2.pipe.diameter) * 1.5; 
         
@@ -71,7 +78,7 @@ export const Fittings: React.FC<FittingsProps> = ({ pipes, connections, onSelect
         const smartSelectId = level1 <= level2 ? p1.pipe.id : p2.pipe.id;
 
         if (isStraight) {
-          // --- STRAIGHT JOINT ---
+          // --- CONEXÃO RETA (SOLDA DE TOPO) ---
           let weldColor = STATUS_COLORS['PENDING'] || '#888888';
           if (level1 >= 3 && level2 >= 3) {
             weldColor = STATUS_COLORS['HYDROTEST'] || '#3b82f6';
@@ -97,7 +104,7 @@ export const Fittings: React.FC<FittingsProps> = ({ pipes, connections, onSelect
             </group>
           );
         } else {
-          // --- ELBOW ---
+          // --- CURVA / COTOVELO ---
           const startPt = p1.vector.clone().multiplyScalar(radius);
           const endPt = p2.vector.clone().multiplyScalar(radius);
           const controlPt = new THREE.Vector3(0,0,0);
@@ -113,14 +120,30 @@ export const Fittings: React.FC<FittingsProps> = ({ pipes, connections, onSelect
 
           items.push(
             <group key={`elbow-${key}`} position={node.point}>
-              {/* Elbow Body */}
+              {/* Texto do Ângulo */}
+              <Billboard position={[0, radius + 0.2, 0]}>
+                <Text
+                  fontSize={0.2}
+                  color="#fbbf24"
+                  anchorX="center"
+                  anchorY="bottom"
+                  fontStyle="italic"
+                  fontWeight="bold"
+                  outlineWidth={0.02}
+                  outlineColor="#000"
+                >
+                  {angleDegrees}°
+                </Text>
+              </Billboard>
+
+              {/* Corpo da Curva */}
               <mesh 
                 onClick={(e) => handleInteraction(e, smartSelectId)}
                 onPointerMove={onPointerMove}
                 onPointerOver={() => document.body.style.cursor = 'pointer'}
                 onPointerOut={() => document.body.style.cursor = 'auto'}
               >
-                <tubeGeometry args={[curve, 10, p1.pipe.diameter / 2, 16, false]} />
+                <tubeGeometry args={[curve, 16, p1.pipe.diameter / 2, 16, false]} />
                 <meshStandardMaterial 
                   color={bodyColor} 
                   roughness={0.3} 
@@ -132,11 +155,12 @@ export const Fittings: React.FC<FittingsProps> = ({ pipes, connections, onSelect
 
               {hasInsulation && (
                   <mesh onPointerMove={onPointerMove} onClick={(e) => handleInteraction(e, smartSelectId)}>
-                    <tubeGeometry args={[curve, 10, p1.pipe.diameter / 2 + 0.08, 16, false]} />
+                    <tubeGeometry args={[curve, 16, p1.pipe.diameter / 2 + 0.08, 16, false]} />
                     <meshStandardMaterial color={insulationColor} transparent opacity={0.3} roughness={0.1} metalness={0.1} depthWrite={false} side={THREE.DoubleSide} />
                   </mesh>
               )}
 
+              {/* Soldas nas extremidades da curva */}
               <group position={startPt} quaternion={new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0), p1.vector)}>
                 <WeldJoint radius={p1.pipe.diameter/2} color={getColorForStatus(p1.pipe.status)} onClick={(e) => handleInteraction(e, p1.pipe.id)} onPointerMove={onPointerMove} isSelected={selectedIds.includes(p1.pipe.id)} />
               </group>

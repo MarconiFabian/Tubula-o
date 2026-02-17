@@ -1,11 +1,11 @@
+
 import { PipeStatus, PipeSegment, InsulationStatus } from './types';
 
-// Define explicit string keys to avoid runtime errors if PipeStatus enum is undefined
 export const STATUS_COLORS: Record<string, string> = {
-  'PENDING': '#94a3b8', // Gray/Slate-400
-  'MOUNTED': '#eab308', // Yellow-500
-  'WELDED': '#22c55e',  // Green-500
-  'HYDROTEST': '#3b82f6' // Blue-500
+  'PENDING': '#94a3b8', 
+  'MOUNTED': '#eab308', 
+  'WELDED': '#22c55e',  
+  'HYDROTEST': '#3b82f6' 
 };
 
 export const STATUS_LABELS: Record<string, string> = {
@@ -15,19 +15,31 @@ export const STATUS_LABELS: Record<string, string> = {
   'HYDROTEST': 'Testado (Hydro)'
 };
 
-export const NEXT_STEP_LABELS: Record<string, string> = {
-  'PENDING': 'Executar Montagem',
-  'MOUNTED': 'Liberar Solda',
-  'WELDED': 'Realizar Teste Hidro',
-  'HYDROTEST': 'Isolamento / Pintura'
+// --- MÉTRICAS DE PLANEJAMENTO (CALIBRAÇÃO MANUAL) ---
+// Altere os valores abaixo para ajustar o "motor" de cálculo do cronograma.
+
+export const HOURS_PER_DAY = 8.8; // Jornada de trabalho padrão em horas
+
+export const BASE_PRODUCTIVITY = {
+  PIPING: 0.98,      // Homem-Hora por Metro para Montagem (Base: ~9m/dia)
+  INSULATION: 1.95,  // Homem-Hora por Metro para Isolamento (Base: ~4.5m/dia)
 };
 
-// Colors for the Insulation Shell (Usually semi-transparent in 3D)
+export const DIFFICULTY_WEIGHTS = {
+  CRANE: 0.75,           // +75% de tempo (Dificuldade logística/Içamento)
+  SCAFFOLD_FLOOR: 1.35,  // +135% de tempo (Trabalho em altura com andaime simples)
+  SCAFFOLD_HANGING: 2.10, // +210% de tempo (Andaime em balanço - Risco máximo)
+  PTA: 0.95,             // +95% de tempo (Uso de plataforma elevatória)
+  BLOCKAGE: 0.65,        // +65% de tempo (Interferências de projeto/campo)
+  NIGHT_SHIFT: 0.40,     // +40% de tempo (Perda de rendimento noturno)
+  CRITICAL_AREA: 0.50    // +50% de tempo (Área de risco, permissões complexas)
+};
+
 export const INSULATION_COLORS: Record<string, string> = {
   'NONE': 'transparent',
-  'PENDING': '#f87171',    // Red-400 (Need to insulate)
-  'INSTALLING': '#fbbf24', // Amber-400 (Work in progress)
-  'FINISHED': '#e2e8f0'    // Slate-200 (Silver/Cladding)
+  'PENDING': '#f87171',    
+  'INSTALLING': '#fbbf24', 
+  'FINISHED': '#e2e8f0'    
 };
 
 export const INSULATION_LABELS: Record<string, string> = {
@@ -37,7 +49,6 @@ export const INSULATION_LABELS: Record<string, string> = {
   'FINISHED': 'Isol. Finalizado'
 };
 
-// Diâmetros Comerciais (Polegadas -> Metros aprox. OD)
 export const PIPE_DIAMETERS: Record<string, number> = {
   '10"': 0.2730,
   '8"': 0.2032,
@@ -47,10 +58,8 @@ export const PIPE_DIAMETERS: Record<string, number> = {
   '3/4"': 0.0267
 };
 
-// Safe, ordered list of statuses for iteration
 export const ALL_STATUSES = ['PENDING', 'MOUNTED', 'WELDED', 'HYDROTEST'];
 export const ALL_INSULATION_STATUSES = ['NONE', 'PENDING', 'INSTALLING', 'FINISHED'];
-// Lista ordenada de diâmetros para Selects
 export const AVAILABLE_DIAMETERS = ['10"', '8"', '6"', '4"', '1"', '3/4"'];
 
 export const INITIAL_PIPES: PipeSegment[] = [];

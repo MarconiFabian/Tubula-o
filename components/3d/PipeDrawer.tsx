@@ -216,7 +216,7 @@ export const PipeDrawer: React.FC<PipeDrawerProps> = ({ isDrawing, onAddPipe, on
             <mesh position={endPoint}>
                 {/* Larger sphere when snapping to make it obvious */}
                 <sphereGeometry args={[snapPoint ? 0.25 : 0.1, 16, 16]} />
-                <meshBasicMaterial color={snapPoint ? "#facc15" : (lockedAxis ? "#22c55e" : "red")} opacity={0.8} transparent depthTest={false} />
+                <meshBasicMaterial color={snapPoint ? "#facc15" : (fixedLength > 0 ? "#3b82f6" : "red")} opacity={0.8} transparent depthTest={false} />
             </mesh>
             
             {/* Snap Ring Highlight */}
@@ -234,7 +234,7 @@ export const PipeDrawer: React.FC<PipeDrawerProps> = ({ isDrawing, onAddPipe, on
                         <sphereGeometry args={[0.12, 16, 16]} />
                         <meshBasicMaterial color="blue" />
                     </mesh>
-                    <GhostLine start={startPoint} end={endPoint} color={lockedAxis ? "#22c55e" : "#06b6d4"} />
+                    <GhostLine start={startPoint} end={endPoint} color={fixedLength > 0 ? "#3b82f6" : "#06b6d4"} />
                 </>
             )}
 
@@ -251,35 +251,38 @@ export const PipeDrawer: React.FC<PipeDrawerProps> = ({ isDrawing, onAddPipe, on
                 </lineSegments>
             )}
             
+            {/* ETIQUETA FLUTUANTE MELHORADA */}
             <Html position={endPoint} style={{ pointerEvents: 'none' }} zIndexRange={[100, 0]}>
-                <div className="bg-slate-900/90 text-white text-xs px-3 py-2 rounded-lg shadow-2xl backdrop-blur-md transform -translate-x-1/2 -translate-y-full mt-[-20px] border border-slate-700 font-mono flex flex-col gap-1 min-w-[140px]">
+                <div className="bg-slate-900/95 text-white px-5 py-4 rounded-2xl shadow-2xl backdrop-blur-xl transform -translate-x-1/2 -translate-y-full mt-[-30px] border-2 border-slate-700 font-mono flex flex-col gap-2 min-w-[180px]">
                     
-                    {/* Visual Feedback for Connection */}
                     {!startPoint && snapPoint && (
-                        <div className="text-yellow-400 font-bold mb-1 text-[10px] uppercase flex items-center justify-center gap-1 animate-pulse border-b border-white/10 pb-1">
+                        <div className="text-yellow-400 font-black mb-1 text-[12px] uppercase flex items-center justify-center gap-1 animate-pulse border-b border-white/10 pb-2">
                             <span>🔗</span> CONECTAR
                         </div>
                     )}
 
-                    <div className="text-slate-400 text-[10px]">Pos: {endPoint.x.toFixed(1)}, {endPoint.y.toFixed(1)}, {endPoint.z.toFixed(1)}</div>
+                    <div className="text-slate-500 text-[10px] font-bold">X:{endPoint.x.toFixed(2)} Y:{endPoint.y.toFixed(2)} Z:{endPoint.z.toFixed(2)}</div>
                     
                     {startPoint && (
                         <>
-                         <div className="border-t border-slate-700 my-1"></div>
-                         <div className="flex justify-between items-center text-sm font-bold text-white">
-                            <span>Segmento:</span>
-                            <span className="text-blue-400">{currentSegmentLength.toFixed(2)}m {fixedLength > 0 && '🔒'}</span>
+                         <div className="border-t border-slate-800 my-1"></div>
+                         <div className="flex justify-between items-center">
+                            <span className="text-slate-400 text-[10px] font-bold uppercase tracking-tighter">Segmento:</span>
+                            <span className={`text-2xl font-black ${fixedLength > 0 ? 'text-blue-400' : 'text-white'}`}>
+                                {currentSegmentLength.toFixed(2)}<span className="text-xs ml-0.5">m</span>
+                                {fixedLength > 0 && <span className="text-xs ml-1">🔒</span>}
+                            </span>
                          </div>
-                         <div className="flex justify-between items-center text-[10px] text-slate-400">
+                         <div className="flex justify-between items-center text-[10px] text-slate-500 font-bold">
                             <span>Total Projeto:</span>
-                            <span className="text-slate-200">{projectTotalWithCurrent.toFixed(2)}m</span>
+                            <span className="text-slate-300">{projectTotalWithCurrent.toFixed(2)}m</span>
                          </div>
                         </>
                     )}
 
                     {lockedAxis && (
-                        <div className="text-green-400 font-bold mt-1 text-[10px] uppercase border-t border-white/10 pt-1 text-center">
-                             EIXO TRAVADO: {lockedAxis.toUpperCase()}
+                        <div className="text-blue-400 font-black mt-1 text-[10px] uppercase border-t border-white/10 pt-2 text-center tracking-widest">
+                             TRAVA: EIXO {lockedAxis.toUpperCase()}
                         </div>
                     )}
                 </div>
