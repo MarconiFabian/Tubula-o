@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState, useMemo, Suspense, useRef } from 'react';
 import { Canvas, useThree, ThreeEvent } from '@react-three/fiber';
 import { OrbitControls, Grid, Environment, TransformControls, Html } from '@react-three/drei';
@@ -18,13 +19,13 @@ interface SceneProps {
   onSetSelection?: (ids: string[]) => void; // New optimized bulk selection handler
   isDrawing: boolean;
   onAddPipe: (start: {x:number, y:number, z:number}, end: {x:number, y:number, z:number}) => void;
-  onUpdatePipe: (pipe: PipeSegment) => void;
-  onMovePipes?: (delta: {x:number, y:number, z:number}) => void;
-  onCancelDraw: () => void;
-  fixedLength?: boolean;
   onAddAnnotation?: (pos: {x:number, y:number, z:number}) => void;
   onUpdateAnnotation?: (id: string, text: string) => void;
   onDeleteAnnotation?: (id: string) => void;
+  onUpdatePipe: (pipe: PipeSegment) => void;
+  onMovePipes?: (delta: {x:number, y:number, z:number}) => void;
+  onCancelDraw: () => void;
+  fixedLength?: number; // Alterado de boolean para number
   onUndo?: () => void;
   onRedo?: () => void;
   colorMode?: 'STATUS' | 'SPOOL';
@@ -463,7 +464,7 @@ const SceneContent: React.FC<SceneProps & { lockedAxis: 'x'|'y'|'z'|null, select
     );
 }
 
-const Scene: React.FC<SceneProps & { fixedLength?: boolean, onUndo?: ()=>void, onRedo?: ()=>void, colorMode?: 'STATUS'|'SPOOL', onMovePipes?: (d:any)=>void, onSetSelection?: (ids:string[])=>void, pastePreview?: PipeSegment[] | null, onPasteMove?: any, onPasteConfirm?: any }> = (props) => {
+const Scene: React.FC<SceneProps & { fixedLength?: number, onUndo?: ()=>void, onRedo?: ()=>void, colorMode?: 'STATUS'|'SPOOL', onMovePipes?: (d:any)=>void, onSetSelection?: (ids:string[])=>void, pastePreview?: PipeSegment[] | null, onPasteMove?: any, onPasteConfirm?: any }> = (props) => {
   const [lockedAxis, setLockedAxis] = useState<'x'|'y'|'z'|null>(null);
   const [selectionBox, setSelectionBox] = useState({ x: 0, y: 0, w: 0, h: 0, isSelecting: false, startX: 0, startY: 0 });
 

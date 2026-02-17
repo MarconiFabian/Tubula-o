@@ -7,7 +7,7 @@ import { DatabaseModal } from './components/DatabaseModal';
 import { saveProjectToDB, getAllProjects, deleteProjectFromDB } from './utils/db';
 import { INITIAL_PIPES, STATUS_LABELS, STATUS_COLORS, INSULATION_LABELS, PIPE_DIAMETERS, AVAILABLE_DIAMETERS, ALL_STATUSES, ALL_INSULATION_STATUSES, INSULATION_COLORS, BASE_PRODUCTIVITY, DIFFICULTY_WEIGHTS } from './constants';
 import { PipeSegment, PipeStatus, Annotation, Accessory, AccessoryType, ProductivitySettings } from './types';
-import { LayoutDashboard, Cuboid, PenTool, XCircle, FileDown, Save, FolderOpen, FilePlus, Loader2, MapPin, Database, Undo, Redo, Wrench, Grid as GridIcon, CircleDot, MousePointer2, Ruler, Calendar, Lock, User, LogOut, ChevronRight, UserPlus, ShieldAlert, Check, X, Users, CircleDashed, Copy, ClipboardPaste, Activity, Package, AlertCircle, Image as ImageIcon, Shield, Building2, Timer } from 'lucide-react';
+import { LayoutDashboard, Cuboid, PenTool, XCircle, FileDown, Save, FolderOpen, FilePlus, Loader2, MapPin, Database, Undo, Redo, Wrench, Grid as GridIcon, CircleDot, MousePointer2, Ruler, Calendar, Lock, User, LogOut, ChevronRight, UserPlus, ShieldAlert, Check, X, Users, CircleDashed, Copy, ClipboardPaste, Activity, Package, AlertCircle, Image as ImageIcon, Shield, Building2, Timer, FileCode } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
 
@@ -328,6 +328,26 @@ export default function App() {
   const handlePasteMove = useCallback((target: any) => { if (!pastePreview || !pasteCentroid) return; const dx=target.x-pasteCentroid.x, dy=target.y-pasteCentroid.y, dz=target.z-pasteCentroid.z; setPastePreview(clipboard!.map(p => ({ ...p, id: `NEW-${p.id}-${Date.now()}`, start: {x:p.start.x+dx, y:p.start.y+dy, z:p.start.z+dz}, end: {x:p.end.x+dx, y:p.end.y+dy, z:p.end.z+dz} }))); }, [clipboard, pasteCentroid, pastePreview]);
   const handlePasteConfirm = useCallback(() => { if (!pastePreview) return; const final = pastePreview.map(p => ({ ...p, id: `P-${Math.floor(Math.random()*1000000)}`, name: `${p.name} (Cópia)` })); setPipes(prev => [...prev, ...final]); setPastePreview(null); setSelectedIds(final.map(p => p.id)); }, [pastePreview]);
 
+  // FUNÇÃO PARA EXPORTAR PARA CAD (DXF)
+  const handleExportDXF = () => {
+    let dxf = "0\nSECTION\n2\nENTITIES\n";
+    pipes.forEach(p => {
+        // Criar uma LINE no DXF
+        dxf += "0\nLINE\n8\nTubulacao\n"; // Layer
+        dxf += `10\n${p.start.x}\n20\n${p.start.y}\n30\n${p.start.z}\n`; // Start Point
+        dxf += `11\n${p.end.x}\n21\n${p.end.y}\n31\n${p.end.z}\n`; // End Point
+    });
+    dxf += "0\nENDSEC\n0\nEOF";
+
+    const blob = new Blob([dxf], { type: 'application/dxf' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `projeto-isometrico-${projectLocation.replace(/\s+/g, '-')}.dxf`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   const handleExportPDF = async () => {
     setIsExporting(true);
     try {
@@ -436,7 +456,10 @@ export default function App() {
                     <button onClick={() => { setViewMode('planning'); setIsDrawing(false); }} className={`px-3 py-1.5 text-xs font-bold rounded ${viewMode === 'planning' ? 'bg-slate-700 text-purple-400' : 'text-slate-400 hover:text-white'}`} title="Planejamento 4D"><Timer size={16}/></button>
                     <button onClick={handleSwitchToDashboard} className={`px-3 py-1.5 text-xs font-bold rounded ${viewMode === 'dashboard' ? 'bg-slate-700 text-blue-400' : 'text-slate-400 hover:text-white'}`} title="Dashboard"><LayoutDashboard size={16}/></button>
                 </div>
-                <button onClick={handleExportPDF} disabled={isExporting} className="bg-red-600 hover:bg-red-700 px-4 py-2 rounded-lg font-bold flex items-center gap-2 text-sm uppercase tracking-tighter">{isExporting ? <Loader2 className="animate-spin" size={16}/> : <FileDown size={16}/>} Gerar PDF</button>
+                <div className="flex gap-2">
+                    <button onClick={handleExportDXF} className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-lg font-bold flex items-center gap-2 text-sm uppercase tracking-tighter" title="Exportar para AutoCAD (3D DXF)"><FileCode size={16}/> Exportar CAD</button>
+                    <button onClick={handleExportPDF} disabled={isExporting} className="bg-red-600 hover:bg-red-700 px-4 py-2 rounded-lg font-bold flex items-center gap-2 text-sm uppercase tracking-tighter">{isExporting ? <Loader2 className="animate-spin" size={16}/> : <FileDown size={16}/>} Gerar PDF</button>
+                </div>
             </div>
         </header>
 
@@ -473,7 +496,10 @@ export default function App() {
                             <div className="flex gap-4">
                                 <button onClick={() => { setIsDrawing(!isDrawing); if(isDrawing) { setSelectedIds([]); setViewMode('3d'); }}} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold shadow-lg ${isDrawing ? 'bg-red-500 text-white' : 'bg-blue-600 text-white'}`}>{isDrawing ? <><XCircle size={18} /> PARAR</> : <><PenTool size={18} /> DESENHAR</>}</button>
                                 {!isDrawing && (<><div className="flex bg-slate-800 rounded-lg p-1 border border-slate-700"><button onClick={() => setColorMode('STATUS')} className={`px-3 py-1.5 text-xs font-bold rounded ${colorMode === 'STATUS' ? 'bg-slate-600 text-white' : 'text-slate-400'}`}>Status</button><button onClick={() => setColorMode('SPOOL')} className={`px-3 py-1.5 text-xs font-bold rounded flex items-center gap-1 ${colorMode === 'SPOOL' ? 'bg-green-600 text-white' : 'text-slate-400'}`}><GridIcon size={14}/> Spools</button></div>{clipboard && clipboard.length > 0 && (<div className="flex bg-slate-800 rounded-lg p-1 border border-slate-700 items-center px-3 gap-2"><div className="text-[10px] text-slate-400 font-bold uppercase flex items-center gap-1"><ClipboardPaste size={12}/> Copiado ({clipboard.length})</div><button onClick={handlePasteStart} className="text-xs bg-blue-600 text-white px-2 py-1 rounded font-bold hover:bg-blue-500">Colar</button></div>)}</>)}
-                                {isDrawing && (<div className="flex bg-slate-800 rounded-lg p-1.5 border border-slate-700 items-center gap-3 animate-in fade-in slide-in-from-left-2 duration-300"><div className="flex items-center gap-2 bg-slate-700 px-3 py-1.5 rounded-md border border-slate-600"><span className="text-[9px] font-bold text-slate-400 uppercase">Bitola:</span><select value={selectedDiameterLabel} onChange={(e) => { setSelectedDiameterLabel(e.target.value); setSelectedDiameter(PIPE_DIAMETERS[e.target.value]); }} className="bg-transparent text-white text-xs font-bold border-none focus:ring-0 p-0">{AVAILABLE_DIAMETERS.map(d => (<option key={d} value={d} className="bg-slate-800">{d}</option>))}</select></div><div className="h-6 w-px bg-slate-700"></div><div className={`flex items-center px-4 py-2 rounded-xl border transition-all ${fixedLengthValue > 0 ? 'bg-blue-900/40 border-blue-500 shadow-lg shadow-blue-500/20' : 'bg-slate-900 border-slate-700 focus-within:border-slate-500'}`}><div className="flex items-center gap-2 border-r border-slate-800 pr-4 mr-3 min-w-[140px]">{fixedLengthValue > 0 ? <Lock size={15} className="text-blue-400 animate-pulse" /> : <Ruler size={15} className="text-slate-500" />}<span className="text-[10px] font-black text-slate-400 uppercase tracking-tighter">TRAVAR COMP. (m):</span></div><div className="relative flex items-center"><input type="text" value={fixedLengthText} onChange={(e) => { const rawValue = e.target.value.replace(',', '.'); if (/^\d*\.?\d*$/.test(rawValue)) { setFixedLengthText(e.target.value); const num = parseFloat(rawValue); setFixedLengthValue(isNaN(num) ? 0 : num); } }} onBlur={() => { if (fixedLengthValue > 0) { setFixedLengthText(fixedLengthValue.toString().replace('.', ',')); } else { setFixedLengthText(''); } }} className="bg-transparent text-white text-base font-black w-24 outline-none placeholder:text-slate-800 font-mono tracking-wider p-0 m-0 border-none ring-0 focus:ring-0" placeholder="Livre" />{fixedLengthValue > 0 && (<button onClick={() => { setFixedLengthValue(0); setFixedLengthText(''); }} className="text-slate-500 hover:text-red-400 transition-colors ml-2" title="Desbloquear"><X size={18} /></button>)}</div></div></div>)}
+                                {isDrawing && (<div className="flex bg-slate-800 rounded-lg p-1.5 border border-slate-700 items-center gap-3 animate-in fade-in slide-in-from-left-2 duration-300"><div className="flex items-center gap-2 bg-slate-700 px-3 py-1.5 rounded-md border border-slate-600"><span className="text-[9px] font-bold text-slate-400 uppercase">Bitola:</span><select value={selectedDiameterLabel} onChange={(e) => { setSelectedDiameterLabel(e.target.value); setSelectedDiameter(PIPE_DIAMETERS[e.target.value]); }} className="bg-transparent text-white text-xs font-bold border-none focus:ring-0 p-0">{AVAILABLE_DIAMETERS.map(d => (<option key={d} value={d} className="bg-slate-800">{d}</option>))}</select></div><div className="h-6 w-px bg-slate-700"></div><div className="flex gap-1 mr-1">
+                                    <button onClick={() => { setFixedLengthValue(6); setFixedLengthText('6'); }} className={`px-2 py-1 text-[10px] font-bold rounded border transition-colors ${fixedLengthValue === 6 ? 'bg-blue-600 border-blue-400 text-white' : 'bg-slate-700 border-slate-600 text-slate-300 hover:bg-slate-600'}`}>6m</button>
+                                    <button onClick={() => { setFixedLengthValue(12); setFixedLengthText('12'); }} className={`px-2 py-1 text-[10px] font-bold rounded border transition-colors ${fixedLengthValue === 12 ? 'bg-blue-600 border-blue-400 text-white' : 'bg-slate-700 border-slate-600 text-slate-300 hover:bg-slate-600'}`}>12m</button>
+                                </div><div className={`flex items-center px-4 py-2 rounded-xl border transition-all ${fixedLengthValue > 0 ? 'bg-blue-900/40 border-blue-500 shadow-lg shadow-blue-500/20' : 'bg-slate-900 border-slate-700 focus-within:border-slate-500'}`}><div className="flex items-center gap-2 border-r border-slate-800 pr-4 mr-3 min-w-[140px]">{fixedLengthValue > 0 ? <Lock size={15} className="text-blue-400 animate-pulse" /> : <Ruler size={15} className="text-slate-500" />}<span className="text-[10px] font-black text-slate-400 uppercase tracking-tighter">TRAVAR COMP. (m):</span></div><div className="relative flex items-center"><input type="text" value={fixedLengthText} onChange={(e) => { const rawValue = e.target.value.replace(',', '.'); if (/^\d*\.?\d*$/.test(rawValue)) { setFixedLengthText(e.target.value); const num = parseFloat(rawValue); setFixedLengthValue(isNaN(num) ? 0 : num); } }} onBlur={() => { if (fixedLengthValue > 0) { setFixedLengthText(fixedLengthValue.toString().replace('.', ',')); } else { setFixedLengthText(''); } }} className="bg-transparent text-white text-base font-black w-24 outline-none placeholder:text-slate-800 font-mono tracking-wider p-0 m-0 border-none ring-0 focus:ring-0" placeholder="Livre" />{fixedLengthValue > 0 && (<button onClick={() => { setFixedLengthValue(0); setFixedLengthText(''); }} className="text-slate-500 hover:text-red-400 transition-colors ml-2" title="Desbloquear"><X size={18} /></button>)}</div></div></div>)}
                             </div>
                         </div>
                         <div className="flex-1 rounded-xl overflow-hidden border border-slate-700 shadow-2xl relative">
