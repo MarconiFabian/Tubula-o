@@ -4,7 +4,8 @@ import Scene from './components/3d/Scene';
 import Dashboard from './components/Dashboard';
 import Sidebar from './components/Sidebar';
 import { DatabaseModal } from './components/DatabaseModal';
-import { saveProjectToDB, getAllProjects, deleteProjectFromDB } from './utils/db';
+// Atualizado imports para usar as novas funções conectadas ao Supabase
+import { saveProjectToDB, getAllProjects, deleteProjectFromDB, getAllUsers, registerUserDB, updateUserStatusDB, deleteUserDB, UserData } from './utils/db';
 import { INITIAL_PIPES, STATUS_LABELS, STATUS_COLORS, INSULATION_LABELS, PIPE_DIAMETERS, AVAILABLE_DIAMETERS, ALL_STATUSES, ALL_INSULATION_STATUSES, INSULATION_COLORS, BASE_PRODUCTIVITY, DIFFICULTY_WEIGHTS } from './constants';
 import { PipeSegment, PipeStatus, Annotation, Accessory, AccessoryType, ProductivitySettings } from './types';
 import { LayoutDashboard, Cuboid, PenTool, XCircle, FileDown, Save, FolderOpen, FilePlus, Loader2, MapPin, Database, Undo, Redo, Wrench, Grid as GridIcon, CircleDot, MousePointer2, Ruler, Calendar, Lock, User, LogOut, ChevronRight, UserPlus, ShieldAlert, Check, X, Users, CircleDashed, Copy, ClipboardPaste, Activity, Package, AlertCircle, Image as ImageIcon, Shield, Building2, Timer, FileCode } from 'lucide-react';
@@ -69,8 +70,8 @@ const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen, onClo
                     <div className="flex items-center gap-3">
                         <div className="bg-blue-600 p-2 rounded-lg"><Users className="text-white" size={24} /></div>
                         <div>
-                            <h2 className="text-xl font-bold text-white">Gestão de Acessos</h2>
-                            <p className="text-slate-400 text-sm">Aprovar ou remover usuários</p>
+                            <h2 className="text-xl font-bold text-white">Gestão de Acessos (Nuvem)</h2>
+                            <p className="text-slate-400 text-sm">Aprovar ou remover usuários no Supabase</p>
                         </div>
                     </div>
                     <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors"><X size={24} /></button>
@@ -98,22 +99,37 @@ interface LoginProps {
     onLogin: (user: UserAccount) => void;
     users: UserAccount[];
     onRegister: (u: UserAccount) => void;
+    isLoading: boolean; // Add loading state
 }
 
-const LoginScreen: React.FC<LoginProps> = ({ onLogin, users, onRegister }) => {
+const LoginScreen: React.FC<LoginProps> = ({ onLogin, users, onRegister, isLoading }) => {
     const [isRegistering, setIsRegistering] = useState(false);
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
     const [successMsg, setSuccessMsg] = useState('');
-    const handleSubmit = (e: React.FormEvent) => {
+
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError(''); setSuccessMsg('');
+        
+        if (isLoading) return;
+
         if (isRegistering) {
             if (users.find(u => u.username.toLowerCase() === username.toLowerCase())) { setError('Este nome de usuário já existe.'); return; }
             if (password.length < 4) { setError('A senha deve ter pelo menos 4 caracteres.'); return; }
-            onRegister({ username, password, role: 'USER', status: 'PENDING', createdAt: new Date().toISOString() });
-            setSuccessMsg('Solicitação enviada! Aguarde a aprovação do administrador.'); setIsRegistering(false); setUsername(''); setPassword('');
+            
+            try {
+                // Call Cloud DB
+                const newUser = { username, password, role: 'USER' as UserRole, status: 'PENDING' as UserStatus, createdAt: new Date().toISOString() };
+                await onRegister(newUser);
+                setSuccessMsg('Solicitação enviada para o servidor! Aguarde a aprovação do administrador.'); 
+                setIsRegistering(false); 
+                setUsername(''); 
+                setPassword('');
+            } catch (err) {
+                setError('Erro ao conectar com o servidor. Verifique o Supabase.');
+            }
         } else {
             const user = users.find(u => u.username === username && u.password === password);
             if (user) {
@@ -131,6 +147,7 @@ const LoginScreen: React.FC<LoginProps> = ({ onLogin, users, onRegister }) => {
                     <div className="bg-blue-600 p-4 rounded-xl shadow-lg shadow-blue-500/20 mb-4"><Cuboid className="text-white" size={40} /></div>
                     <h1 className="text-2xl font-bold text-white tracking-tight">Isometrico Manager</h1>
                     <p className="text-slate-400 text-sm mt-1">Software por Marconi Fabian</p>
+                    <p className="text-[10px] text-green-400 font-mono mt-2 bg-green-900/30 px-2 rounded border border-green-500/30">CLOUD CONNECTED (SUPABASE)</p>
                 </div>
                 <h2 className="text-center text-white font-bold text-lg mb-4">{isRegistering ? 'Solicitar Acesso' : 'Login'}</h2>
                 {successMsg && <div className="bg-green-500/10 border border-green-500/20 text-green-400 text-xs p-3 rounded-lg text-center font-bold mb-4">{successMsg}</div>}
@@ -138,7 +155,10 @@ const LoginScreen: React.FC<LoginProps> = ({ onLogin, users, onRegister }) => {
                     <div><label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1 ml-1">Usuário</label><div className="relative"><User className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={18} /><input type="text" value={username} onChange={(e) => setUsername(e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded-lg py-3 pl-10 pr-4 text-white focus:ring-2 focus:ring-blue-500 outline-none transition-all" placeholder="Usuário" required /></div></div>
                     <div><label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1 ml-1">Senha</label><div className="relative"><Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={18} /><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded-lg py-3 pl-10 pr-4 text-white focus:ring-2 focus:ring-blue-500 outline-none transition-all" placeholder="Senha" required /></div></div>
                     {error && <div className="bg-red-500/10 border border-red-500/20 text-red-400 text-xs p-3 rounded-lg text-center font-bold">{error}</div>}
-                    <button type="submit" className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-lg shadow-lg shadow-blue-600/20 transition-all flex items-center justify-center gap-2 group mt-2">{isRegistering ? 'Enviar Solicitação' : 'Acessar Sistema'} <ChevronRight size={18} className="group-hover:translate-x-1 transition-transform" /></button>
+                    <button type="submit" disabled={isLoading} className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 text-white font-bold py-3 rounded-lg shadow-lg shadow-blue-600/20 transition-all flex items-center justify-center gap-2 group mt-2">
+                        {isLoading ? <Loader2 className="animate-spin" size={18}/> : (isRegistering ? 'Enviar Solicitação' : 'Acessar Sistema')} 
+                        {!isLoading && <ChevronRight size={18} className="group-hover:translate-x-1 transition-transform" />}
+                    </button>
                 </form>
                 <div className="mt-6 text-center"><button onClick={() => { setIsRegistering(!isRegistering); setError(''); setSuccessMsg(''); }} className="text-sm text-slate-400 hover:text-white underline underline-offset-4 transition-colors">{isRegistering ? 'Já tenho conta? Fazer Login' : 'Não tem conta? Solicitar Acesso'}</button></div>
             </div>
@@ -168,24 +188,53 @@ function useProjectHistory(initialPipes: PipeSegment[]) {
 }
 
 export default function App() {
-  const [userDB, setUserDB] = useState<UserAccount[]>(() => {
-      try {
-          const saved = localStorage.getItem('iso-manager-users');
-          if (saved) return JSON.parse(saved);
-          return [
-              { username: 'Marconi Fabian', password: '2905', role: 'ADMIN', status: 'APPROVED', createdAt: new Date().toISOString() },
-              { username: 'Inspetor', password: 'iso123', role: 'USER', status: 'APPROVED', createdAt: new Date().toISOString() }
-          ];
-      } catch { return [{ username: 'Marconi Fabian', password: '2905', role: 'ADMIN', status: 'APPROVED', createdAt: new Date().toISOString() }]; }
-  });
+  // Estado para usuários vindos do Supabase
+  const [userDB, setUserDB] = useState<UserAccount[]>([]);
+  const [isLoadingUsers, setIsLoadingUsers] = useState(false);
+
+  // Initial Load of Users from Supabase
+  useEffect(() => {
+    const fetchUsers = async () => {
+        setIsLoadingUsers(true);
+        try {
+            const users = await getAllUsers();
+            setUserDB(users as UserAccount[]);
+        } catch (e) {
+            console.error("Erro ao carregar usuários", e);
+        } finally {
+            setIsLoadingUsers(false);
+        }
+    };
+    fetchUsers();
+  }, []);
+
   const [currentUser, setCurrentUser] = useState<UserAccount | null>(null);
   const [isAdminPanelOpen, setIsAdminPanelOpen] = useState(false);
-  useEffect(() => { localStorage.setItem('iso-manager-users', JSON.stringify(userDB)); }, [userDB]);
 
-  const handleRegister = (newUser: UserAccount) => setUserDB(prev => [...prev, newUser]);
-  const handleApproveUser = (username: string) => setUserDB(prev => prev.map(u => u.username === username ? { ...u, status: 'APPROVED' } : u));
-  const handleRejectUser = (username: string) => setUserDB(prev => prev.map(u => u.username === username ? { ...u, status: 'REJECTED' } : u));
-  const handleDeleteUser = (username: string) => { if (username === 'Marconi Fabian') return alert("O Administrador principal não pode ser removido."); setUserDB(prev => prev.filter(u => u.username !== username)); };
+  const handleRegister = async (newUser: UserAccount) => {
+      // Registrar no Supabase
+      await registerUserDB(newUser as any);
+      // Atualizar lista local
+      const users = await getAllUsers();
+      setUserDB(users as UserAccount[]);
+  };
+
+  const handleApproveUser = async (username: string) => {
+      await updateUserStatusDB(username, 'APPROVED');
+      // Atualizar UI
+      setUserDB(prev => prev.map(u => u.username === username ? { ...u, status: 'APPROVED' } : u));
+  };
+
+  const handleRejectUser = async (username: string) => {
+      await updateUserStatusDB(username, 'REJECTED');
+      setUserDB(prev => prev.map(u => u.username === username ? { ...u, status: 'REJECTED' } : u));
+  };
+
+  const handleDeleteUser = async (username: string) => {
+      if (username === 'Marconi Fabian') return alert("O Administrador principal não pode ser removido.");
+      await deleteUserDB(username);
+      setUserDB(prev => prev.filter(u => u.username !== username));
+  };
 
   const initialPipes = useMemo(() => {
     try {
@@ -310,9 +359,18 @@ export default function App() {
       setViewMode('dashboard'); setIsDrawing(false);
   };
   const handleNewProject = () => { if (confirm('Novo projeto? Dados não salvos serão perdidos.')) { setPipes([]); setAnnotations([]); setSelectedIds([]); setSecondaryImage(null); setMapImage(null); } };
-  const handleDBAction_Save = async (name: string) => { await saveProjectToDB({ id: crypto.randomUUID(), name, updatedAt: new Date(), pipes, annotations, location: projectLocation, client: projectClient, secondaryImage, mapImage }); getAllProjects().then(setSavedProjects); };
+  
+  // DB ACTIONS - Now connecting to Supabase via db.ts
+  const handleDBAction_Save = async (name: string) => { 
+      // id é gerado pelo supabase se omitido, mas aqui geramos uuid v4 para manter compatibilidade com tipos locais se necessario
+      const newProj = { id: crypto.randomUUID(), name, updatedAt: new Date().toISOString(), pipes, annotations, location: projectLocation, client: projectClient, secondaryImage, mapImage };
+      await saveProjectToDB(newProj); 
+      // Refresh list
+      getAllProjects().then(setSavedProjects); 
+  };
   const handleDBAction_Load = (project: any) => { setPipes(project.pipes || []); setAnnotations(project.annotations || []); setProjectLocation(project.location || ''); setProjectClient(project.client || 'VALE'); setSecondaryImage(project.secondaryImage || null); setMapImage(project.mapImage || null); setSelectedIds([]); setIsDBModalOpen(false); };
   const handleDBAction_Delete = async (id: string) => { await deleteProjectFromDB(id); getAllProjects().then(setSavedProjects); };
+  
   const handleSelectPipe = useCallback((id: string | null, multi: boolean = false) => { if (pastePreview) return; if (id === null) { if (!multi) setSelectedIds([]); return; } setSelectedIds(prev => multi ? (prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]) : [id]); }, [pastePreview]);
   const handleSetSelection = useCallback((ids: string[]) => { if (!pastePreview) setSelectedIds(ids); }, [pastePreview]);
   const handleAddAnnotation = (pos: {x:number, y:number, z:number}) => setAnnotations(prev => [...prev, { id: `A-${Date.now()}`, position: pos, text: '' }]);
@@ -428,7 +486,7 @@ export default function App() {
     } catch (err) { alert("Erro PDF."); } finally { setIsExporting(false); }
   };
 
-  if (!currentUser) return <LoginScreen onLogin={setCurrentUser} users={userDB} onRegister={handleRegister} />;
+  if (!currentUser) return <LoginScreen onLogin={setCurrentUser} users={userDB} onRegister={handleRegister} isLoading={isLoadingUsers} />;
 
   return (
     <div className="h-screen w-screen bg-slate-950 text-slate-100 flex flex-col overflow-hidden font-sans">
@@ -450,7 +508,7 @@ export default function App() {
                 {currentUser.role === 'ADMIN' && <button onClick={() => setIsAdminPanelOpen(true)} className="p-2 bg-purple-900/40 border border-purple-500/30 rounded-lg text-purple-300 relative"><Users size={18} /></button>}
                 <button onClick={() => setCurrentUser(null)} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-red-400 transition-colors"><LogOut size={18} /></button>
                 <div className="h-6 w-px bg-slate-700 mx-1"></div>
-                <button onClick={() => setIsDBModalOpen(true)} className="bg-blue-900/40 hover:bg-blue-800 text-blue-300 border border-blue-500/30 px-4 py-2 rounded-lg font-bold flex items-center gap-2"><Database size={16} /> Banco de Dados</button>
+                <button onClick={() => setIsDBModalOpen(true)} className="bg-blue-900/40 hover:bg-blue-800 text-blue-300 border border-blue-500/30 px-4 py-2 rounded-lg font-bold flex items-center gap-2"><Database size={16} /> Projetos (Cloud)</button>
                 <div className="bg-slate-800 p-1 rounded-lg flex gap-1 border border-slate-700">
                     <button onClick={() => { setViewMode('3d'); setIsDrawing(false); }} className={`px-3 py-1.5 text-xs font-bold rounded ${viewMode === '3d' && !isDrawing ? 'bg-slate-700 text-blue-400' : 'text-slate-400 hover:text-white'}`} title="Vista 3D"><Cuboid size={16}/></button>
                     <button onClick={() => { setViewMode('planning'); setIsDrawing(false); }} className={`px-3 py-1.5 text-xs font-bold rounded ${viewMode === 'planning' ? 'bg-slate-700 text-purple-400' : 'text-slate-400 hover:text-white'}`} title="Planejamento 4D"><Timer size={16}/></button>
