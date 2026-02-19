@@ -1,20 +1,29 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
 
-# Run and deploy your AI Studio app
+# Isometrico Manager - VDC & BI Platform
 
-This contains everything you need to run your app locally.
+**Desenvolvido por: Marconi Fabian**
 
-View your app in AI Studio: https://ai.studio/apps/drive/1Od3-hoIpFd5Fw1ap5OO2rD2Xnb8iyVl1
+O **Isometrico Manager** é uma plataforma avançada de engenharia para rastreabilidade de tubulação industrial e planejamento 4D. O sistema utiliza um motor gráfico 3D para transformar listas de materiais em modelos visuais interativos, permitindo o acompanhamento em tempo real do progresso físico da obra.
 
-## Run Locally
+## 🚀 Tecnologias
+- **Frontend:** React 19 + TypeScript
+- **Gráficos 3D:** Three.js + React Three Fiber
+- **Banco de Dados Cloud:** Supabase (PostgreSQL + JSONB)
+- **Estilização:** Tailwind CSS
+- **Relatórios:** jsPDF + html2canvas
 
-**Prerequisites:**  Node.js
+## 🛠️ Configuração
+1. Clone este repositório.
+2. Configure as credenciais do seu projeto no arquivo `utils/supabaseClient.ts`.
+3. Execute o script SQL (disponível na documentação interna) no seu console do Supabase para criar as tabelas `projects` e `app_users`.
+4. Faça o deploy no Vercel vinculando este repositório.
 
+## 📈 Funcionalidades
+- Desenho de tubulação em tempo real (6m, 12m ou livre).
+- Rastreabilidade de soldagem e status de montagem.
+- Cálculo automático de saldo remanescente (H/H).
+- Dashboard de BI com exportação de relatórios em PDF.
+- Exportação de geometria 3D para AutoCAD (DXF).
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+---
+© 2025 Marconi Fabian. Todos os direitos reservados.

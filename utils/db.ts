@@ -1,56 +1,66 @@
 
-import { openDB, DBSchema } from 'idb';
+import { supabase } from './supabaseClient';
 import { PipeSegment, Annotation } from '../types';
 
-interface ProjectData {
+export interface ProjectData {
   id: string;
   name: string;
-  updatedAt: Date;
+  updatedAt: string;
   pipes: PipeSegment[];
   annotations: Annotation[];
   location: string;
-  client: string; // Adicionado campo para o cliente
+  client: string;
   secondaryImage: string | null;
   mapImage: string | null;
 }
 
-interface IsometricoDB extends DBSchema {
-  projects: {
-    key: string;
-    value: ProjectData;
-    indexes: { 'by-date': Date };
-  };
+export interface UserData {
+  username: string;
+  password: string;
+  role: 'ADMIN' | 'USER';
+  status: 'APPROVED' | 'PENDING' | 'REJECTED';
+  createdAt: string;
 }
 
-const DB_NAME = 'isometrico-manager-db';
-const STORE_NAME = 'projects';
-
-export const initDB = async () => {
-  return openDB<IsometricoDB>(DB_NAME, 1, {
-    upgrade(db) {
-      const store = db.createObjectStore(STORE_NAME, { keyPath: 'id' });
-      store.createIndex('by-date', 'updatedAt');
-    },
-  });
-};
-
-export const saveProjectToDB = async (project: ProjectData) => {
-  const db = await initDB();
-  await db.put(STORE_NAME, project);
-  return project;
+// --- PROJETOS ---
+export const saveProjectToDB = async (project: any) => {
+  const { data, error } = await supabase
+    .from('projects')
+    .upsert({ ...project, updatedAt: new Date().toISOString() })
+    .select();
+  if (error) throw error;
+  return data;
 };
 
 export const getAllProjects = async () => {
-  const db = await initDB();
-  return db.getAllFromIndex(STORE_NAME, 'by-date');
-};
-
-export const getProjectById = async (id: string) => {
-  const db = await initDB();
-  return db.get(STORE_NAME, id);
+  const { data, error } = await supabase
+    .from('projects')
+    .select('*')
+    .order('updatedAt', { ascending: false });
+  if (error) return [];
+  return data as ProjectData[];
 };
 
 export const deleteProjectFromDB = async (id: string) => {
-  const db = await initDB();
-  await db.delete(STORE_NAME, id);
+  await supabase.from('projects').delete().eq('id', id);
+};
+
+// --- USUÁRIOS ---
+export const getAllUsers = async () => {
+  const { data, error } = await supabase.from('app_users').select('*');
+  if (error) return [{ username: 'Marconi Fabian', password: '2905', role: 'ADMIN', status: 'APPROVED', createdAt: new Date().toISOString() }];
+  return data as UserData[];
+};
+
+export const registerUserDB = async (user: UserData) => {
+  const { error } = await supabase.from('app_users').insert([user]);
+  if (error) throw error;
+};
+
+export const updateUserStatusDB = async (username: string, status: string) => {
+  await supabase.from('app_users').update({ status }).eq('username', username);
+};
+
+export const deleteUserDB = async (username: string) => {
+  await supabase.from('app_users').delete().eq('username', username);
 };
