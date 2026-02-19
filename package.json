@@ -1,31 +1,31 @@
+
 {
-  "name": "isometrico-manager---software-desenvolvido-por-marconi-fabian",
+  "name": "isometrico-manager",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "tsc && vite build",
     "preview": "vite preview"
   },
   "dependencies": {
-    "react": "^19.2.4",
-    "lucide-react": "^0.563.0",
-    "react-dom": "^19.2.4",
+    "@react-three/drei": "^10.0.0",
+    "@react-three/fiber": "^9.0.0",
+    "@supabase/supabase-js": "^2.39.7",
     "html2canvas": "^1.4.1",
-    "jspdf": "^4.1.0",
-    "@react-three/fiber": "^9.5.0",
-    "@vitejs/plugin-react": "^5.1.4",
-    "three": "^0.182.0",
-    "vite": "^7.3.1",
-    "@react-three/drei": "^10.7.7",
-    "idb": "^8.0.3",
-    "@supabase/supabase-js": "2.39.7"
+    "jspdf": "^2.5.1",
+    "lucide-react": "^0.463.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "three": "^0.170.0"
   },
   "devDependencies": {
-    "@types/node": "^22.14.0",
-    "@vitejs/plugin-react": "^5.0.0",
-    "typescript": "~5.8.2",
-    "vite": "^6.2.0"
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@types/three": "^0.170.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.3"
   }
 }

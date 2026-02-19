@@ -2,23 +2,18 @@
 import { createClient } from '@supabase/supabase-js';
 
 // --- CONFIGURAÇÃO DO SUPABASE ---
-// IMPORTANTE: Insira suas chaves aqui. 
-// O app não funcionará na nuvem sem uma URL e Chave válidas.
+// Insira suas chaves aqui para ativar o modo Cloud.
+// Se deixar como está, o app funcionará apenas no seu navegador atual (Modo Local).
 const SUPABASE_URL = 'SUA_URL_DO_SUPABASE'; 
 const SUPABASE_KEY = 'SUA_CHAVE_ANON_DO_SUPABASE';
 
-// Função para validar se a URL é legítima antes de criar o cliente
-const isValidUrl = (url: string) => {
-    try {
-        new URL(url);
-        return url !== 'SUA_URL_DO_SUPABASE';
-    } catch {
-        return false;
-    }
+const isConfigValid = () => {
+    return SUPABASE_URL && 
+           SUPABASE_URL.startsWith('https://') && 
+           SUPABASE_URL !== 'SUA_URL_DO_SUPABASE';
 };
 
-// Se a URL for inválida, criamos um cliente nulo ou lançamos erro controlado
-export const supabase = isValidUrl(SUPABASE_URL) 
+export const supabase = isConfigValid() 
     ? createClient(SUPABASE_URL, SUPABASE_KEY)
     : null;
 
