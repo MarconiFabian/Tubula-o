@@ -1,73 +1,56 @@
 
-import { supabase, isSupabaseConfigured } from './supabaseClient';
+import { openDB, DBSchema } from 'idb';
 import { PipeSegment, Annotation } from '../types';
 
-// --- FALLBACK LOCAL STORAGE ---
-const saveLocal = (key: string, data: any) => localStorage.setItem(`iso_local_${key}`, JSON.stringify(data));
-const getLocal = (key: string) => {
-    const d = localStorage.getItem(`iso_local_${key}`);
-    return d ? JSON.parse(d) : null;
+interface ProjectData {
+  id: string;
+  name: string;
+  updatedAt: Date;
+  pipes: PipeSegment[];
+  annotations: Annotation[];
+  location: string;
+  client: string; // Adicionado campo para o cliente
+  secondaryImage: string | null;
+  mapImage: string | null;
+}
+
+interface IsometricoDB extends DBSchema {
+  projects: {
+    key: string;
+    value: ProjectData;
+    indexes: { 'by-date': Date };
+  };
+}
+
+const DB_NAME = 'isometrico-manager-db';
+const STORE_NAME = 'projects';
+
+export const initDB = async () => {
+  return openDB<IsometricoDB>(DB_NAME, 1, {
+    upgrade(db) {
+      const store = db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+      store.createIndex('by-date', 'updatedAt');
+    },
+  });
 };
 
-// --- PROJETOS ---
-export const saveProjectToDB = async (project: any) => {
-  if (!isSupabaseConfigured || !supabase) {
-      const localProjects = getLocal('projects') || [];
-      const index = localProjects.findIndex((p: any) => p.id === project.id);
-      if (index >= 0) localProjects[index] = project;
-      else localProjects.push(project);
-      saveLocal('projects', localProjects);
-      return project;
-  }
-  const { data, error } = await supabase
-    .from('projects')
-    .upsert({ ...project, updatedAt: new Date().toISOString() })
-    .select();
-  if (error) throw error;
-  return data;
+export const saveProjectToDB = async (project: ProjectData) => {
+  const db = await initDB();
+  await db.put(STORE_NAME, project);
+  return project;
 };
 
 export const getAllProjects = async () => {
-  if (!isSupabaseConfigured || !supabase) {
-      return getLocal('projects') || [];
-  }
-  const { data, error } = await supabase
-    .from('projects')
-    .select('*')
-    .order('updatedAt', { ascending: false });
-  if (error) return getLocal('projects') || [];
-  return data;
+  const db = await initDB();
+  return db.getAllFromIndex(STORE_NAME, 'by-date');
+};
+
+export const getProjectById = async (id: string) => {
+  const db = await initDB();
+  return db.get(STORE_NAME, id);
 };
 
 export const deleteProjectFromDB = async (id: string) => {
-  if (!isSupabaseConfigured || !supabase) {
-      const local = getLocal('projects') || [];
-      saveLocal('projects', local.filter((p:any) => p.id !== id));
-      return;
-  }
-  await supabase.from('projects').delete().eq('id', id);
-};
-
-// --- USUÁRIOS ---
-export const getAllUsers = async () => {
-  const defaultAdmin = { username: 'Marconi Fabian', password: '2905', role: 'ADMIN', status: 'APPROVED', createdAt: new Date().toISOString() };
-  
-  if (!isSupabaseConfigured || !supabase) {
-      const localUsers = getLocal('users') || [defaultAdmin];
-      return localUsers;
-  }
-
-  const { data, error } = await supabase.from('app_users').select('*');
-  if (error) return [defaultAdmin];
-  return data.length > 0 ? data : [defaultAdmin];
-};
-
-export const registerUserDB = async (user: any) => {
-  if (!isSupabaseConfigured || !supabase) {
-      const local = getLocal('users') || [];
-      local.push(user);
-      saveLocal('users', local);
-      return;
-  }
-  await supabase.from('app_users').insert([user]);
+  const db = await initDB();
+  await db.delete(STORE_NAME, id);
 };
