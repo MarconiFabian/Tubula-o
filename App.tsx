@@ -388,7 +388,7 @@ export default function App() {
             pdf.setFont(undefined, 'normal'); currentY += 10;
         }
 
-        pdf.setFontSize(8); pdf.setFillColor(240); pdf.rect(margin, currentY, pageWidth - (margin * 2), 8, 'F');
+        pdf.setFontSize(8); pdf.setFillColor(240, 240, 240); pdf.rect(margin, currentY, pageWidth - (margin * 2), 8, 'F');
         pdf.setTextColor(0); pdf.setFont(undefined, 'bold');
         const col1 = margin + 2, col2 = margin + 22, col3 = margin + 47, col4 = margin + 95, col5 = margin + 115, col6 = margin + 140, col7 = margin + 172;
         pdf.text("ID", col1, currentY + 5); pdf.text("Spool", col2, currentY + 5); pdf.text("Linha/Desc", col3, currentY + 5); pdf.text("Comp(m)", col4, currentY + 5); pdf.text("Status", col5, currentY + 5); pdf.text("Isolamento", col6, currentY + 5); 
@@ -396,7 +396,7 @@ export default function App() {
         pdf.setFont(undefined, 'normal'); currentY += 10;
 
         pipes.forEach((pipe) => {
-            if (currentY > pageHeight - 15) { pdf.addPage(); currentY = 20; pdf.setFillColor(240); pdf.rect(margin, currentY, pageWidth - (margin * 2), 8, 'F'); pdf.setFont(undefined, 'bold'); pdf.text("ID", col1, currentY+5); pdf.text(isPlanning ? "Saldo(H/H)" : "Nível Esf.", col7, currentY+5); pdf.setFont(undefined, 'normal'); currentY += 10; }
+            if (currentY > pageHeight - 15) { pdf.addPage(); currentY = 20; pdf.setFillColor(240, 240, 240); pdf.rect(margin, currentY, pageWidth - (margin * 2), 8, 'F'); pdf.setFont(undefined, 'bold'); pdf.text("ID", col1, currentY+5); pdf.text(isPlanning ? "Saldo(H/H)" : "Nível Esf.", col7, currentY+5); pdf.setFont(undefined, 'normal'); currentY += 10; }
             const statusLabel = STATUS_LABELS[pipe.status] || pipe.status;
             const statusRgb = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(STATUS_COLORS[pipe.status] || '#999')!;
             const insLabel = INSULATION_LABELS[pipe.insulationStatus || 'NONE'];

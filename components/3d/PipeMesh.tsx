@@ -86,7 +86,6 @@ const PipeMesh: React.FC<PipeMeshProps> = ({ data, isSelected, trimStart = 0, tr
                         anchorY="bottom"
                         outlineWidth={0.03}
                         outlineColor="#000000"
-                        depthTest={false} // Ensure it renders on top of the pipe
                         renderOrder={1000}
                     >
                         {data.length.toFixed(2)}m
