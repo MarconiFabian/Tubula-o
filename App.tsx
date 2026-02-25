@@ -237,82 +237,6 @@ export default function App() {
   const [isDBModalOpen, setIsDBModalOpen] = useState(false);
   const [savedProjects, setSavedProjects] = useState<any[]>([]);
 
-  useEffect(() => {
-      if (fixedLengthValue === 0) setFixedLengthText('');
-      else if (parseFloat(fixedLengthText.replace(',', '.')) !== fixedLengthValue) setFixedLengthText(fixedLengthValue.toString().replace('.', ','));
-  }, [fixedLengthValue]);
-
-  const selectedPipes = useMemo(() => pipes.filter(p => selectedIds.includes(p.id)), [pipes, selectedIds]);
-
-  const reportStats = useMemo(() => {
-      const totalLength = pipes.reduce((acc, p) => acc + (p?.length || 0), 0);
-      const totalPipes = pipes.length;
-      const pipeCounts: Record<string, number> = {};
-      ALL_STATUSES.forEach(s => pipeCounts[s] = 0);
-      pipes.forEach(p => { if (p.status) pipeCounts[p.status] = (pipeCounts[p.status] || 0) + 1; });
-      const insulationCounts: Record<string, number> = {};
-      ALL_INSULATION_STATUSES.forEach(s => insulationCounts[s] = 0);
-      pipes.forEach(p => { const s = p.insulationStatus || 'NONE'; insulationCounts[s] = (insulationCounts[s] || 0) + 1; });
-      const bom: Record<string, number> = {};
-      pipes.forEach(p => { const inches = Math.round(p.diameter * 39.37); const label = `${inches}"`; bom[label] = (bom[label] || 0) + p.length; });
-      const progress = totalPipes > 0 ? (((pipeCounts['WELDED'] * 0.8) + (pipeCounts['HYDROTEST'] * 1.0) + (pipeCounts['MOUNTED'] * 0.3)) / totalPipes) * 100 : 0;
-
-      // ESTIMATION LOGIC - SALDO REMANESCENTE (HORAS A EXECUTAR)
-      let totalPipingHH = 0;
-      let totalInsulationHH = 0;
-      let totalHH = 0;
-
-      pipes.forEach(p => {
-          const pipingFactor = PIPING_REMAINING_FACTOR[p.status] || 0;
-          const insulationFactor = INSULATION_REMAINING_FACTOR[p.insulationStatus || 'NONE'] || 0;
-          
-          const pipeBase = (p.length * prodSettings.pipingBase) * pipingFactor;
-          const insBase = (p.length * prodSettings.insulationBase) * insulationFactor;
-          
-          const factors = p.planningFactors;
-          let multiplier = 1.0; 
-          let delays = 0;
-
-          if (factors) {
-              if (factors.hasCrane) multiplier += prodSettings.weights.crane;
-              if (factors.hasBlockage) multiplier += prodSettings.weights.blockage;
-              if (factors.isNightShift) multiplier += prodSettings.weights.nightShift;
-              if (factors.isCriticalArea) multiplier += prodSettings.weights.criticalArea;
-              if (factors.accessType === 'SCAFFOLD_FLOOR') multiplier += prodSettings.weights.scaffoldFloor;
-              if (factors.accessType === 'SCAFFOLD_HANGING') multiplier += prodSettings.weights.scaffoldHanging;
-              if (factors.accessType === 'PTA') multiplier += prodSettings.weights.pta;
-              delays = factors.delayHours || 0;
-          }
-
-          const pipeFinal = (pipeBase * multiplier);
-          const insFinal = (insBase * multiplier);
-          
-          totalPipingHH += pipeFinal;
-          totalInsulationHH += insFinal;
-          totalHH += pipeFinal + insFinal + delays;
-      });
-
-      const daysNeeded = Math.ceil(totalHH / 8.8);
-      const end = getWorkingEndDate(new Date(activityDate + 'T12:00:00'), daysNeeded);
-      return { 
-          pipeCounts, insulationCounts, total: totalPipes, totalLength, progress, bom, 
-          totalHH, totalPipingHH, totalInsulationHH, projectedEnd: end.toLocaleDateString('pt-BR') 
-      };
-  }, [pipes, activityDate, prodSettings]);
-
-  useEffect(() => { localStorage.setItem('iso-manager-pipes', JSON.stringify(pipes)); }, [pipes]);
-  useEffect(() => { localStorage.setItem('iso-manager-annotations', JSON.stringify(annotations)); }, [annotations]);
-  useEffect(() => { if (isDBModalOpen) { getAllProjects().then(setSavedProjects); } }, [isDBModalOpen]);
-
-  const handleSwitchToDashboard = () => {
-      const canvas = document.querySelector('canvas');
-      if (canvas) { try { setSceneScreenshot(canvas.toDataURL('image/png')); } catch(e) { console.error(e); } }
-      setViewMode('dashboard'); setIsDrawing(false);
-  };
-  const handleNewProject = () => { if (confirm('Novo projeto? Dados não salvos serão perdidos.')) { setPipes([]); setAnnotations([]); setSelectedIds([]); setSecondaryImage(null); setMapImage(null); } };
-  const handleDBAction_Save = async (name: string) => { await saveProjectToDB({ id: crypto.randomUUID(), name, updatedAt: new Date(), pipes, annotations, location: projectLocation, client: projectClient, secondaryImage, mapImage }); getAllProjects().then(setSavedProjects); };
-  const handleDBAction_Load = (project: any) => { setPipes(project.pipes || []); setAnnotations(project.annotations || []); setProjectLocation(project.location || ''); setProjectClient(project.client || 'VALE'); setSecondaryImage(project.secondaryImage || null); setMapImage(project.mapImage || null); setSelectedIds([]); setIsDBModalOpen(false); };
-  const handleDBAction_Delete = async (id: string) => { await deleteProjectFromDB(id); getAllProjects().then(setSavedProjects); };
   const handleSelectPipe = useCallback((id: string | null, multi: boolean = false) => { if (pastePreview) return; if (id === null) { if (!multi) setSelectedIds([]); return; } setSelectedIds(prev => multi ? (prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]) : [id]); }, [pastePreview]);
   const handleSetSelection = useCallback((ids: string[]) => { if (!pastePreview) setSelectedIds(ids); }, [pastePreview]);
   const handleAddAnnotation = (pos: {x:number, y:number, z:number}) => setAnnotations(prev => [...prev, { id: `A-${Date.now()}`, position: pos, text: '' }]);
@@ -327,6 +251,48 @@ export default function App() {
   const handlePasteStart = useCallback(() => { if (!clipboard || !pasteCentroid) return; setPastePreview(clipboard.map(p => ({ ...p, id: `PREVIEW-${p.id}`, status: 'PENDING' as PipeStatus }))); setSelectedIds([]); setIsDrawing(false); }, [clipboard, pasteCentroid]);
   const handlePasteMove = useCallback((target: any) => { if (!pastePreview || !pasteCentroid) return; const dx=target.x-pasteCentroid.x, dy=target.y-pasteCentroid.y, dz=target.z-pasteCentroid.z; setPastePreview(clipboard!.map(p => ({ ...p, id: `NEW-${p.id}-${Date.now()}`, start: {x:p.start.x+dx, y:p.start.y+dy, z:p.start.z+dz}, end: {x:p.end.x+dx, y:p.end.y+dy, z:p.end.z+dz} }))); }, [clipboard, pasteCentroid, pastePreview]);
   const handlePasteConfirm = useCallback(() => { if (!pastePreview) return; const final = pastePreview.map(p => ({ ...p, id: `P-${Math.floor(Math.random()*1000000)}`, name: `${p.name} (Cópia)` })); setPipes(prev => [...prev, ...final]); setPastePreview(null); setSelectedIds(final.map(p => p.id)); }, [pastePreview]);
+
+  // Global Key listeners for actions like Delete, Copy, Paste
+  useEffect(() => {
+    const handleGlobalKeys = (e: KeyboardEvent) => {
+        if (viewMode !== '3d') return;
+        
+        // Delete
+        if (e.key === 'Delete' || e.key === 'Backspace') {
+            if (selectedIds.length > 0) handleDeleteSelected();
+        }
+
+        // Copy (Ctrl+C)
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') {
+            if (selectedIds.length > 0) {
+                e.preventDefault();
+                handleCopy();
+            }
+        }
+
+        // Paste (Ctrl+V)
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') {
+            if (clipboard && clipboard.length > 0) {
+                e.preventDefault();
+                handlePasteStart();
+            }
+        }
+
+        // Undo (Ctrl+Z)
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
+            e.preventDefault();
+            undo();
+        }
+
+        // Redo (Ctrl+Y or Ctrl+Shift+Z)
+        if (((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') || ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'z')) {
+            e.preventDefault();
+            redo();
+        }
+    };
+    window.addEventListener('keydown', handleGlobalKeys);
+    return () => window.removeEventListener('keydown', handleGlobalKeys);
+  }, [selectedIds, viewMode, handleDeleteSelected, handleCopy, handlePasteStart, clipboard, undo, redo]);
 
   // FUNÇÃO PARA EXPORTAR PARA CAD (DXF)
   const handleExportDXF = () => {
@@ -514,7 +480,7 @@ export default function App() {
             </div>
             {selectedPipes.length > 0 && !isDrawing && !pastePreview && (
                 <div className="w-96 relative z-20 shadow-2xl border-l border-slate-700">
-                    <Sidebar selectedPipes={selectedPipes} onUpdateSingle={handleUpdateSinglePipe} onUpdateBatch={handleBatchUpdate} onDelete={handleDeleteSelected} onClose={() => setSelectedIds([])} mode={viewMode === 'planning' ? 'PLANNING' : 'TRACKING'} startDate={activityDate} prodSettings={prodSettings} onUpdateProdSettings={setProdSettings} />
+                    <Sidebar selectedPipes={selectedPipes} onUpdateSingle={handleUpdateSinglePipe} onUpdateBatch={handleBatchUpdate} onDelete={handleDeleteSelected} onClose={() => setSelectedIds([])} mode={viewMode === 'planning' ? 'PLANNING' : 'TRACKING'} startDate={activityDate} prodSettings={prodSettings} onUpdateProdSettings={setProdSettings} onCopy={handleCopy} />
                 </div>
             )}
         </main>

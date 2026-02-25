@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { PipeSegment, PipeStatus, InsulationStatus, PlanningFactors, ProductivitySettings } from '../types';
 import { STATUS_LABELS, STATUS_COLORS, ALL_STATUSES, INSULATION_LABELS, INSULATION_COLORS, ALL_INSULATION_STATUSES } from '../constants';
-import { X, CheckCircle, AlertCircle, FileText, Trash2, Shield, Wrench, Layers, MapPin, Timer, Truck, Construction, Users, ArrowUpCircle, Calendar, Moon, ShieldAlert, Clock, Activity, Settings2, Sliders, Info, Percent, ZapOff, HardHat } from 'lucide-react';
+import { X, CheckCircle, AlertCircle, FileText, Trash2, Shield, Wrench, Layers, MapPin, Timer, Truck, Construction, Users, ArrowUpCircle, Calendar, Moon, ShieldAlert, Clock, Activity, Settings2, Sliders, Info, Percent, ZapOff, HardHat, Copy } from 'lucide-react';
 
 interface SidebarProps {
   selectedPipes: PipeSegment[];
@@ -14,6 +14,7 @@ interface SidebarProps {
   startDate?: string;
   prodSettings?: ProductivitySettings;
   onUpdateProdSettings?: (settings: ProductivitySettings) => void;
+  onCopy?: () => void;
 }
 
 const DEFAULT_FACTORS: PlanningFactors = { 
@@ -62,7 +63,7 @@ const addWorkingDays = (startDate: Date, days: number): Date => {
 const Sidebar: React.FC<SidebarProps> = ({ 
     selectedPipes, onUpdateSingle, onUpdateBatch, onDelete, onClose, 
     mode = 'TRACKING', startDate = new Date().toISOString().split('T')[0],
-    prodSettings, onUpdateProdSettings 
+    prodSettings, onUpdateProdSettings, onCopy
 }) => {
   const [showMetricsConfig, setShowMetricsConfig] = useState(false);
   const [localTeamCount, setLocalTeamCount] = useState<string>('1');
@@ -264,6 +265,9 @@ const Sidebar: React.FC<SidebarProps> = ({
 
   // --- MODO RASTREAMENTO (BATCH) ---
   if (isBatch) {
+      const totalLength = selectedPipes.reduce((acc, p) => acc + p.length, 0);
+      const totalArea = selectedPipes.reduce((acc, p) => acc + (Math.PI * p.diameter * p.length), 0);
+
       return (
         <div className="h-full flex flex-col bg-slate-900 border-l border-slate-700 shadow-xl overflow-y-auto w-full absolute right-0 top-0 z-20">
             <div className="p-4 border-b border-slate-700 flex justify-between items-center bg-slate-800">
@@ -271,14 +275,29 @@ const Sidebar: React.FC<SidebarProps> = ({
                 <button onClick={onClose} className="p-1 hover:bg-slate-700 rounded text-slate-400"><X size={20} /></button>
             </div>
             <div className="p-6 space-y-6 flex-1">
-                <div className="bg-blue-900/30 text-blue-300 p-4 rounded-xl border border-blue-500/20 flex items-center gap-3">
-                    <Activity size={24} />
-                    <div><p className="font-bold">{selectedPipes.length} Segmentos</p><p className="text-xs opacity-70">Ações em massa para rastreabilidade.</p></div>
+                <div className="bg-blue-900/30 text-blue-300 p-4 rounded-xl border border-blue-500/20 flex flex-col gap-3">
+                    <div className="flex items-center gap-3">
+                        <Activity size={24} />
+                        <div><p className="font-bold">{selectedPipes.length} Segmentos</p><p className="text-xs opacity-70">Seleção Múltipla</p></div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 border-t border-blue-500/20 pt-3 mt-1">
+                        <div>
+                            <span className="text-[9px] uppercase font-bold opacity-70 block mb-1">Comp. Total</span>
+                            <div className="text-xl font-mono font-bold text-white leading-none">{totalLength.toFixed(2)}<span className="text-xs ml-0.5 text-blue-400">m</span></div>
+                        </div>
+                        <div>
+                            <span className="text-[9px] uppercase font-bold opacity-70 block mb-1">Área Sup.</span>
+                            <div className="text-xl font-mono font-bold text-white leading-none">{totalArea.toFixed(2)}<span className="text-xs ml-0.5 text-blue-400">m²</span></div>
+                        </div>
+                    </div>
                 </div>
                 <div><label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2 block">Definir Status</label><div className="grid grid-cols-2 gap-2">{ALL_STATUSES.map(s => (<button key={s} onClick={() => onUpdateBatch({ status: s as PipeStatus })} className="p-2 rounded font-bold text-[10px] text-white transition-all uppercase" style={{ backgroundColor: STATUS_COLORS[s] }}>{STATUS_LABELS[s]}</button>))}</div></div>
                 <div><label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2 block">Proteção Térmica</label><div className="grid grid-cols-1 gap-2">{ALL_INSULATION_STATUSES.map(i => (<button key={i} onClick={() => onUpdateBatch({ insulationStatus: i as InsulationStatus })} className="flex items-center gap-3 p-2 rounded-lg bg-slate-800 border border-slate-700 text-xs font-bold text-slate-400 hover:text-white transition-all"><div className="w-3 h-3 rounded-full" style={{ backgroundColor: INSULATION_COLORS[i] === 'transparent' ? '#475569' : INSULATION_COLORS[i] }} /> {INSULATION_LABELS[i]}</button>))}</div></div>
             </div>
-            <div className="p-4 bg-slate-950 border-t border-slate-700"><button onClick={onDelete} className="w-full bg-red-600 hover:bg-red-700 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-colors uppercase text-xs tracking-widest"><Trash2 size={16} /> Excluir {selectedPipes.length} Itens</button></div>
+            <div className="p-4 bg-slate-950 border-t border-slate-700 grid grid-cols-2 gap-2">
+                {onCopy && <button onClick={onCopy} className="bg-blue-600 hover:bg-blue-500 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-colors uppercase text-xs tracking-widest"><Copy size={16} /> Copiar</button>}
+                <button onClick={onDelete} className={`${onCopy ? '' : 'col-span-2'} bg-red-600 hover:bg-red-700 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-colors uppercase text-xs tracking-widest`}><Trash2 size={16} /> Excluir</button>
+            </div>
         </div>
       )
   }
@@ -297,12 +316,19 @@ const Sidebar: React.FC<SidebarProps> = ({
             <div className="grid grid-cols-2 gap-4">
                 <div><label className="text-[10px] font-bold text-slate-500 uppercase">ID Linha</label><div className="text-blue-400 font-mono text-xs">{singlePipe.id}</div></div>
                 <div><label className="text-[10px] font-bold text-slate-500 uppercase">Comp.</label><div className="text-white font-bold text-xs">{singlePipe.length.toFixed(2)}m</div></div>
+                <div className="col-span-2 border-t border-slate-800 pt-2 flex justify-between items-center">
+                    <label className="text-[10px] font-bold text-slate-500 uppercase">Área Superfície</label>
+                    <div className="text-white font-mono text-xs font-bold">{(Math.PI * singlePipe.diameter * singlePipe.length).toFixed(2)}m²</div>
+                </div>
             </div>
             <div><label className="text-[10px] font-bold text-slate-500 uppercase">Status Montagem</label><div className="grid grid-cols-2 gap-2">{ALL_STATUSES.map(s => (<button key={s} onClick={() => onUpdateSingle({ ...singlePipe, status: s as PipeStatus })} className={`p-2 rounded font-bold text-[9px] border transition-all ${singlePipe.status === s ? 'ring-2 ring-white scale-105 opacity-100' : 'opacity-40'}`} style={{ backgroundColor: STATUS_COLORS[s], color: '#fff' }}>{STATUS_LABELS[s]}</button>))}</div></div>
         </div>
         <div className="bg-slate-950/40 p-4 rounded-xl border border-slate-800"><label className="text-[10px] font-bold text-slate-500 uppercase mb-3 block flex items-center gap-2"><Shield size={14}/> Isolamento</label><div className="grid grid-cols-1 gap-2">{ALL_INSULATION_STATUSES.map(i => (<button key={i} onClick={() => onUpdateSingle({ ...singlePipe, insulationStatus: i as InsulationStatus })} className={`flex items-center gap-3 p-2.5 rounded-lg text-[10px] font-bold border transition-all ${singlePipe.insulationStatus === i ? 'bg-slate-800 border-slate-700 text-white shadow-inner' : 'border-transparent text-slate-600 hover:text-slate-400'}`}><div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: INSULATION_COLORS[i] === 'transparent' ? '#334155' : INSULATION_COLORS[i] }} /> {INSULATION_LABELS[i]}</button>))}</div></div>
       </div>
-      <div className="p-4 bg-slate-950 border-t border-slate-700"><button onClick={onDelete} className="w-full bg-red-600/10 hover:bg-red-600 text-red-500 hover:text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all uppercase text-[10px] tracking-widest"><Trash2 size={16} /> Excluir Segmento</button></div>
+      <div className="p-4 bg-slate-950 border-t border-slate-700 grid grid-cols-2 gap-2">
+          {onCopy && <button onClick={onCopy} className="bg-blue-600 hover:bg-blue-500 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-colors uppercase text-xs tracking-widest"><Copy size={16} /> Copiar</button>}
+          <button onClick={onDelete} className={`${onCopy ? '' : 'col-span-2'} bg-red-600/10 hover:bg-red-600 text-red-500 hover:text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all uppercase text-[10px] tracking-widest`}><Trash2 size={16} /> Excluir</button>
+      </div>
     </div>
   );
 };
