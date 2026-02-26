@@ -167,11 +167,11 @@ const KeyboardManager = ({ selectedIds, pipes, onUpdatePipe, onUndo, onRedo }:
     return null;
 };
 
-const SceneContent: React.FC<SceneProps & { lockedAxis: 'x'|'y'|'z'|null, selectionBox: any, onSetSelectionBox: any, is45Mode: boolean }> = ({ 
+const SceneContent: React.FC<SceneProps & { lockedAxis: 'x'|'y'|'z'|null, selectionBox: any, onSetSelectionBox: any }> = ({ 
   pipes, annotations = [], selectedIds, onSelectPipe, onSetSelection, isDrawing, onAddPipe, onUpdatePipe, onMovePipes, onCancelDraw, lockedAxis, fixedLength,
   onAddAnnotation, onUpdateAnnotation, onDeleteAnnotation, onUndo, onRedo,
   colorMode = 'STATUS', selectionBox, onSetSelectionBox,
-  pastePreview, onPasteMove, onPasteConfirm, is45Mode
+  pastePreview, onPasteMove, onPasteConfirm
 }) => {
     const { camera, gl, size } = useThree();
     const [isDragging, setIsDragging] = useState(false);
@@ -351,7 +351,7 @@ const SceneContent: React.FC<SceneProps & { lockedAxis: 'x'|'y'|'z'|null, select
             />
             <ambientLight intensity={0.5} />
             <pointLight position={[10, 10, 10]} intensity={1} castShadow />
-            {/* <Environment preset="city" /> */}
+            <Environment preset="city" />
             <Grid infiniteGrid fadeDistance={500} sectionColor="#475569" cellColor="#1e293b" position={[0, -0.01, 0]} onClick={handleGlobalClick} onPointerMove={handlePointerMove} />
             <axesHelper args={[2]} position={[-6, 0, -6]} />
 
@@ -450,7 +450,7 @@ const SceneContent: React.FC<SceneProps & { lockedAxis: 'x'|'y'|'z'|null, select
                     );
                 })}
             </group>
-            <PipeDrawer isDrawing={isDrawing} onAddPipe={onAddPipe} onCancel={onCancelDraw} pipes={pipes} lockedAxis={lockedAxis} fixedLength={fixedLength} is45Mode={is45Mode} />
+            <PipeDrawer isDrawing={isDrawing} onAddPipe={onAddPipe} onCancel={onCancelDraw} pipes={pipes} lockedAxis={lockedAxis} fixedLength={fixedLength} />
             <KeyboardManager selectedIds={selectedIds} pipes={pipes} onUpdatePipe={onUpdatePipe} onUndo={onUndo} onRedo={onRedo} />
             
             {isQPressed && !isDrawing && (
@@ -468,22 +468,19 @@ const Scene: React.FC<SceneProps & { fixedLength?: number, onUndo?: ()=>void, on
   const [lockedAxis, setLockedAxis] = useState<'x'|'y'|'z'|null>(null);
   const [selectionBox, setSelectionBox] = useState({ x: 0, y: 0, w: 0, h: 0, isSelecting: false, startX: 0, startY: 0 });
 
-    const [is45Mode, setIs45Mode] = useState(false);
-
-    useEffect(() => {
-        if (!props.isDrawing) return;
-        const handleKeyDown = (e: KeyboardEvent) => {
-            const k = e.key.toLowerCase();
-            if (k === 'x') setLockedAxis(c => c === 'x' ? null : 'x');
-            if (k === 'c') setLockedAxis(c => c === 'y' ? null : 'y'); 
-            if (k === 'z') setLockedAxis(c => c === 'z' ? null : 'z');
-            if (k === 'shift') setLockedAxis('y'); 
-            if (k === 'f') setIs45Mode(prev => !prev);
-        };
-        const handleKeyUp = (e: KeyboardEvent) => { if (e.key === 'Shift') setLockedAxis(null); };
-        window.addEventListener('keydown', handleKeyDown); window.addEventListener('keyup', handleKeyUp);
-        return () => { window.removeEventListener('keydown', handleKeyDown); window.removeEventListener('keyup', handleKeyUp); };
-    }, [props.isDrawing]);
+  useEffect(() => {
+    if (!props.isDrawing) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+        const k = e.key.toLowerCase();
+        if (k === 'x') setLockedAxis(c => c === 'x' ? null : 'x');
+        if (k === 'c') setLockedAxis(c => c === 'y' ? null : 'y'); 
+        if (k === 'z') setLockedAxis(c => c === 'z' ? null : 'z');
+        if (k === 'shift') setLockedAxis('y'); 
+    };
+    const handleKeyUp = (e: KeyboardEvent) => { if (e.key === 'Shift') setLockedAxis(null); };
+    window.addEventListener('keydown', handleKeyDown); window.addEventListener('keyup', handleKeyUp);
+    return () => { window.removeEventListener('keydown', handleKeyDown); window.removeEventListener('keyup', handleKeyUp); };
+  }, [props.isDrawing]);
 
   // --- BOX SELECTION EVENT HANDLERS ON PARENT DIV ---
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -565,7 +562,6 @@ const Scene: React.FC<SceneProps & { fixedLength?: number, onUndo?: ()=>void, on
                 <>
                     <p className="font-bold text-blue-400">✏️ Desenhando</p>
                     <p>X, C (Y), Z: Travar Eixos</p>
-                    <p>F: Travar 45° ({is45Mode ? 'ON' : 'OFF'})</p>
                     <p>Esc: Cancelar</p>
                 </>
             )}
@@ -580,7 +576,7 @@ const Scene: React.FC<SceneProps & { fixedLength?: number, onUndo?: ()=>void, on
           }}>
             <color attach="background" args={['#0f172a']} />
             <Suspense fallback={<Html center><Loader2 className="animate-spin text-white" /></Html>}>
-                <SceneContent {...props} lockedAxis={lockedAxis} is45Mode={is45Mode} selectionBox={selectionBox} onSetSelectionBox={setSelectionBox} />
+                <SceneContent {...props} lockedAxis={lockedAxis} selectionBox={selectionBox} onSetSelectionBox={setSelectionBox} />
             </Suspense>
           </Canvas>
       </div>
