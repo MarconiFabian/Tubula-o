@@ -36,8 +36,14 @@ const projectRayToAxis = (ray: THREE.Ray, origin: Vector3, axisDir: Vector3): Ve
     return origin.clone().add(axisDir.clone().multiplyScalar(t));
 };
 
-// Pre-calculated directions for 45-degree snapping
-const SNAP_DIRECTIONS = [
+export const PipeDrawer: React.FC<PipeDrawerProps> = ({ isDrawing, onAddPipe, onCancel, pipes, lockedAxis, fixedLength = 0, is45Mode = false }) => {
+  const [startPoint, setStartPoint] = useState<Vector3 | null>(null);
+  const [endPoint, setEndPoint] = useState<Vector3>(new Vector3(0,0,0));
+  const [snapPoint, setSnapPoint] = useState<Vector3 | null>(null);
+  const { raycaster } = useThree();
+
+  // Pre-calculate directions safely
+  const snapDirections = useMemo(() => [
     // Axes
     new Vector3(1, 0, 0), new Vector3(-1, 0, 0),
     new Vector3(0, 1, 0), new Vector3(0, -1, 0),
@@ -51,13 +57,7 @@ const SNAP_DIRECTIONS = [
     // Diagonals (YZ Plane - Vertical)
     new Vector3(0, 1, 1).normalize(), new Vector3(0, 1, -1).normalize(),
     new Vector3(0, -1, 1).normalize(), new Vector3(0, -1, -1).normalize(),
-];
-
-export const PipeDrawer: React.FC<PipeDrawerProps> = ({ isDrawing, onAddPipe, onCancel, pipes, lockedAxis, fixedLength = 0, is45Mode = false }) => {
-  const [startPoint, setStartPoint] = useState<Vector3 | null>(null);
-  const [endPoint, setEndPoint] = useState<Vector3>(new Vector3(0,0,0));
-  const [snapPoint, setSnapPoint] = useState<Vector3 | null>(null);
-  const { raycaster } = useThree();
+  ], []);
 
   // Reset state when drawing mode changes
   useEffect(() => {
@@ -155,45 +155,39 @@ export const PipeDrawer: React.FC<PipeDrawerProps> = ({ isDrawing, onAddPipe, on
             target.y = startPoint.y;
         }
         else if (is45Mode) {
-            // 45-Degree Snapping Logic
-            // First, find the raw target on the horizontal plane (y=start.y)
-            const h = startPoint.y;
-            const Dy = raycaster.ray.direction.y;
-            let rawTarget = new Vector3();
+            // 45-Degree Snapping Logic (3D)
+            // We iterate through all allowed 45-degree directions and find the one 
+            // whose line is visually closest to the mouse ray.
             
-            if (Math.abs(Dy) > 0.001) {
-                const t = (h - raycaster.ray.origin.y) / Dy;
-                if (t >= 0) {
-                     const intersect = raycaster.ray.origin.clone().add(raycaster.ray.direction.clone().multiplyScalar(t));
-                     rawTarget.set(intersect.x, h, intersect.z);
-                } else {
-                     rawTarget.set(e.point.x, h, e.point.z);
-                }
-            } else {
-                 rawTarget.set(e.point.x, h, e.point.z);
-            }
+            let bestTarget = new Vector3();
+            let minDistance = Infinity;
+            let found = false;
 
-            // Use the rawTarget (on the correct plane) to calculate direction
-            const rawDir = new Vector3().subVectors(rawTarget, startPoint).normalize();
-
-            let bestDir = SNAP_DIRECTIONS[0];
-            let maxDot = -1;
-
-            SNAP_DIRECTIONS.forEach(dir => {
-                const dot = rawDir.dot(dir);
-                if (dot > maxDot) {
-                    maxDot = dot;
-                    bestDir = dir;
+            snapDirections.forEach(dir => {
+                // Find the closest point on the snap line (startPoint + t * dir) to the mouse ray
+                const candidate = projectRayToAxis(raycaster.ray, startPoint, dir);
+                
+                // Check if the candidate is in the forward direction of the vector (t > 0)
+                const vecToCandidate = new Vector3().subVectors(candidate, startPoint);
+                const dot = vecToCandidate.dot(dir);
+                
+                if (dot > 0.1) { // Use a small epsilon to avoid startPoint itself
+                     // Calculate "visual distance" (perpendicular distance from candidate point to the mouse ray)
+                     const dist = raycaster.ray.distanceToPoint(candidate);
+                     
+                     if (dist < minDistance) {
+                         minDistance = dist;
+                         bestTarget.copy(candidate);
+                         found = true;
+                     }
                 }
             });
-
-            // Project ray to the best direction line
-            target = projectRayToAxis(raycaster.ray, startPoint, bestDir);
             
-            // Ensure the target stays on the horizontal plane if the bestDir is horizontal
-            // (This prevents slight vertical drift due to projection precision or if bestDir has Y component but we want planar)
-            if (Math.abs(bestDir.y) < 0.001) {
-                target.y = h;
+            if (found) {
+                target.copy(bestTarget);
+            } else {
+                // Fallback if no direction is close (shouldn't happen often, but safe)
+                target.set(e.point.x, startPoint.y, e.point.z);
             }
         }
         else {
@@ -212,6 +206,11 @@ export const PipeDrawer: React.FC<PipeDrawerProps> = ({ isDrawing, onAddPipe, on
                  target.set(e.point.x, h, e.point.z);
             }
         }
+    }
+
+    // Safety check for NaN
+    if (isNaN(target.x) || isNaN(target.y) || isNaN(target.z)) {
+        return;
     }
 
     // 3. Apply Grid Snapping

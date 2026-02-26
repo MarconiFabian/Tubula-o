@@ -351,7 +351,7 @@ const SceneContent: React.FC<SceneProps & { lockedAxis: 'x'|'y'|'z'|null, select
             />
             <ambientLight intensity={0.5} />
             <pointLight position={[10, 10, 10]} intensity={1} castShadow />
-            <Environment preset="city" />
+            {/* <Environment preset="city" /> */}
             <Grid infiniteGrid fadeDistance={500} sectionColor="#475569" cellColor="#1e293b" position={[0, -0.01, 0]} onClick={handleGlobalClick} onPointerMove={handlePointerMove} />
             <axesHelper args={[2]} position={[-6, 0, -6]} />
 

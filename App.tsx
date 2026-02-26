@@ -237,6 +237,78 @@ export default function App() {
   const [isDBModalOpen, setIsDBModalOpen] = useState(false);
   const [savedProjects, setSavedProjects] = useState<any[]>([]);
 
+  const selectedPipes = useMemo(() => pipes.filter(p => selectedIds.includes(p.id)), [pipes, selectedIds]);
+
+  const handleSwitchToDashboard = () => { setViewMode('dashboard'); setIsDrawing(false); };
+
+  const reportStats = useMemo(() => {
+      let totalLength = 0;
+      let totalPipingHH = 0;
+      let totalInsulationHH = 0;
+      const bom: Record<string, number> = {};
+      const pipeCounts: Record<string, number> = {};
+      const insulationCounts: Record<string, number> = {};
+
+      // Initialize counts
+      ALL_STATUSES.forEach(s => pipeCounts[s] = 0);
+      ALL_INSULATION_STATUSES.forEach(s => insulationCounts[s] = 0);
+
+      pipes.forEach(p => {
+          totalLength += p.length;
+          
+          // BOM
+          const diam = AVAILABLE_DIAMETERS.find(d => PIPE_DIAMETERS[d] === p.diameter) || 'Unknown';
+          bom[diam] = (bom[diam] || 0) + p.length;
+
+          // Counts
+          pipeCounts[p.status] = (pipeCounts[p.status] || 0) + 1;
+          insulationCounts[p.insulationStatus || 'NONE'] = (insulationCounts[p.insulationStatus || 'NONE'] || 0) + 1;
+
+          // HH Calculation (Remaining)
+          const pipingF = PIPING_REMAINING_FACTOR[p.status] || 0;
+          const insF = INSULATION_REMAINING_FACTOR[p.insulationStatus || 'NONE'] || 0;
+          
+          let pEffort = p.length * prodSettings.pipingBase * pipingF;
+          let iEffort = p.length * prodSettings.insulationBase * insF;
+
+          if (p.planningFactors) {
+              let mult = 1.0;
+              if (p.planningFactors.hasCrane) mult += prodSettings.weights.crane;
+              if (p.planningFactors.hasBlockage) mult += prodSettings.weights.blockage;
+              if (p.planningFactors.isNightShift) mult += prodSettings.weights.nightShift;
+              if (p.planningFactors.isCriticalArea) mult += prodSettings.weights.criticalArea;
+              if (p.planningFactors.accessType === 'SCAFFOLD_FLOOR') mult += prodSettings.weights.scaffoldFloor;
+              if (p.planningFactors.accessType === 'SCAFFOLD_HANGING') mult += prodSettings.weights.scaffoldHanging;
+              if (p.planningFactors.accessType === 'PTA') mult += prodSettings.weights.pta;
+              
+              pEffort *= mult;
+              iEffort *= mult;
+              
+              if (pipingF > 0) pEffort += (p.planningFactors.delayHours || 0);
+          }
+
+          totalPipingHH += pEffort;
+          totalInsulationHH += iEffort;
+      });
+
+      const totalHH = totalPipingHH + totalInsulationHH;
+      const dailyCapacity = 50; // Assumed daily capacity
+      const daysNeeded = Math.ceil(totalHH / dailyCapacity);
+      const projectedEnd = getWorkingEndDate(new Date(activityDate), daysNeeded).toLocaleDateString();
+
+      return {
+          totalLength,
+          totalPipingHH,
+          totalInsulationHH,
+          totalHH,
+          projectedEnd,
+          bom,
+          pipeCounts,
+          insulationCounts,
+          total: pipes.length
+      };
+  }, [pipes, prodSettings, activityDate]);
+
   const handleSelectPipe = useCallback((id: string | null, multi: boolean = false) => { if (pastePreview) return; if (id === null) { if (!multi) setSelectedIds([]); return; } setSelectedIds(prev => multi ? (prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]) : [id]); }, [pastePreview]);
   const handleSetSelection = useCallback((ids: string[]) => { if (!pastePreview) setSelectedIds(ids); }, [pastePreview]);
   const handleAddAnnotation = (pos: {x:number, y:number, z:number}) => setAnnotations(prev => [...prev, { id: `A-${Date.now()}`, position: pos, text: '' }]);
@@ -251,6 +323,69 @@ export default function App() {
   const handlePasteStart = useCallback(() => { if (!clipboard || !pasteCentroid) return; setPastePreview(clipboard.map(p => ({ ...p, id: `PREVIEW-${p.id}`, status: 'PENDING' as PipeStatus }))); setSelectedIds([]); setIsDrawing(false); }, [clipboard, pasteCentroid]);
   const handlePasteMove = useCallback((target: any) => { if (!pastePreview || !pasteCentroid) return; const dx=target.x-pasteCentroid.x, dy=target.y-pasteCentroid.y, dz=target.z-pasteCentroid.z; setPastePreview(clipboard!.map(p => ({ ...p, id: `NEW-${p.id}-${Date.now()}`, start: {x:p.start.x+dx, y:p.start.y+dy, z:p.start.z+dz}, end: {x:p.end.x+dx, y:p.end.y+dy, z:p.end.z+dz} }))); }, [clipboard, pasteCentroid, pastePreview]);
   const handlePasteConfirm = useCallback(() => { if (!pastePreview) return; const final = pastePreview.map(p => ({ ...p, id: `P-${Math.floor(Math.random()*1000000)}`, name: `${p.name} (Cópia)` })); setPipes(prev => [...prev, ...final]); setPastePreview(null); setSelectedIds(final.map(p => p.id)); }, [pastePreview]);
+
+  // --- DATABASE ACTIONS ---
+  const refreshProjects = useCallback(async () => {
+      try {
+          const projs = await getAllProjects();
+          setSavedProjects(projs);
+      } catch (error) {
+          console.error("Erro ao carregar projetos:", error);
+      }
+  }, []);
+
+  useEffect(() => {
+      if (isDBModalOpen) {
+          refreshProjects();
+      }
+  }, [isDBModalOpen, refreshProjects]);
+
+  const handleDBAction_Save = async (name: string) => {
+      try {
+          const projectData = {
+              id: `PROJ-${Date.now()}`,
+              name,
+              updatedAt: new Date(),
+              pipes,
+              annotations,
+              location: projectLocation,
+              client: projectClient,
+              secondaryImage,
+              mapImage
+          };
+          await saveProjectToDB(projectData);
+          await refreshProjects();
+          alert('Projeto salvo com sucesso!');
+      } catch (error) {
+          console.error("Erro ao salvar projeto:", error);
+          alert("Erro ao salvar projeto.");
+      }
+  };
+
+  const handleDBAction_Load = (project: any) => {
+      try {
+          setPipes(project.pipes || []);
+          setAnnotations(project.annotations || []);
+          setProjectLocation(project.location || '');
+          setProjectClient(project.client || '');
+          setSecondaryImage(project.secondaryImage || null);
+          setMapImage(project.mapImage || null);
+          setIsDBModalOpen(false);
+      } catch (error) {
+          console.error("Erro ao carregar projeto:", error);
+          alert("Erro ao carregar projeto.");
+      }
+  };
+
+  const handleDBAction_Delete = async (id: string) => {
+      try {
+          await deleteProjectFromDB(id);
+          await refreshProjects();
+      } catch (error) {
+          console.error("Erro ao excluir projeto:", error);
+          alert("Erro ao excluir projeto.");
+      }
+  };
 
   // Global Key listeners for actions like Delete, Copy, Paste
   useEffect(() => {
