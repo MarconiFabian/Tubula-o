@@ -348,9 +348,10 @@ const SceneContent: React.FC<SceneProps & { lockedAxis: 'x'|'y'|'z'|null, select
                 maxDistance={5000}
                 enableDamping={true} // Suaviza o movimento
                 dampingFactor={0.05} // Fator de amortecimento
-                zoomSpeed={4} // Aumentado para navegação rápida em cenas grandes
-                rotateSpeed={0.8}
-                panSpeed={1.5} // Aumentado para facilitar o reposicionamento em cenas grandes
+                zoomSpeed={0.6} // Reduzido para maior precisão (era 4)
+                rotateSpeed={0.6} // Levemente reduzido para suavidade
+                panSpeed={0.8} // Reduzido para maior controle
+                screenSpacePanning={true} // Pan segue a tela, mais intuitivo para CAD
             />
             <ambientLight intensity={1.2} />
             <pointLight position={[20, 20, 20]} intensity={2.5} castShadow />
