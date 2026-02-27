@@ -76,7 +76,7 @@ const PipeMesh: React.FC<PipeMeshProps> = ({ data, isSelected, trimStart = 0, tr
             </mesh>
             
             {/* Length Label - Always facing camera (Billboard) and offset vertically in screen space */}
-            {geometryLength > 0.5 && !transparent && (
+            {geometryLength > 0.1 && !transparent && (
                 <Billboard position={position}>
                     <Text
                         position={[0, data.diameter/2 + 0.25, 0]} // Offset "Up" in billboard space (screen Y)

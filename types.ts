@@ -97,3 +97,16 @@ export interface ProjectStats {
   totalLines: number;
   testedLines: number;
 }
+
+export interface User {
+  id: string;
+  username: string;
+  password?: string;
+  role: 'admin' | 'viewer';
+  createdAt: string;
+}
+
+export interface AuthStatus {
+  isAuthenticated: boolean;
+  user: User | null;
+}
