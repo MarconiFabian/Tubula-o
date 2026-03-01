@@ -1,15 +1,17 @@
 
 import React, { useEffect, useState, useMemo, Suspense, useRef } from 'react';
 import { Canvas, useThree, ThreeEvent } from '@react-three/fiber';
-import { OrbitControls, Grid, Environment, TransformControls, Html } from '@react-three/drei';
+import { OrbitControls, Grid, Environment, TransformControls, Html, Billboard, Text } from '@react-three/drei';
 import * as THREE from 'three';
 import PipeMesh from './PipeMesh';
 import { PipeDrawer } from './PipeDrawer';
 import { Fittings, ConnectionNode } from './Fittings';
 import { AnnotationMarker, GhostMarker } from './AnnotationMarker';
+import { SceneHelpers } from './SceneHelpers';
+import { StatusLegend } from './StatusLegend';
 import { PipeSegment, PipeStatus, Annotation, AccessoryType } from '../../types';
 import { STATUS_COLORS, STATUS_LABELS, ALL_STATUSES } from '../../constants';
-import { Loader2, UserCheck, Calendar } from 'lucide-react';
+import { Loader2, UserCheck, Calendar, X, Info } from 'lucide-react';
 
 interface SceneProps {
   pipes: PipeSegment[];
@@ -170,11 +172,11 @@ const KeyboardManager = ({ selectedIds, pipes, onUpdatePipe, onUndo, onRedo }:
     return null;
 };
 
-const SceneContent: React.FC<SceneProps & { lockedAxis: 'x'|'y'|'z'|null, selectionBox: any, onSetSelectionBox: any, is45Mode: boolean, snapAngle: number, currentDiameter?: number }> = ({ 
+const SceneContent: React.FC<SceneProps & { lockedAxis: 'x'|'y'|'z'|null, selectionBox: any, onSetSelectionBox: any, is45Mode: boolean, snapAngle: number, currentDiameter?: number, showDimensions?: boolean }> = ({ 
   pipes, annotations = [], selectedIds, onSelectPipe, onSetSelection, isDrawing, onAddPipe, onUpdatePipe, onMovePipes, onCancelDraw, lockedAxis, fixedLength,
   onAddAnnotation, onUpdateAnnotation, onDeleteAnnotation, onUndo, onRedo,
   colorMode = 'STATUS', selectionBox, onSetSelectionBox,
-  pastePreview, onPasteMove, onPasteConfirm, is45Mode, snapAngle, currentDiameter
+  pastePreview, onPasteMove, onPasteConfirm, is45Mode, snapAngle, currentDiameter, showDimensions
 }) => {
     const { camera, gl, size } = useThree();
     const [isDragging, setIsDragging] = useState(false);
@@ -348,7 +350,7 @@ const SceneContent: React.FC<SceneProps & { lockedAxis: 'x'|'y'|'z'|null, select
                 maxDistance={5000}
                 enableDamping={true} // Suaviza o movimento
                 dampingFactor={0.05} // Fator de amortecimento
-                zoomSpeed={0.6} // Reduzido para maior precisão (era 4)
+                zoomSpeed={0.78} // Aumentado em 30% a pedido do usuário (era 0.6)
                 rotateSpeed={0.6} // Levemente reduzido para suavidade
                 panSpeed={0.8} // Reduzido para maior controle
                 screenSpacePanning={true} // Pan segue a tela, mais intuitivo para CAD
@@ -433,11 +435,30 @@ const SceneContent: React.FC<SceneProps & { lockedAxis: 'x'|'y'|'z'|null, select
 
                     // Mostra info label apenas se for seleção única e não estiver desenhando
                     const showLabel = isSelected && selectedIds.length === 1 && !isDrawing;
+                    
+                    // Cota persistente (se ativada)
+                    const showDimension = showDimensions && !isDrawing;
 
                     return (
                         <group key={pipe.id} onClick={(e) => handlePipeClick(e, pipe)} onPointerMove={handlePointerMove}>
                              <PipeMesh data={pipe} isSelected={isSelected} onSelect={() => {}} trimStart={trim.start} trimEnd={trim.end} customColor={colorOverride} />
                              
+                             {showDimension && (
+                                <Billboard position={[(pipe.start.x + pipe.end.x)/2, (pipe.start.y + pipe.end.y)/2 + 0.3, (pipe.start.z + pipe.end.z)/2]}>
+                                    <Text
+                                        fontSize={0.22}
+                                        color="white"
+                                        anchorX="center"
+                                        anchorY="bottom"
+                                        fontWeight="bold"
+                                        outlineWidth={0.02}
+                                        outlineColor="#000"
+                                    >
+                                        {pipe.length.toFixed(2)}m
+                                    </Text>
+                                </Billboard>
+                             )}
+
                              {showLabel && (
                                 <Html position={[(pipe.start.x + pipe.end.x)/2, (pipe.start.y + pipe.end.y)/2 + 0.6, (pipe.start.z + pipe.end.z)/2]} center zIndexRange={[100, 0]} style={{ pointerEvents: 'auto' }}>
                                     <div className="bg-slate-900/95 p-2 rounded-xl border border-slate-600 shadow-2xl backdrop-blur flex flex-col gap-2 min-w-[140px]" onPointerDown={(e) => e.stopPropagation()}>
@@ -468,9 +489,14 @@ const SceneContent: React.FC<SceneProps & { lockedAxis: 'x'|'y'|'z'|null, select
     );
 }
 
-const Scene: React.FC<SceneProps & { fixedLength?: number, onUndo?: ()=>void, onRedo?: ()=>void, colorMode?: 'STATUS'|'SPOOL', onMovePipes?: (d:any)=>void, onSetSelection?: (ids:string[])=>void, pastePreview?: PipeSegment[] | null, onPasteMove?: any, onPasteConfirm?: any, snapAngle?: number, onSetSnapAngle?: (angle: number) => void }> = (props) => {
+const Scene: React.FC<SceneProps & { fixedLength?: number, onUndo?: ()=>void, onRedo?: ()=>void, colorMode?: 'STATUS'|'SPOOL', onMovePipes?: (d:any)=>void, onSetSelection?: (ids:string[])=>void, pastePreview?: PipeSegment[] | null, onPasteMove?: any,  onPasteConfirm?: any, 
+  snapAngle?: number, 
+  onSetSnapAngle?: (angle: number) => void,
+  showDimensions?: boolean 
+}> = (props) => {
   const [lockedAxis, setLockedAxis] = useState<'x'|'y'|'z'|null>(null);
   const [selectionBox, setSelectionBox] = useState({ x: 0, y: 0, w: 0, h: 0, isSelecting: false, startX: 0, startY: 0 });
+  const [showHelp, setShowHelp] = useState(false);
 
     const [is45Mode, setIs45Mode] = useState(false);
 
@@ -478,6 +504,7 @@ const Scene: React.FC<SceneProps & { fixedLength?: number, onUndo?: ()=>void, on
         if (!props.isDrawing) return;
         const handleKeyDown = (e: KeyboardEvent) => {
             const k = e.key.toLowerCase();
+            if (k === 'h') setShowHelp(prev => !prev);
             if (k === 'x') setLockedAxis(c => c === 'x' ? null : 'x');
             if (k === 'c') setLockedAxis(c => c === 'y' ? null : 'y'); 
             if (k === 'z') setLockedAxis(c => c === 'z' ? null : 'z');
@@ -487,6 +514,14 @@ const Scene: React.FC<SceneProps & { fixedLength?: number, onUndo?: ()=>void, on
         const handleKeyUp = (e: KeyboardEvent) => { if (e.key === 'Shift') setLockedAxis(null); };
         window.addEventListener('keydown', handleKeyDown); window.addEventListener('keyup', handleKeyUp);
         return () => { window.removeEventListener('keydown', handleKeyDown); window.removeEventListener('keyup', handleKeyUp); };
+    }, [props.isDrawing]);
+
+    useEffect(() => {
+        const handleGlobalH = (e: KeyboardEvent) => {
+            if (e.key.toLowerCase() === 'h' && !props.isDrawing) setShowHelp(prev => !prev);
+        };
+        window.addEventListener('keydown', handleGlobalH);
+        return () => window.removeEventListener('keydown', handleGlobalH);
     }, [props.isDrawing]);
 
   // --- BOX SELECTION EVENT HANDLERS ON PARENT DIV ---
@@ -588,6 +623,7 @@ const Scene: React.FC<SceneProps & { fixedLength?: number, onUndo?: ()=>void, on
           </div>
       </div>
       <div className="flex-1 relative">
+          <StatusLegend />
           <Canvas camera={{ position: [8, 8, 8], fov: 50, near: 0.05, far: 5000 }} shadows gl={{ preserveDrawingBuffer: true, antialias: true }} onPointerMissed={(e) => {
               // Se clicar no vazio SEM arrastar (box w=0) e SEM colar, limpa seleção
               if (!props.isDrawing && !selectionBox.isSelecting && !props.pastePreview && e.type === 'click') {
@@ -595,11 +631,55 @@ const Scene: React.FC<SceneProps & { fixedLength?: number, onUndo?: ()=>void, on
               }
           }}>
             <color attach="background" args={['#0f172a']} />
+            <SceneHelpers />
             <Suspense fallback={<Html center><Loader2 className="animate-spin text-white" /></Html>}>
-                <SceneContent {...props} lockedAxis={lockedAxis} is45Mode={is45Mode} selectionBox={selectionBox} onSetSelectionBox={setSelectionBox} snapAngle={props.snapAngle || 45} />
+                <SceneContent {...props} lockedAxis={lockedAxis} is45Mode={is45Mode} selectionBox={selectionBox} onSetSelectionBox={setSelectionBox} snapAngle={props.snapAngle || 45} showDimensions={props.showDimensions} />
             </Suspense>
           </Canvas>
       </div>
+
+      {/* HELP OVERLAY */}
+      {showHelp && (
+          <div className="absolute inset-0 z-[100] bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-8 animate-in fade-in duration-300">
+              <div className="bg-slate-900 border border-blue-500/30 rounded-3xl p-8 max-w-2xl w-full shadow-2xl relative">
+                  <button onClick={() => setShowHelp(false)} className="absolute top-6 right-6 text-slate-500 hover:text-white transition-colors"><X size={24}/></button>
+                  <div className="flex items-center gap-4 mb-8">
+                      <div className="bg-blue-600 p-3 rounded-2xl shadow-lg shadow-blue-600/20"><Info className="text-white" size={24}/></div>
+                      <div>
+                          <h2 className="text-2xl font-bold text-white">Guia de Atalhos</h2>
+                          <p className="text-slate-400 text-sm">Isometrico Manager v2.5</p>
+                      </div>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-8">
+                      <div className="space-y-4">
+                          <h3 className="text-xs font-black text-blue-400 uppercase tracking-widest border-b border-slate-800 pb-2">Desenho (✏️)</h3>
+                          <div className="space-y-2">
+                              <div className="flex justify-between items-center"><span className="text-slate-300 text-sm">Travar Eixo X</span> <kbd className="bg-slate-800 px-2 py-1 rounded text-xs font-bold text-blue-400 border border-slate-700">X</kbd></div>
+                              <div className="flex justify-between items-center"><span className="text-slate-300 text-sm">Travar Eixo Y (Vertical)</span> <kbd className="bg-slate-800 px-2 py-1 rounded text-xs font-bold text-blue-400 border border-slate-700">C</kbd></div>
+                              <div className="flex justify-between items-center"><span className="text-slate-300 text-sm">Travar Eixo Z</span> <kbd className="bg-slate-800 px-2 py-1 rounded text-xs font-bold text-blue-400 border border-slate-700">Z</kbd></div>
+                              <div className="flex justify-between items-center"><span className="text-slate-300 text-sm">Travar Ângulo (45°)</span> <kbd className="bg-slate-800 px-2 py-1 rounded text-xs font-bold text-blue-400 border border-slate-700">F</kbd></div>
+                              <div className="flex justify-between items-center"><span className="text-slate-300 text-sm">Cancelar Desenho</span> <kbd className="bg-slate-800 px-2 py-1 rounded text-xs font-bold text-slate-400 border border-slate-700">ESC</kbd></div>
+                          </div>
+                      </div>
+                      <div className="space-y-4">
+                          <h3 className="text-xs font-black text-purple-400 uppercase tracking-widest border-b border-slate-800 pb-2">Geral (🛠️)</h3>
+                          <div className="space-y-2">
+                              <div className="flex justify-between items-center"><span className="text-slate-300 text-sm">Copiar Seleção</span> <kbd className="bg-slate-800 px-2 py-1 rounded text-xs font-bold text-purple-400 border border-slate-700">CTRL+C</kbd></div>
+                              <div className="flex justify-between items-center"><span className="text-slate-300 text-sm">Colar Seleção</span> <kbd className="bg-slate-800 px-2 py-1 rounded text-xs font-bold text-purple-400 border border-slate-700">CTRL+V</kbd></div>
+                              <div className="flex justify-between items-center"><span className="text-slate-300 text-sm">Desfazer / Refazer</span> <kbd className="bg-slate-800 px-2 py-1 rounded text-xs font-bold text-purple-400 border border-slate-700">CTRL+Z / Y</kbd></div>
+                              <div className="flex justify-between items-center"><span className="text-slate-300 text-sm">Anotação Rápida</span> <kbd className="bg-slate-800 px-2 py-1 rounded text-xs font-bold text-purple-400 border border-slate-700">Q + CLICK</kbd></div>
+                              <div className="flex justify-between items-center"><span className="text-slate-300 text-sm">Abrir este Guia</span> <kbd className="bg-slate-800 px-2 py-1 rounded text-xs font-bold text-white border border-slate-700">H</kbd></div>
+                          </div>
+                      </div>
+                  </div>
+                  
+                  <div className="mt-8 pt-6 border-t border-slate-800 flex justify-center">
+                      <button onClick={() => setShowHelp(false)} className="bg-blue-600 hover:bg-blue-500 text-white px-8 py-3 rounded-2xl font-bold transition-all shadow-lg shadow-blue-600/20">Entendi!</button>
+                  </div>
+              </div>
+          </div>
+      )}
     </div>
   );
 };

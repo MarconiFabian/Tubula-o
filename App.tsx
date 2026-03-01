@@ -3,14 +3,17 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import Scene from './components/3d/Scene';
 import Dashboard from './components/Dashboard';
 import Sidebar from './components/Sidebar';
+import { TopNav } from './components/TopNav';
+import { ExportContainer } from './components/ExportContainer';
 import { Login } from './components/Login';
 import { DatabaseModal } from './components/DatabaseModal';
 import { saveProjectToDB, getAllProjects, deleteProjectFromDB } from './utils/db';
 import { INITIAL_PIPES, STATUS_LABELS, STATUS_COLORS, INSULATION_LABELS, PIPE_DIAMETERS, AVAILABLE_DIAMETERS, ALL_STATUSES, ALL_INSULATION_STATUSES, INSULATION_COLORS, BASE_PRODUCTIVITY, DIFFICULTY_WEIGHTS } from './constants';
 import { PipeSegment, PipeStatus, Annotation, Accessory, AccessoryType, ProductivitySettings } from './types';
-import { LayoutDashboard, Cuboid, PenTool, XCircle, FileDown, Save, FolderOpen, FilePlus, Loader2, MapPin, Database, Undo, Redo, Wrench, Grid as GridIcon, CircleDot, MousePointer2, Ruler, Calendar, Lock, LogOut, ChevronRight, Copy, ClipboardPaste, Activity, Package, AlertCircle, Image as ImageIcon, Shield, Building2, Timer, FileCode, X } from 'lucide-react';
+import { LayoutDashboard, Cuboid, PenTool, XCircle, FileDown, Save, FolderOpen, FilePlus, Loader2, MapPin, Database, Undo, Redo, Wrench, Grid as GridIcon, CircleDot, MousePointer2, Ruler, Calendar, Lock, LogOut, ChevronRight, Copy, ClipboardPaste, Activity, Package, AlertCircle, Image as ImageIcon, Shield, Building2, Timer, FileCode, X, HelpCircle, FileSpreadsheet } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
+import * as XLSX from 'xlsx';
 
 // Multiplicadores de Saldo (O quanto falta fazer por status)
 const PIPING_REMAINING_FACTOR: Record<string, number> = {
@@ -59,6 +62,8 @@ function useProjectHistory(initialPipes: PipeSegment[]) {
 }
 
 export default function App() {
+  const [showDimensions, setShowDimensions] = useState(true);
+
   const initialPipes = useMemo(() => {
     try {
         const saved = localStorage.getItem('iso-manager-pipes');
@@ -322,48 +327,159 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleGlobalKeys);
   }, [selectedIds, viewMode, handleDeleteSelected, handleCopy, handlePasteStart, clipboard, undo, redo]);
 
-  // FUNÇÃO PARA EXPORTAR PARA CAD (DXF)
+  // FUNÇÃO PARA EXPORTAR PARA CAD (DXF) MELHORADA
   const handleExportDXF = () => {
-    let dxf = "0\nSECTION\n2\nENTITIES\n";
+    // Cabeçalho padrão DXF para garantir compatibilidade
+    let dxf = "0\nSECTION\n2\nHEADER\n9\n$ACADVER\n1\nAC1015\n0\nENDSEC\n";
+    
+    // Definição de Tabelas e Camadas
+    dxf += "0\nSECTION\n2\nTABLES\n0\nTABLE\n2\nLAYER\n70\n1\n";
+    dxf += "0\nLAYER\n2\nTubulacao\n70\n0\n62\n4\n6\nCONTINUOUS\n"; // Cor 4 (Ciano)
+    dxf += "0\nENDTAB\n0\nENDSEC\n";
+    
+    // Seção de Entidades (Os tubos reais)
+    dxf += "0\nSECTION\n2\nENTITIES\n";
+    
     pipes.forEach(p => {
-        // Criar uma LINE no DXF
-        dxf += "0\nLINE\n8\nTubulacao\n"; // Layer
-        dxf += `10\n${p.start.x}\n20\n${p.start.y}\n30\n${p.start.z}\n`; // Start Point
-        dxf += `11\n${p.end.x}\n21\n${p.end.y}\n31\n${p.end.z}\n`; // End Point
+        // 1. Criar a LINHA (Eixo do tubo)
+        dxf += "0\nLINE\n8\nTubulacao\n"; 
+        dxf += `10\n${p.start.x.toFixed(4)}\n20\n${p.start.y.toFixed(4)}\n30\n${p.start.z.toFixed(4)}\n`;
+        dxf += `11\n${p.end.x.toFixed(4)}\n21\n${p.end.y.toFixed(4)}\n31\n${p.end.z.toFixed(4)}\n`;
+
+        // 2. Adicionar o COMPRIMENTO como texto no ponto médio do tubo
+        const midX = (p.start.x + p.end.x) / 2;
+        const midY = (p.start.y + p.end.y) / 2;
+        const midZ = (p.start.z + p.end.z) / 2;
+        
+        dxf += "0\nTEXT\n8\nInformacoes\n";
+        dxf += `10\n${midX.toFixed(4)}\n20\n${(midY + 0.2).toFixed(4)}\n30\n${midZ.toFixed(4)}\n`; // Offset leve em Y
+        dxf += `40\n0.15\n`; // Altura do texto
+        dxf += `1\n${p.length.toFixed(2)}m\n`;
     });
+
+    // 3. Adicionar as ANOTAÇÕES do projeto
+    annotations.forEach(ann => {
+        dxf += "0\nTEXT\n8\nAnotacoes\n";
+        dxf += `10\n${ann.position.x.toFixed(4)}\n20\n${ann.position.y.toFixed(4)}\n30\n${ann.position.z.toFixed(4)}\n`;
+        dxf += `40\n0.25\n`; // Texto de anotação um pouco maior
+        dxf += `62\n2\n`; // Cor amarela (código 2)
+        dxf += `1\n${ann.text || 'Nota'}\n`;
+    });
+    
     dxf += "0\nENDSEC\n0\nEOF";
 
     const blob = new Blob([dxf], { type: 'application/dxf' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `projeto-isometrico-${projectLocation.replace(/\s+/g, '-')}.dxf`;
+    link.download = `projeto-isometrico-${projectLocation.replace(/\s+/g, '-') || 'sem-nome'}.dxf`;
     link.click();
     URL.revokeObjectURL(url);
   };
 
   const handleExportPDF = async () => {
     setIsExporting(true);
+    console.log("Iniciando exportação de PDF...");
     try {
-        if (viewMode !== 'dashboard') {
-            const canvas = document.querySelector('canvas');
-            if (canvas) setSceneScreenshot(canvas.toDataURL('image/png'));
-            await new Promise(r => setTimeout(r, 200));
+        // Tenta capturar o screenshot do 3D sempre, para garantir que o PDF tenha a imagem atualizada
+        const canvas = document.querySelector('canvas');
+        if (canvas) {
+            try {
+                const dataUrl = canvas.toDataURL('image/png');
+                setSceneScreenshot(dataUrl);
+                console.log("Screenshot 3D capturado com sucesso.");
+            } catch (e) {
+                console.warn("Falha ao capturar screenshot do 3D:", e);
+            }
         }
+        
+        // Aguarda um tempo maior para o React atualizar o estado e o DOM oculto refletir as mudanças
+        // Aumentado para 1.2s para garantir que imagens pesadas carreguem no DOM oculto
+        await new Promise(r => setTimeout(r, 1200));
+
         const pdf = new jsPDF('p', 'mm', 'a4');
-        const pageWidth = pdf.internal.pageSize.getWidth(), pageHeight = pdf.internal.pageSize.getHeight(), margin = 10;
+        const pageWidth = pdf.internal.pageSize.getWidth();
+        const pageHeight = pdf.internal.pageSize.getHeight();
+        const margin = 10;
         let currentY = 20;
 
         const dashboardEl = document.getElementById('composed-dashboard-export');
-        await new Promise(r => setTimeout(r, 600));
         if (dashboardEl) {
-             const canvas = await html2canvas(dashboardEl, { backgroundColor: '#0f172a', scale: 1.5, width: 1920, windowWidth: 1920 });
-             const imgData = canvas.toDataURL('image/png');
+             console.log("Capturando dashboard com html2canvas...");
+             // Opções otimizadas para html2canvas
+             const canvasExport = await html2canvas(dashboardEl, { 
+                backgroundColor: '#0f172a', 
+                scale: 1.5, 
+                width: 1920, 
+                windowWidth: 1920,
+                useCORS: true,
+                allowTaint: false,
+                logging: false,
+                imageTimeout: 15000, // Timeout de 15s para imagens
+                onclone: (clonedDoc) => {
+                    // Fix para o erro "unsupported color function oklch"
+                    // Removemos ou substituímos referências a oklch que o html2canvas não entende
+                    
+                    // 1. Limpar estilos inline que possam ter sido injetados
+                    const elements = clonedDoc.getElementsByTagName('*');
+                    for (let i = 0; i < elements.length; i++) {
+                        const el = elements[i] as HTMLElement;
+                        if (el.style && el.style.cssText.includes('oklch')) {
+                            el.style.cssText = el.style.cssText.replace(/oklch\([^)]+\)/g, '#888888');
+                        }
+                    }
+                    
+                    // 2. Limpar todos os stylesheets clonados
+                    try {
+                        const styleSheets = Array.from(clonedDoc.styleSheets);
+                        styleSheets.forEach(sheet => {
+                            try {
+                                const rules = Array.from(sheet.cssRules);
+                                rules.forEach((rule: any) => {
+                                    if (rule.style && rule.style.cssText.includes('oklch')) {
+                                        // Substituição bruta por hex cinza para evitar crash no parser
+                                        rule.style.cssText = rule.style.cssText.replace(/oklch\([^)]+\)/g, '#888888');
+                                    }
+                                });
+                            } catch (e) {
+                                // Ignorar erros de cross-origin ou regras inacessíveis
+                            }
+                        });
+                    } catch (e) {
+                        console.warn("Erro ao processar stylesheets no clone:", e);
+                    }
+
+                    // 3. Adicionar um style block extra para garantir overrides de cores críticas
+                    const style = clonedDoc.createElement('style');
+                    style.innerHTML = `
+                        * { color-interpolation: sRGB !important; }
+                        #composed-dashboard-export { background-color: #0f172a !important; color: #f1f5f9 !important; }
+                        .text-white { color: #ffffff !important; }
+                        .text-blue-400 { color: #60a5fa !important; }
+                        .text-slate-400 { color: #94a3b8 !important; }
+                        .bg-slate-800\\/40 { background-color: rgba(30, 41, 59, 0.4) !important; }
+                        .border-slate-700 { border-color: #334155 !important; }
+                    `;
+                    clonedDoc.head.appendChild(style);
+                }
+             });
+             
+             const imgData = canvasExport.toDataURL('image/png', 1.0);
              const imgProps = pdf.getImageProperties(imgData);
              const pdfImgWidth = pageWidth;
              const pdfImgHeight = (imgProps.height * pdfImgWidth) / imgProps.width;
-             pdf.addImage(imgData, 'PNG', 0, 0, pdfImgWidth, pdfImgHeight);
-             if (pdfImgHeight > pageHeight - 30) { pdf.addPage(); currentY = 20; } else { currentY = pdfImgHeight + 10; }
+             
+             pdf.addImage(imgData, 'PNG', 0, 0, pdfImgWidth, pdfImgHeight, undefined, 'FAST');
+             
+             if (pdfImgHeight > pageHeight - 30) { 
+                 pdf.addPage(); 
+                 currentY = 20; 
+             } else { 
+                 currentY = pdfImgHeight + 10; 
+             }
+             console.log("Dashboard adicionado ao PDF.");
+        } else {
+            console.error("Elemento 'composed-dashboard-export' não encontrado!");
         }
 
         if (currentY + 20 > pageHeight) { pdf.addPage(); currentY = 20; }
@@ -390,9 +506,28 @@ export default function App() {
         pdf.setFont(undefined, 'normal'); currentY += 10;
 
         pipes.forEach((pipe) => {
-            if (currentY > pageHeight - 15) { pdf.addPage(); currentY = 20; pdf.setFillColor(240, 240, 240); pdf.rect(margin, currentY, pageWidth - (margin * 2), 8, 'F'); pdf.setFont(undefined, 'bold'); pdf.text("ID", col1, currentY+5); pdf.text(isPlanning ? "Saldo(H/H)" : "Nível Esf.", col7, currentY+5); pdf.setFont(undefined, 'normal'); currentY += 10; }
+            if (currentY > pageHeight - 15) { 
+                pdf.addPage(); 
+                currentY = 20; 
+                pdf.setFillColor(240, 240, 240); 
+                pdf.rect(margin, currentY, pageWidth - (margin * 2), 8, 'F'); 
+                pdf.setFont(undefined, 'bold'); 
+                pdf.text("ID", col1, currentY+5); 
+                pdf.text("Spool", col2, currentY+5);
+                pdf.text("Linha/Desc", col3, currentY+5);
+                pdf.text("Comp(m)", col4, currentY+5);
+                pdf.text("Status", col5, currentY+5);
+                pdf.text("Isolamento", col6, currentY+5);
+                pdf.text(isPlanning ? "Saldo(H/H)" : "Nível Esf.", col7, currentY+5); 
+                pdf.setFont(undefined, 'normal'); 
+                currentY += 10; 
+            }
             const statusLabel = STATUS_LABELS[pipe.status] || pipe.status;
-            const statusRgb = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(STATUS_COLORS[pipe.status] || '#999')!;
+            const colorHex = STATUS_COLORS[pipe.status] || '#94a3b8';
+            const statusRgb = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(colorHex);
+            const r = statusRgb ? parseInt(statusRgb[1], 16) : 148;
+            const g = statusRgb ? parseInt(statusRgb[2], 16) : 163;
+            const b = statusRgb ? parseInt(statusRgb[3], 16) : 184;
             const insLabel = INSULATION_LABELS[pipe.insulationStatus || 'NONE'];
             
             let hh = 0;
@@ -411,15 +546,124 @@ export default function App() {
                 hh = (effort * mult) + (pipe.planningFactors.delayHours || 0);
             } else if (effort > 0) { hh = effort; }
 
-            pdf.setTextColor(0); pdf.setFontSize(7); pdf.text(pipe.id, col1, currentY); pdf.text(pipe.spoolId || '-', col2, currentY); pdf.text(pipe.name.substring(0, 22), col3, currentY); pdf.text(pipe.length.toFixed(2), col4, currentY);
-            pdf.setFillColor(parseInt(statusRgb[1],16), parseInt(statusRgb[2],16), parseInt(statusRgb[3],16)); pdf.roundedRect(col5-1, currentY-3, pdf.getTextWidth(statusLabel)+4, 5, 1, 1, 'F'); pdf.setTextColor(255); pdf.setFont(undefined, 'bold'); pdf.text(statusLabel, col5+1, currentY);
-            pdf.setTextColor(0); pdf.setFont(undefined, 'normal'); pdf.text(insLabel, col6, currentY); 
-            if (isPlanning) { pdf.text(hh.toFixed(2) + " h", col7, currentY); } 
-            else { const esf = pipe.planningFactors?.accessType === 'NONE' ? 'NÍVEL 0' : (pipe.planningFactors?.accessType || 'NÍVEL 0'); pdf.text(esf, col7, currentY); }
-            pdf.setDrawColor(230); pdf.line(margin, currentY + 2, pageWidth - margin, currentY + 2); currentY += 7;
+            pdf.setTextColor(0); 
+            pdf.setFontSize(7); 
+            pdf.text(pipe.id, col1, currentY); 
+            pdf.text(pipe.spoolId || '-', col2, currentY); 
+            pdf.text(pipe.name.substring(0, 22), col3, currentY); 
+            pdf.text(pipe.length.toFixed(2), col4, currentY);
+            
+            // Badge de Status
+            pdf.setFillColor(r, g, b); 
+            pdf.roundedRect(col5-1, currentY-3, pdf.getTextWidth(statusLabel)+4, 5, 1, 1, 'F'); 
+            pdf.setTextColor(255); 
+            pdf.setFont(undefined, 'bold'); 
+            pdf.text(statusLabel, col5+1, currentY);
+            
+            pdf.setTextColor(0); 
+            pdf.setFont(undefined, 'normal'); 
+            pdf.text(insLabel, col6, currentY); 
+            
+            if (isPlanning) { 
+                pdf.text(hh.toFixed(2) + " h", col7, currentY); 
+            } else { 
+                const esf = pipe.planningFactors?.accessType === 'NONE' ? 'NÍVEL 0' : (pipe.planningFactors?.accessType || 'NÍVEL 0'); 
+                pdf.text(esf, col7, currentY); 
+            }
+            
+            pdf.setDrawColor(230); 
+            pdf.line(margin, currentY + 2, pageWidth - margin, currentY + 2); 
+            currentY += 7;
         });
+        
+        // Adicionar BOM no final do PDF se houver espaço ou em nova página
+        if (currentY > pageHeight - 40) { pdf.addPage(); currentY = 20; }
+        currentY += 5;
+        pdf.setFontSize(12); pdf.setFont(undefined, 'bold'); pdf.setTextColor(0, 50, 100);
+        pdf.text("LISTA DE MATERIAIS (BOM)", margin, currentY); currentY += 6;
+        pdf.setFontSize(8); pdf.setTextColor(0); pdf.setFont(undefined, 'normal');
+        
+        const bom: Record<string, number> = {};
+        pipes.forEach(p => {
+            const entry = Object.entries(PIPE_DIAMETERS).find(([_, v]) => Math.abs(v - p.diameter) < 0.001);
+            const label = entry ? entry[0] : `${(p.diameter * 39.37).toFixed(1)}"`;
+            bom[label] = (bom[label] || 0) + p.length;
+        });
+        
+        Object.entries(bom).forEach(([label, length]) => {
+            pdf.text(`• Tubo Aço Carbono ${label}: ${length.toFixed(2)} metros`, margin + 5, currentY);
+            currentY += 5;
+        });
+
         pdf.save(`relatorio-${isPlanning ? 'cronograma' : 'rastreabilidade'}.pdf`);
-    } catch (err) { alert("Erro PDF."); } finally { setIsExporting(false); }
+    } catch (err) { 
+        console.error("Erro ao gerar PDF:", err);
+        alert("Erro ao gerar PDF: " + (err instanceof Error ? err.message : String(err))); 
+    } finally { setIsExporting(false); }
+  };
+
+  // FUNÇÃO PARA EXPORTAR PARA EXCEL (XLSX)
+  const handleExportExcel = () => {
+    try {
+        const getDiameterLabel = (val: number) => {
+            const entry = Object.entries(PIPE_DIAMETERS).find(([_, v]) => Math.abs(v - val) < 0.001);
+            return entry ? entry[0] : `${(val * 39.37).toFixed(1)}"`;
+        };
+
+        const data = pipes.map(p => {
+            const pipingF = PIPING_REMAINING_FACTOR[p.status] || 0;
+            const insF = INSULATION_REMAINING_FACTOR[p.insulationStatus || 'NONE'] || 0;
+            
+            let hh = 0;
+            const effort = (p.length * prodSettings.pipingBase * pipingF) + (p.length * prodSettings.insulationBase * insF);
+            if (effort > 0 && p.planningFactors) {
+                let mult = 1.0;
+                if (p.planningFactors.hasCrane) mult += prodSettings.weights.crane;
+                if (p.planningFactors.hasBlockage) mult += prodSettings.weights.blockage;
+                if (p.planningFactors.isNightShift) mult += prodSettings.weights.nightShift;
+                if (p.planningFactors.isCriticalArea) mult += prodSettings.weights.criticalArea;
+                if (p.planningFactors.accessType === 'SCAFFOLD_FLOOR') mult += prodSettings.weights.scaffoldFloor;
+                if (p.planningFactors.accessType === 'SCAFFOLD_HANGING') mult += prodSettings.weights.scaffoldHanging;
+                if (p.planningFactors.accessType === 'PTA') mult += prodSettings.weights.pta;
+                hh = (effort * mult) + (p.planningFactors.delayHours || 0);
+            } else if (effort > 0) { hh = effort; }
+
+            return {
+                'ID': p.id,
+                'Spool': p.spoolId || '-',
+                'Nome': p.name,
+                'Diâmetro': getDiameterLabel(p.diameter),
+                'Comprimento (m)': p.length.toFixed(2),
+                'Status Montagem': STATUS_LABELS[p.status],
+                'Isolamento': INSULATION_LABELS[p.insulationStatus || 'NONE'],
+                'Saldo HH': hh.toFixed(2),
+                'Acesso': p.planningFactors?.accessType || 'NÍVEL 0',
+                'Equipes': p.planningFactors?.teamCount || 1
+            };
+        });
+
+        const worksheet = XLSX.utils.json_to_sheet(data);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Rastreabilidade");
+        
+        // Adicionar BOM (Bill of Materials)
+        const bomData: any[] = [];
+        const bom: Record<string, number> = {};
+        pipes.forEach(p => { 
+            const label = getDiameterLabel(p.diameter);
+            bom[label] = (bom[label] || 0) + p.length; 
+        });
+        Object.entries(bom).forEach(([label, length]) => {
+            bomData.push({ 'Material': `Tubo Aço Carbono ${label}`, 'Quantidade': length.toFixed(2), 'Unidade': 'Metros' });
+        });
+        const bomSheet = XLSX.utils.json_to_sheet(bomData);
+        XLSX.utils.book_append_sheet(workbook, bomSheet, "Lista de Materiais");
+
+        XLSX.writeFile(workbook, `projeto-isometrico-${projectLocation.replace(/\s+/g, '-') || 'sem-nome'}.xlsx`);
+    } catch (err) {
+        alert("Erro ao exportar Excel.");
+        console.error(err);
+    }
   };
 
   if (!isAuthenticated) {
@@ -429,68 +673,40 @@ export default function App() {
   return (
     <div className="h-screen w-screen bg-slate-950 text-slate-100 flex flex-col overflow-hidden font-sans">
         <DatabaseModal isOpen={isDBModalOpen} onClose={() => setIsDBModalOpen(false)} projects={savedProjects} onSave={handleDBAction_Save} onLoad={handleDBAction_Load} onDelete={handleDBAction_Delete} />
-        <header className="h-16 bg-slate-900 border-b border-slate-800 px-6 flex items-center justify-between z-50">
-            <div className="flex items-center gap-6">
-                <div className="flex items-center gap-3"><div className="bg-blue-600 p-2 rounded-lg"><Cuboid className="text-white" size={24} /></div><div><h1 className="font-bold text-xl leading-none">Isometrico Manager</h1><p className="text-[10px] text-slate-400">Software por Marconi Fabian</p></div></div>
-                <div className="flex items-center gap-2 bg-slate-800/50 p-1.5 px-3 rounded-lg border border-slate-700/50">
-                     <div className="flex flex-col"><label className="text-[9px] font-bold text-slate-500 uppercase flex items-center gap-1"><Building2 size={10} /> Cliente</label><input type="text" value={projectClient} onChange={(e) => setProjectClient(e.target.value)} className="text-sm font-bold bg-transparent border-none text-white focus:ring-0 w-32 uppercase p-0" /></div>
-                     <div className="h-8 w-px bg-slate-700/50 mx-2"></div>
-                     <div className="flex flex-col"><label className="text-[9px] font-bold text-slate-500 uppercase flex items-center gap-1"><MapPin size={10} /> Local</label><input type="text" value={projectLocation} onChange={(e) => setProjectLocation(e.target.value)} className="text-sm font-bold bg-transparent border-none text-white focus:ring-0 w-48 uppercase p-0" /></div>
-                     <div className="h-8 w-px bg-slate-700/50 mx-2"></div>
-                     <div className="flex flex-col"><label className="text-[9px] font-bold text-slate-500 uppercase flex items-center gap-1"><Calendar size={10} /> Início (Saldo)</label><input type="date" value={activityDate} onChange={(e) => setActivityDate(e.target.value)} className="text-sm font-bold bg-transparent border-none text-white focus:ring-0 p-0 [color-scheme:dark]" /></div>
-                </div>
-            </div>
-            <div className="flex items-center gap-3">
-                <div className="hidden md:flex flex-col items-end mr-2">
-                    <span className="text-[10px] text-slate-500 font-bold uppercase">USUÁRIO</span>
-                    <span className="text-sm font-bold text-blue-400 leading-none">{currentUser}</span>
-                </div>
-                <button 
-                    onClick={handleLogout}
-                    className="p-2 text-slate-400 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-colors"
-                    title="Sair do Sistema"
-                >
-                    <LogOut size={20} />
-                </button>
-                <div className="h-6 w-px bg-slate-700 mx-1"></div>
-                <button onClick={() => setIsDBModalOpen(true)} className="bg-blue-900/40 hover:bg-blue-800 text-blue-300 border border-blue-500/30 px-4 py-2 rounded-lg font-bold flex items-center gap-2"><Database size={16} /> Banco de Dados</button>
-                <div className="bg-slate-800 p-1 rounded-lg flex gap-1 border border-slate-700">
-                    <button onClick={() => { setViewMode('3d'); setIsDrawing(false); }} className={`px-3 py-1.5 text-xs font-bold rounded ${viewMode === '3d' && !isDrawing ? 'bg-slate-700 text-blue-400' : 'text-slate-400 hover:text-white'}`} title="Vista 3D"><Cuboid size={16}/></button>
-                    <button onClick={() => { setViewMode('planning'); setIsDrawing(false); }} className={`px-3 py-1.5 text-xs font-bold rounded ${viewMode === 'planning' ? 'bg-slate-700 text-purple-400' : 'text-slate-400 hover:text-white'}`} title="Planejamento 4D"><Timer size={16}/></button>
-                    <button onClick={handleSwitchToDashboard} className={`px-3 py-1.5 text-xs font-bold rounded ${viewMode === 'dashboard' ? 'bg-slate-700 text-blue-400' : 'text-slate-400 hover:text-white'}`} title="Dashboard"><LayoutDashboard size={16}/></button>
-                </div>
-                <div className="flex gap-2">
-                    <button onClick={handleExportDXF} className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-lg font-bold flex items-center gap-2 text-sm uppercase tracking-tighter" title="Exportar para AutoCAD (3D DXF)"><FileCode size={16}/> Exportar CAD</button>
-                    <button onClick={handleExportPDF} disabled={isExporting} className="bg-red-600 hover:bg-red-700 px-4 py-2 rounded-lg font-bold flex items-center gap-2 text-sm uppercase tracking-tighter">{isExporting ? <Loader2 className="animate-spin" size={16}/> : <FileDown size={16}/>} Gerar PDF</button>
-                </div>
-            </div>
-        </header>
+        
+        <TopNav 
+            projectClient={projectClient}
+            setProjectClient={setProjectClient}
+            projectLocation={projectLocation}
+            setProjectLocation={setProjectLocation}
+            activityDate={activityDate}
+            setActivityDate={setActivityDate}
+            currentUser={currentUser}
+            handleLogout={handleLogout}
+            setIsDBModalOpen={setIsDBModalOpen}
+            viewMode={viewMode}
+            setViewMode={setViewMode}
+            setIsDrawing={setIsDrawing}
+            showDimensions={showDimensions}
+            setShowDimensions={setShowDimensions}
+            handleExportDXF={handleExportDXF}
+            handleExportExcel={handleExportExcel}
+            handleExportPDF={handleExportPDF}
+            isExporting={isExporting}
+        />
 
         <main className="flex-1 relative overflow-hidden flex">
             {/* EXPORT CONTAINER HIDDEN */}
-            <div id="composed-dashboard-export" style={{ position: 'fixed', top: 0, left: '-5000px', width: '1920px', minHeight: '1080px', zIndex: -50, backgroundColor: '#0f172a', padding: '60px', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: '40px' }}>
-                 <div className="flex justify-between items-start border-b border-slate-700 pb-6"><div><h1 className="text-6xl font-bold text-white tracking-tight leading-none mb-2 uppercase">{viewMode === 'planning' ? 'CRONOGRAMA DE ATAQUE (SALDO)' : 'RASTREABILIDADE FÍSICA'}</h1><p className="text-slate-400 text-xl font-medium tracking-widest uppercase">Trabalho Pendente e Prazos de Execução</p></div><div className="text-right text-2xl font-light text-slate-400 tracking-[0.2em] uppercase">Marconi Fabian - Isometrico Manager</div></div>
-                 <div className="grid grid-cols-5 gap-6">
-                    <div className="bg-slate-800/40 border border-slate-700 p-6 rounded-2xl flex flex-col items-center"><Ruler className="text-blue-400 mb-2" size={32} /><span className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">Total Metros</span><div className="text-4xl font-bold text-white">{reportStats.totalLength.toFixed(2)}m</div></div>
-                    <div className="bg-slate-800/40 border border-slate-700 p-6 rounded-2xl flex flex-col items-center"><Wrench className="text-blue-300 mb-2" size={32} /><span className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">Saldo Piping</span><div className="text-4xl font-bold text-white">{reportStats.totalPipingHH.toFixed(1)}h</div></div>
-                    <div className="bg-slate-800/40 border border-slate-700 p-6 rounded-2xl flex flex-col items-center"><Shield className="text-purple-400 mb-2" size={32} /><span className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">Saldo Isolamento</span><div className="text-4xl font-bold text-white">{reportStats.totalInsulationHH.toFixed(1)}h</div></div>
-                    <div className="bg-slate-800/40 border border-slate-700 p-6 rounded-2xl flex flex-col items-center"><Timer className="text-purple-300 mb-2" size={32} /><span className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">Total Saldo</span><div className="text-4xl font-bold text-white">{reportStats.totalHH.toFixed(1)}h</div></div>
-                    <div className="bg-slate-800/40 border border-slate-700 p-6 rounded-2xl flex flex-col items-center"><Calendar className="text-green-400 mb-2" size={32} /><span className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">Término Projetado</span><div className="text-3xl font-bold text-green-400 mt-1">{reportStats.totalHH > 0 ? reportStats.projectedEnd : 'CONCLUÍDO'}</div></div>
-                 </div>
-                 <div className="grid grid-cols-2 gap-8 flex-1">
-                    <div className="flex flex-col gap-2"><h3 className="text-xl font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2"><Cuboid size={20}/> Vista Principal 3D</h3><div className="flex-1 bg-slate-800/50 rounded-xl border border-slate-700 relative overflow-hidden flex items-center justify-center p-2 min-h-[450px]">{sceneScreenshot ? <img src={sceneScreenshot} className="w-full h-full object-cover rounded-lg" /> : <div className="text-slate-600 flex flex-col items-center"><Cuboid size={64} className="opacity-50"/><span>Sem Captura</span></div>}</div></div>
-                    <div className="flex flex-col gap-2"><h3 className="text-xl font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2"><ImageIcon size={20}/> Registro Fotográfico</h3><div className="flex-1 bg-slate-800/50 rounded-xl border border-slate-700 relative overflow-hidden flex items-center justify-center p-2 min-h-[450px]">{secondaryImage ? <img src={secondaryImage} className="w-full h-full object-cover rounded-lg" /> : <div className="text-slate-600 flex flex-col items-center"><span>Sem Foto</span></div>}</div></div>
-                    <div className="flex flex-col gap-6">
-                        <div className="flex flex-col gap-2"><h3 className="text-xl font-bold text-slate-300 uppercase tracking-wider">Dados da Obra</h3><div className="bg-slate-800/50 rounded-xl border border-slate-700 p-6"><table className="w-full text-xl text-left"><tbody className="divide-y divide-slate-700/50"><tr><td className="py-3 text-slate-400 font-bold uppercase w-1/3">Cliente</td><td className="py-3 text-white uppercase font-bold text-blue-400">{projectClient}</td></tr><tr><td className="py-3 text-slate-400 font-bold uppercase">Área/Setor</td><td className="py-3 text-white uppercase font-medium">{projectLocation}</td></tr><tr><td className="py-3 text-slate-400 font-bold uppercase">Data Ref.</td><td className="py-3 text-white font-medium">{activityDate.split('-').reverse().join('/')}</td></tr></tbody></table></div></div>
-                        <div className="flex flex-col gap-2 flex-1"><h3 className="text-xl font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2"><Package size={20}/> Quantitativos (BOM)</h3><div className="bg-slate-800/50 rounded-xl border border-slate-700 overflow-hidden"><table className="w-full text-xl text-left"><thead className="bg-slate-900/80 text-slate-400 uppercase text-sm font-bold"><tr><th className="p-4">Descrição Material</th><th className="p-4 text-right">Qtd.</th><th className="p-4 text-center">Unid.</th></tr></thead><tbody className="divide-y divide-slate-700/50">{Object.entries(reportStats.bom).map(([label, length]) => (<tr key={label}><td className="p-4 text-white font-medium">Tubo Aço Carbono <span className="text-blue-400 font-bold">{label}</span></td><td className="p-4 text-right font-mono text-white">{(length as number).toFixed(2)}</td><td className="p-4 text-center text-slate-500">Metros</td></tr>))}</tbody></table></div></div>
-                    </div>
-                    <div className="flex flex-col gap-6">
-                        <div className="flex flex-col gap-2"><h3 className="text-xl font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2"><MapPin size={20}/> Localização em Planta</h3><div className="bg-slate-800/50 rounded-xl border border-slate-700 p-2 min-h-[250px] relative overflow-hidden flex items-center justify-center">{mapImage ? <img src={mapImage} className="w-full h-full object-cover rounded-lg opacity-80" /> : <div className="text-slate-600">Sem Mapa</div>}</div></div>
-                        <div className="flex flex-col gap-2"><h3 className="text-xl font-bold text-slate-300 uppercase tracking-wider">Status Físico de Obra</h3><div className="grid grid-cols-2 gap-4"><div className="bg-slate-800/50 rounded-xl border border-slate-700 p-4 h-[250px] flex flex-col"><div className="text-xs font-bold text-blue-400 uppercase mb-2 text-center">Montagem/Solda</div><div className="flex-1 flex items-end justify-around gap-2">{ALL_STATUSES.map(status => { const h = (reportStats.pipeCounts[status] / Math.max(1, reportStats.total)) * 100; return (<div key={status} className="flex flex-col items-center flex-1 h-full justify-end"><span className="text-white font-bold text-[10px] mb-1">{reportStats.pipeCounts[status]}</span><div className="w-full rounded-t-sm opacity-80" style={{ height: `${Math.max(h, 5)}%`, backgroundColor: STATUS_COLORS[status] }}></div><span className="text-[8px] text-slate-500 font-bold uppercase text-center mt-1 truncate w-full">{STATUS_LABELS[status].split(' ')[0]}</span></div>)})}</div></div><div className="bg-slate-800/50 rounded-xl border border-slate-700 p-4 h-[250px] flex flex-col"><div className="text-xs font-bold text-purple-400 uppercase mb-2 text-center">Isolamento</div><div className="flex-1 flex items-end justify-around gap-2">{ALL_INSULATION_STATUSES.map(status => { const h = (reportStats.insulationCounts[status] / Math.max(1, reportStats.total)) * 100; const c = INSULATION_COLORS[status] === 'transparent' ? '#475569' : INSULATION_COLORS[status]; return (<div key={status} className="flex flex-col items-center flex-1 h-full justify-end"><span className="text-white font-bold text-[10px] mb-1">{reportStats.insulationCounts[status]}</span><div className="w-full rounded-t-sm opacity-80" style={{ height: `${Math.max(h, 5)}%`, backgroundColor: c }}></div><span className="text-[8px] text-slate-500 font-bold uppercase text-center mt-1 truncate w-full">{INSULATION_LABELS[status].split(' ')[0]}</span></div>)})}</div></div></div></div>
-                    </div>
-                 </div>
-                 <div className="mt-4 pt-4 border-t border-slate-800 flex justify-between text-slate-500 font-mono text-lg"><span>Relatório Automático Isometrico Manager - Marconi Fabian</span><span>Página 1 de 2</span></div>
-            </div>
+            <ExportContainer 
+                viewMode={viewMode}
+                reportStats={reportStats}
+                sceneScreenshot={sceneScreenshot}
+                secondaryImage={secondaryImage}
+                mapImage={mapImage}
+                projectClient={projectClient}
+                projectLocation={projectLocation}
+                activityDate={activityDate}
+            />
 
             <div className="flex-1 w-full h-full relative">
                 <div id="scene-canvas-wrapper" className="absolute inset-0 bg-slate-900 z-0">
@@ -509,7 +725,7 @@ export default function App() {
                             {viewMode === 'planning' && selectedIds.length === 0 && (
                                 <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 animate-in slide-in-from-top-4 fade-in"><div className="bg-purple-900/90 text-white border border-purple-500 px-6 py-3 rounded-full shadow-2xl flex items-center gap-3 backdrop-blur-md"><Timer className="animate-pulse text-purple-300" size={24} /><div><p className="font-bold text-sm">Modo Planejamento Ativo (Saldo)</p><p className="text-[10px] text-purple-200">Cronograma baseado no trabalho remanescente.</p></div></div></div>
                             )}
-                            <Scene pipes={pipes} annotations={annotations} selectedIds={selectedIds} onSelectPipe={handleSelectPipe} onSetSelection={handleSetSelection} isDrawing={isDrawing} onAddPipe={handleAddPipe} onUpdatePipe={handleUpdateSinglePipe} onMovePipes={handleMovePipes} onCancelDraw={() => setIsDrawing(false)} fixedLength={fixedLengthValue} onAddAnnotation={handleAddAnnotation} onUpdateAnnotation={handleUpdateAnnotation} onDeleteAnnotation={handleDeleteAnnotation} onUndo={undo} onRedo={redo} colorMode={colorMode} pastePreview={pastePreview} onPasteMove={handlePasteMove} onPasteConfirm={handlePasteConfirm} snapAngle={snapAngle} onSetSnapAngle={setSnapAngle} currentDiameter={selectedDiameter} />
+                            <Scene pipes={pipes} annotations={annotations} selectedIds={selectedIds} onSelectPipe={handleSelectPipe} onSetSelection={handleSetSelection} isDrawing={isDrawing} onAddPipe={handleAddPipe} onUpdatePipe={handleUpdateSinglePipe} onMovePipes={handleMovePipes} onCancelDraw={() => setIsDrawing(false)} fixedLength={fixedLengthValue} onAddAnnotation={handleAddAnnotation} onUpdateAnnotation={handleUpdateAnnotation} onDeleteAnnotation={handleDeleteAnnotation} onUndo={undo} onRedo={redo} colorMode={colorMode} pastePreview={pastePreview} onPasteMove={handlePasteMove} onPasteConfirm={handlePasteConfirm} snapAngle={snapAngle} onSetSnapAngle={setSnapAngle} currentDiameter={selectedDiameter} showDimensions={showDimensions} />
                         </div>
                     </div>
                 </div>

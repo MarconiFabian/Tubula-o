@@ -137,7 +137,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                     <button onClick={() => setActiveTab('overview')} className={`px-4 py-2 rounded-md text-[10px] font-mono uppercase tracking-wider flex items-center gap-2 transition-all ${activeTab === 'overview' ? 'bg-slate-800 text-blue-400 shadow-inner border border-slate-700' : 'text-slate-500 hover:text-slate-300'}`}><Activity size={14}/> Overview</button>
                     <button onClick={() => setActiveTab('tracking')} className={`px-4 py-2 rounded-md text-[10px] font-mono uppercase tracking-wider flex items-center gap-2 transition-all ${activeTab === 'tracking' ? 'bg-slate-800 text-blue-400 shadow-inner border border-slate-700' : 'text-slate-500 hover:text-slate-300'}`}><ClipboardList size={14}/> Tracking</button>
                  </div>
-                 <button onClick={onExportPDF} disabled={isExporting} className="bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 px-4 py-2 rounded-lg font-mono text-[10px] uppercase tracking-widest flex gap-2 items-center transition-all shadow-lg h-10"><FileDown size={14} /> {isExporting ? 'BUSY' : 'EXPORT'}</button>
+                 <button onClick={onExportPDF} disabled={isExporting} className="bg-red-600 hover:bg-red-700 border border-red-500/30 text-white px-4 py-2 rounded-lg font-mono text-[10px] uppercase tracking-widest flex gap-2 items-center transition-all shadow-lg h-10 shadow-red-600/20"><FileDown size={14} /> {isExporting ? 'GERANDO...' : 'EXPORTAR PDF'}</button>
              </div>
         </div>
       )}

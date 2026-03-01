@@ -313,6 +313,15 @@ const Sidebar: React.FC<SidebarProps> = ({
       </div>
       <div className="p-6 space-y-6 flex-1">
         <div className="space-y-4">
+            <div className="bg-slate-950/40 p-4 rounded-xl border border-slate-800">
+                <label className="text-[10px] font-bold text-slate-500 uppercase mb-3 block flex items-center gap-2"><Layers size={14}/> Especificações de Material</label>
+                <div className="grid grid-cols-2 gap-2 text-[10px]">
+                    <div className="flex flex-col"><span className="text-slate-500">Material</span><span className="text-white font-bold">Aço Carbono A106-B</span></div>
+                    <div className="flex flex-col"><span className="text-slate-500">Schedule</span><span className="text-white font-bold">SCH 40</span></div>
+                    <div className="flex flex-col"><span className="text-slate-500">Pressão Projeto</span><span className="text-white font-bold">150 PSI</span></div>
+                    <div className="flex flex-col"><span className="text-slate-500">Temp. Projeto</span><span className="text-white font-bold">80°C</span></div>
+                </div>
+            </div>
             <div className="grid grid-cols-2 gap-4">
                 <div><label className="text-[10px] font-bold text-slate-500 uppercase">ID Linha</label><div className="text-blue-400 font-mono text-xs">{singlePipe.id}</div></div>
                 <div><label className="text-[10px] font-bold text-slate-500 uppercase">Comp.</label><div className="text-white font-bold text-xs">{singlePipe.length.toFixed(2)}m</div></div>

@@ -75,24 +75,6 @@ const PipeMesh: React.FC<PipeMeshProps> = ({ data, isSelected, trimStart = 0, tr
                 />
             </mesh>
             
-            {/* Length Label - Always facing camera (Billboard) and offset vertically in screen space */}
-            {geometryLength > 0.1 && !transparent && (
-                <Billboard position={position}>
-                    <Text
-                        position={[0, data.diameter/2 + 0.25, 0]} // Offset "Up" in billboard space (screen Y)
-                        fontSize={0.25}
-                        color="white"
-                        anchorX="center"
-                        anchorY="bottom"
-                        outlineWidth={0.03}
-                        outlineColor="#000000"
-                        renderOrder={1000}
-                    >
-                        {data.length.toFixed(2)}m
-                    </Text>
-                </Billboard>
-            )}
-            
             {/* Thermal Protection Layer */}
             {hasInsulation && (
                  <mesh

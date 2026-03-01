@@ -121,9 +121,9 @@ export const Fittings: React.FC<FittingsProps> = ({ pipes, connections, onSelect
           items.push(
             <group key={`elbow-${key}`} position={node.point}>
               {/* Texto do Ângulo */}
-              <Billboard position={[0, radius + 0.2, 0]}>
+              <Billboard position={[0, radius + 0.3, 0]}>
                 <Text
-                  fontSize={0.2}
+                  fontSize={0.18}
                   color="#fbbf24"
                   anchorX="center"
                   anchorY="bottom"
@@ -136,26 +136,36 @@ export const Fittings: React.FC<FittingsProps> = ({ pipes, connections, onSelect
                 </Text>
               </Billboard>
 
-              {/* Corpo da Curva */}
+              {/* Corpo da Curva (Elbow) */}
               <mesh 
                 onClick={(e) => handleInteraction(e, smartSelectId)}
                 onPointerMove={onPointerMove}
                 onPointerOver={() => document.body.style.cursor = 'pointer'}
                 onPointerOut={() => document.body.style.cursor = 'auto'}
               >
-                <tubeGeometry args={[curve, 16, p1.pipe.diameter / 2, 16, false]} />
+                <tubeGeometry args={[curve, 32, p1.pipe.diameter / 2, 24, false]} />
                 <meshStandardMaterial 
                   color={bodyColor} 
-                  roughness={0.3} 
-                  metalness={0.6}
+                  roughness={0.2} 
+                  metalness={0.8}
                   emissive={isSelected ? bodyColor : '#000000'}
-                  emissiveIntensity={isSelected ? 0.4 : 0}
+                  emissiveIntensity={isSelected ? 0.5 : 0}
                 />
+              </mesh>
+
+              {/* Detalhe visual de solda nas pontas da curva para realismo */}
+              <mesh position={startPt} quaternion={new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0), p1.vector)}>
+                 <torusGeometry args={[p1.pipe.diameter/2 + 0.005, 0.015, 8, 24]} />
+                 <meshStandardMaterial color={bodyColor} metalness={0.9} roughness={0.1} />
+              </mesh>
+              <mesh position={endPt} quaternion={new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0), p2.vector)}>
+                 <torusGeometry args={[p2.pipe.diameter/2 + 0.005, 0.015, 8, 24]} />
+                 <meshStandardMaterial color={bodyColor} metalness={0.9} roughness={0.1} />
               </mesh>
 
               {hasInsulation && (
                   <mesh onPointerMove={onPointerMove} onClick={(e) => handleInteraction(e, smartSelectId)}>
-                    <tubeGeometry args={[curve, 16, p1.pipe.diameter / 2 + 0.08, 16, false]} />
+                    <tubeGeometry args={[curve, 32, p1.pipe.diameter / 2 + 0.08, 24, false]} />
                     <meshStandardMaterial color={insulationColor} transparent opacity={0.3} roughness={0.1} metalness={0.1} depthWrite={false} side={THREE.DoubleSide} />
                   </mesh>
               )}
