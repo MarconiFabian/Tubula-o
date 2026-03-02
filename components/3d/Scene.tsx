@@ -1,6 +1,6 @@
 
 import React, { useEffect, useState, useMemo, Suspense, useRef } from 'react';
-import { Canvas, useThree, ThreeEvent } from '@react-three/fiber';
+import { Canvas, useThree, ThreeEvent, useFrame } from '@react-three/fiber';
 import { OrbitControls, Grid, Environment, TransformControls, Html, Billboard, Text } from '@react-three/drei';
 import * as THREE from 'three';
 import PipeMesh from './PipeMesh';
@@ -38,6 +38,7 @@ interface SceneProps {
   snapAngle?: number;
   onSetSnapAngle?: (angle: number) => void;
   currentDiameter?: number;
+  dynamicZoom?: boolean;
 }
 
 const stringToColor = (str: string) => {
@@ -127,6 +128,89 @@ const MultiSelectControls = ({ selectedIds, pipes, annotations, onMovePipes }: {
     )
 }
 
+/**
+ * Componente de controle adaptativo que ajusta a velocidade do zoom e pan
+ * baseado na distância da câmera ao alvo. Isso permite um controle preciso
+ * em detalhes e rapidez em grandes modelos.
+ */
+const AdaptiveOrbitControls = ({ enabled, mouseButtons, dynamicZoom = false }: { enabled: boolean, mouseButtons: any, dynamicZoom?: boolean }) => {
+    const { camera } = useThree();
+    const controlsRef = useRef<any>(null);
+    const [shiftPressed, setShiftPressed] = useState(false);
+
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => { if (e.key === 'Shift') setShiftPressed(true); };
+        const handleKeyUp = (e: KeyboardEvent) => { if (e.key === 'Shift') setShiftPressed(false); };
+        window.addEventListener('keydown', handleKeyDown);
+        window.addEventListener('keyup', handleKeyUp);
+        return () => {
+            window.removeEventListener('keydown', handleKeyDown);
+            window.removeEventListener('keyup', handleKeyUp);
+        };
+    }, []);
+
+    useFrame(() => {
+        if (controlsRef.current) {
+            if (dynamicZoom || shiftPressed) {
+                // Modo Dinâmico Ativo (ou via botão ou via Shift)
+                const distance = camera.position.distanceTo(controlsRef.current.target);
+                
+                // Ajuste dinâmico da velocidade do Zoom
+                // Aumentamos o mínimo para 0.8 para evitar a sensação de "travado"
+                const dynamicZoomSpeed = Math.max(0.8, Math.min(5.0, distance * 0.05));
+                controlsRef.current.zoomSpeed = dynamicZoomSpeed;
+
+                // Ajuste dinâmico da velocidade do Pan
+                const dynamicPanSpeed = Math.max(1.0, Math.min(3.5, distance * 0.025));
+                controlsRef.current.panSpeed = dynamicPanSpeed;
+            } else {
+                // Modo Normal (Velocidades fixas aumentadas para 2.5 para fluidez total)
+                controlsRef.current.zoomSpeed = 2.5;
+                controlsRef.current.panSpeed = 2.0;
+            }
+        }
+    });
+
+    useEffect(() => {
+        const handleFocus = (e: any) => {
+            if (controlsRef.current && e.detail?.point) {
+                const pt = e.detail.point;
+                controlsRef.current.target.set(pt.x, pt.y, pt.z);
+                controlsRef.current.update();
+            }
+        };
+        const handleReset = () => {
+            if (controlsRef.current) {
+                controlsRef.current.reset();
+                controlsRef.current.target.set(0, 0, 0);
+                camera.position.set(15, 15, 15);
+                controlsRef.current.update();
+            }
+        };
+        window.addEventListener('FOCUS_OBJECT', handleFocus);
+        window.addEventListener('RESET_CAMERA', handleReset);
+        return () => {
+            window.removeEventListener('FOCUS_OBJECT', handleFocus);
+            window.removeEventListener('RESET_CAMERA', handleReset);
+        };
+    }, [camera]);
+
+    return (
+        <OrbitControls 
+            ref={controlsRef}
+            makeDefault 
+            enabled={enabled} 
+            mouseButtons={mouseButtons} 
+            minDistance={0.01} 
+            maxDistance={8000} 
+            enableDamping={true} 
+            dampingFactor={0.12} // Aumentado para resposta mais rápida (menos "deslize")
+            rotateSpeed={0.8}
+            screenSpacePanning={true} 
+        />
+    );
+};
+
 const KeyboardManager = ({ selectedIds, pipes, onUpdatePipe, onUndo, onRedo }: 
     { selectedIds: string[], pipes: PipeSegment[], onUpdatePipe: (p: PipeSegment) => void, onUndo?: ()=>void, onRedo?: ()=>void }) => {
     useEffect(() => {
@@ -172,11 +256,11 @@ const KeyboardManager = ({ selectedIds, pipes, onUpdatePipe, onUndo, onRedo }:
     return null;
 };
 
-const SceneContent: React.FC<SceneProps & { lockedAxis: 'x'|'y'|'z'|null, selectionBox: any, onSetSelectionBox: any, is45Mode: boolean, snapAngle: number, currentDiameter?: number, showDimensions?: boolean }> = ({ 
+const SceneContent: React.FC<SceneProps & { lockedAxis: 'x'|'y'|'z'|null, selectionBox: any, onSetSelectionBox: any, is45Mode: boolean, snapAngle: number, currentDiameter?: number, showDimensions?: boolean, dynamicZoom?: boolean }> = ({ 
   pipes, annotations = [], selectedIds, onSelectPipe, onSetSelection, isDrawing, onAddPipe, onUpdatePipe, onMovePipes, onCancelDraw, lockedAxis, fixedLength,
   onAddAnnotation, onUpdateAnnotation, onDeleteAnnotation, onUndo, onRedo,
   colorMode = 'STATUS', selectionBox, onSetSelectionBox,
-  pastePreview, onPasteMove, onPasteConfirm, is45Mode, snapAngle, currentDiameter, showDimensions
+  pastePreview, onPasteMove, onPasteConfirm, is45Mode, snapAngle, currentDiameter, showDimensions, dynamicZoom
 }) => {
     const { camera, gl, size } = useThree();
     const [isDragging, setIsDragging] = useState(false);
@@ -332,6 +416,16 @@ const SceneContent: React.FC<SceneProps & { lockedAxis: 'x'|'y'|'z'|null, select
         }
     };
 
+    const handlePipeDoubleClick = (e: ThreeEvent<MouseEvent>, pipe: PipeSegment) => {
+        e.stopPropagation();
+        const center = {
+            x: (pipe.start.x + pipe.end.x) / 2,
+            y: (pipe.start.y + pipe.end.y) / 2,
+            z: (pipe.start.z + pipe.end.z) / 2
+        };
+        window.dispatchEvent(new CustomEvent('FOCUS_OBJECT', { detail: { point: center } }));
+    };
+
     const spoolColors = useMemo(() => {
         const map: Record<string, string> = {};
         pipes.forEach(p => { if (p.spoolId && !map[p.spoolId]) map[p.spoolId] = stringToColor(p.spoolId); });
@@ -342,18 +436,10 @@ const SceneContent: React.FC<SceneProps & { lockedAxis: 'x'|'y'|'z'|null, select
 
     return (
         <>
-            <OrbitControls 
-                makeDefault 
+            <AdaptiveOrbitControls 
                 enabled={!isDragging && !selectionBox.isSelecting} 
                 mouseButtons={{LEFT: -1 as unknown as THREE.MOUSE, MIDDLE: THREE.MOUSE.ROTATE, RIGHT: THREE.MOUSE.PAN}} 
-                minDistance={0.1}
-                maxDistance={5000}
-                enableDamping={true} // Suaviza o movimento
-                dampingFactor={0.05} // Fator de amortecimento
-                zoomSpeed={0.78} // Aumentado em 30% a pedido do usuário (era 0.6)
-                rotateSpeed={0.6} // Levemente reduzido para suavidade
-                panSpeed={0.8} // Reduzido para maior controle
-                screenSpacePanning={true} // Pan segue a tela, mais intuitivo para CAD
+                dynamicZoom={dynamicZoom}
             />
             <ambientLight intensity={1.2} />
             <pointLight position={[20, 20, 20]} intensity={2.5} castShadow />
@@ -440,7 +526,12 @@ const SceneContent: React.FC<SceneProps & { lockedAxis: 'x'|'y'|'z'|null, select
                     const showDimension = showDimensions && !isDrawing;
 
                     return (
-                        <group key={pipe.id} onClick={(e) => handlePipeClick(e, pipe)} onPointerMove={handlePointerMove}>
+                        <group 
+                            key={pipe.id} 
+                            onClick={(e) => handlePipeClick(e, pipe)} 
+                            onDoubleClick={(e) => handlePipeDoubleClick(e, pipe)}
+                            onPointerMove={handlePointerMove}
+                        >
                              <PipeMesh data={pipe} isSelected={isSelected} onSelect={() => {}} trimStart={trim.start} trimEnd={trim.end} customColor={colorOverride} />
                              
                              {showDimension && (
@@ -492,7 +583,8 @@ const SceneContent: React.FC<SceneProps & { lockedAxis: 'x'|'y'|'z'|null, select
 const Scene: React.FC<SceneProps & { fixedLength?: number, onUndo?: ()=>void, onRedo?: ()=>void, colorMode?: 'STATUS'|'SPOOL', onMovePipes?: (d:any)=>void, onSetSelection?: (ids:string[])=>void, pastePreview?: PipeSegment[] | null, onPasteMove?: any,  onPasteConfirm?: any, 
   snapAngle?: number, 
   onSetSnapAngle?: (angle: number) => void,
-  showDimensions?: boolean 
+  showDimensions?: boolean,
+  dynamicZoom?: boolean
 }> = (props) => {
   const [lockedAxis, setLockedAxis] = useState<'x'|'y'|'z'|null>(null);
   const [selectionBox, setSelectionBox] = useState({ x: 0, y: 0, w: 0, h: 0, isSelecting: false, startX: 0, startY: 0 });
@@ -669,6 +761,7 @@ const Scene: React.FC<SceneProps & { fixedLength?: number, onUndo?: ()=>void, on
                               <div className="flex justify-between items-center"><span className="text-slate-300 text-sm">Colar Seleção</span> <kbd className="bg-slate-800 px-2 py-1 rounded text-xs font-bold text-purple-400 border border-slate-700">CTRL+V</kbd></div>
                               <div className="flex justify-between items-center"><span className="text-slate-300 text-sm">Desfazer / Refazer</span> <kbd className="bg-slate-800 px-2 py-1 rounded text-xs font-bold text-purple-400 border border-slate-700">CTRL+Z / Y</kbd></div>
                               <div className="flex justify-between items-center"><span className="text-slate-300 text-sm">Anotação Rápida</span> <kbd className="bg-slate-800 px-2 py-1 rounded text-xs font-bold text-purple-400 border border-slate-700">Q + CLICK</kbd></div>
+                              <div className="flex justify-between items-center"><span className="text-slate-300 text-sm font-bold text-blue-400">Focar em Tubo</span> <kbd className="bg-slate-800 px-2 py-1 rounded text-xs font-bold text-blue-400 border border-slate-700">DUPLO CLIQUE</kbd></div>
                               <div className="flex justify-between items-center"><span className="text-slate-300 text-sm">Abrir este Guia</span> <kbd className="bg-slate-800 px-2 py-1 rounded text-xs font-bold text-white border border-slate-700">H</kbd></div>
                           </div>
                       </div>

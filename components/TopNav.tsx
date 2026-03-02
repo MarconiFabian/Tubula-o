@@ -1,5 +1,5 @@
 import React from 'react';
-import { Cuboid, Building2, MapPin, Calendar, LogOut, Database, Timer, LayoutDashboard, Ruler, HelpCircle, FileCode, FileSpreadsheet, FileDown, Loader2 } from 'lucide-react';
+import { Cuboid, Building2, MapPin, Calendar, LogOut, Database, Timer, LayoutDashboard, Ruler, HelpCircle, FileCode, FileSpreadsheet, FileDown, Loader2, MousePointer2 } from 'lucide-react';
 
 interface TopNavProps {
   projectClient: string;
@@ -138,6 +138,13 @@ export const TopNav: React.FC<TopNavProps> = ({
             title="Toggle Dimensions"
           >
             <Ruler size={18} />
+          </button>
+          <button 
+            onClick={() => window.dispatchEvent(new CustomEvent('RESET_CAMERA'))}
+            className="p-2 text-slate-500 hover:text-white hover:bg-slate-800 rounded-xl transition-all border border-slate-800"
+            title="Reset Camera View"
+          >
+            <MousePointer2 size={18} />
           </button>
           <button 
             onClick={() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'h' }))}
