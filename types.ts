@@ -83,10 +83,19 @@ export interface Accessory {
   color?: string;
 }
 
+export enum AnnotationType {
+  COMMENT = 'COMMENT',
+  SCAFFOLD = 'SCAFFOLD',
+  CRANE = 'CRANE',
+  SCAFFOLD_CANTILEVER = 'SCAFFOLD_CANTILEVER'
+}
+
 export interface Annotation {
   id: string;
   position: Coordinates;
   text: string;
+  type?: AnnotationType;
+  estimatedHours?: number;
 }
 
 export interface ProjectStats {

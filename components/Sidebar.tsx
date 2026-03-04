@@ -1,9 +1,10 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { PipeSegment, PipeStatus, InsulationStatus, PlanningFactors, ProductivitySettings } from '../types';
-import { STATUS_LABELS, STATUS_COLORS, ALL_STATUSES, INSULATION_LABELS, INSULATION_COLORS, ALL_INSULATION_STATUSES } from '../constants';
+import { STATUS_LABELS, STATUS_COLORS, ALL_STATUSES, INSULATION_LABELS, INSULATION_COLORS, ALL_INSULATION_STATUSES, PIPING_REMAINING_FACTOR, INSULATION_REMAINING_FACTOR, HOURS_PER_DAY } from '../constants';
 import { X, CheckCircle, AlertCircle, FileText, Trash2, Shield, Wrench, Layers, MapPin, Timer, Truck, Construction, Users, ArrowUpCircle, Calendar, Moon, ShieldAlert, Clock, Activity, Settings2, Sliders, Info, Percent, ZapOff, HardHat, Copy, BarChart3 } from 'lucide-react';
 import PlanningReportModal from './PlanningReportModal';
+import { getWorkingEndDate } from '../utils/planning';
 
 interface SidebarProps {
   selectedPipes: PipeSegment[];
@@ -28,38 +29,7 @@ const DEFAULT_FACTORS: PlanningFactors = {
     teamCount: 1 
 };
 
-// Tabelas de saldo remanescente (O que falta fazer)
-const PIPING_REMAINING_FACTOR: Record<string, number> = {
-    'PENDING': 1.0,   // 100% a fazer
-    'MOUNTED': 0.7,   // 70% a fazer (falta solda e teste)
-    'WELDED': 0.15,   // 15% a fazer (falta teste/doc)
-    'HYDROTEST': 0.0  // 0% a fazer
-};
-
-const INSULATION_REMAINING_FACTOR: Record<string, number> = {
-    'NONE': 0.0,      // Não requer ou já concluído (se status for none)
-    'PENDING': 1.0,   // 100% a fazer
-    'INSTALLING': 0.5, // 50% a fazer
-    'FINISHED': 0.0    // 0% a fazer
-};
-
-const addWorkingDays = (startDate: Date, days: number): Date => {
-    let result = new Date(startDate);
-    let addedDays = 0;
-    let daysToTarget = days > 0 ? days - 1 : 0; 
-    
-    while (addedDays < daysToTarget) {
-        result.setDate(result.getDate() + 1);
-        const dayOfWeek = result.getDay();
-        if (dayOfWeek !== 0 && dayOfWeek !== 6) {
-            addedDays++;
-        }
-    }
-    while (result.getDay() === 0 || result.getDay() === 6) {
-        result.setDate(result.getDate() + 1);
-    }
-    return result;
-};
+// Tabelas de saldo remanescente (REMOVIDO - USANDO CONSTANTS)
 
 const Sidebar: React.FC<SidebarProps> = ({ 
     selectedPipes, onUpdateSingle, onUpdateBatch, onDelete, onClose, 
@@ -125,9 +95,9 @@ const Sidebar: React.FC<SidebarProps> = ({
           weightedHours += (finalHH / (factors.teamCount || 1));
       });
 
-      const daysNeeded = Math.ceil(weightedHours / 8.8);
+      const daysNeeded = Math.ceil(weightedHours / HOURS_PER_DAY);
       const start = new Date((activeFactors.customStartDate || startDate) + 'T12:00:00');
-      const end = addWorkingDays(start, daysNeeded);
+      const end = getWorkingEndDate(start, daysNeeded);
 
       return { 
           totalHH, 

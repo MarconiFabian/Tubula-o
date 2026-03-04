@@ -9,7 +9,7 @@ import { Fittings, ConnectionNode } from './Fittings';
 import { AnnotationMarker, GhostMarker } from './AnnotationMarker';
 import { SceneHelpers } from './SceneHelpers';
 import { StatusLegend } from './StatusLegend';
-import { PipeSegment, PipeStatus, Annotation, AccessoryType } from '../../types';
+import { PipeSegment, PipeStatus, Annotation, AccessoryType, AnnotationType } from '../../types';
 import { STATUS_COLORS, STATUS_LABELS, ALL_STATUSES } from '../../constants';
 import { Loader2, UserCheck, Calendar, X, Info } from 'lucide-react';
 
@@ -22,7 +22,7 @@ interface SceneProps {
   isDrawing: boolean;
   onAddPipe: (start: {x:number, y:number, z:number}, end: {x:number, y:number, z:number}) => void;
   onAddAnnotation?: (pos: {x:number, y:number, z:number}) => void;
-  onUpdateAnnotation?: (id: string, text: string) => void;
+  onUpdateAnnotation?: (id: string, text: string, type?: AnnotationType, estimatedHours?: number) => void;
   onDeleteAnnotation?: (id: string) => void;
   onUpdatePipe: (pipe: PipeSegment) => void;
   onMovePipes?: (delta: {x:number, y:number, z:number}) => void;

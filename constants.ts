@@ -62,4 +62,19 @@ export const ALL_STATUSES = ['PENDING', 'MOUNTED', 'WELDED', 'HYDROTEST'];
 export const ALL_INSULATION_STATUSES = ['NONE', 'PENDING', 'INSTALLING', 'FINISHED'];
 export const AVAILABLE_DIAMETERS = ['10"', '8"', '6"', '4"', '1"', '3/4"'];
 
+// --- FATORES DE SALDO REMANESCENTE ---
+export const PIPING_REMAINING_FACTOR: Record<string, number> = {
+    'PENDING': 1.0,   // 100% a fazer
+    'MOUNTED': 0.7,   // 70% a fazer (falta solda e teste)
+    'WELDED': 0.15,   // 15% a fazer (falta teste/doc)
+    'HYDROTEST': 0.0  // 0% a fazer
+};
+
+export const INSULATION_REMAINING_FACTOR: Record<string, number> = {
+    'NONE': 0.0,      // Não requer ou já concluído
+    'PENDING': 1.0,   // 100% a fazer
+    'INSTALLING': 0.5, // 50% a fazer
+    'FINISHED': 0.0    // 0% a fazer
+};
+
 export const INITIAL_PIPES: PipeSegment[] = [];

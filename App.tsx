@@ -8,37 +8,15 @@ import { ExportContainer } from './components/ExportContainer';
 import { Login } from './components/Login';
 import { DatabaseModal } from './components/DatabaseModal';
 import { saveProjectToDB, getAllProjects, deleteProjectFromDB } from './utils/db';
-import { INITIAL_PIPES, STATUS_LABELS, STATUS_COLORS, INSULATION_LABELS, PIPE_DIAMETERS, AVAILABLE_DIAMETERS, ALL_STATUSES, ALL_INSULATION_STATUSES, INSULATION_COLORS, BASE_PRODUCTIVITY, DIFFICULTY_WEIGHTS } from './constants';
-import { PipeSegment, PipeStatus, Annotation, Accessory, AccessoryType, ProductivitySettings } from './types';
+import { INITIAL_PIPES, STATUS_LABELS, STATUS_COLORS, INSULATION_LABELS, PIPE_DIAMETERS, AVAILABLE_DIAMETERS, ALL_STATUSES, ALL_INSULATION_STATUSES, INSULATION_COLORS, BASE_PRODUCTIVITY, DIFFICULTY_WEIGHTS, PIPING_REMAINING_FACTOR, INSULATION_REMAINING_FACTOR, HOURS_PER_DAY } from './constants';
+import { PipeSegment, PipeStatus, Annotation, AnnotationType, Accessory, AccessoryType, ProductivitySettings } from './types';
 import { LayoutDashboard, Cuboid, PenTool, XCircle, FileDown, Save, FolderOpen, FilePlus, Loader2, MapPin, Database, Undo, Redo, Wrench, Grid as GridIcon, CircleDot, MousePointer2, Ruler, Calendar, Lock, LogOut, ChevronRight, Copy, ClipboardPaste, Activity, Package, AlertCircle, Image as ImageIcon, Shield, Building2, Timer, FileCode, X, HelpCircle, FileSpreadsheet } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
 import * as XLSX from 'xlsx';
+import { getWorkingEndDate } from './utils/planning';
 
-// Multiplicadores de Saldo (O quanto falta fazer por status)
-const PIPING_REMAINING_FACTOR: Record<string, number> = {
-    'PENDING': 1.0, 'MOUNTED': 0.7, 'WELDED': 0.15, 'HYDROTEST': 0.0
-};
-const INSULATION_REMAINING_FACTOR: Record<string, number> = {
-    'NONE': 0.0, 'PENDING': 1.0, 'INSTALLING': 0.5, 'FINISHED': 0.0
-};
-
-// Auxiliar global para cálculo de término em dias úteis
-const getWorkingEndDate = (startDate: Date, daysNeeded: number): Date => {
-    let result = new Date(startDate);
-    let addedDays = 0;
-    let daysToTarget = daysNeeded > 0 ? daysNeeded - 1 : 0;
-    
-    while (addedDays < daysToTarget) {
-        result.setDate(result.getDate() + 1);
-        const dow = result.getDay();
-        if (dow !== 0 && dow !== 6) addedDays++;
-    }
-    while (result.getDay() === 0 || result.getDay() === 6) {
-        result.setDate(result.getDate() + 1);
-    }
-    return result;
-};
+// Auxiliar global para cálculo de término em dias úteis (REMOVIDO - USANDO UTILS)
 
 // --- COMPLEX HISTORY HOOK ---
 interface ProjectState { pipes: PipeSegment[]; }
@@ -190,28 +168,44 @@ export default function App() {
           totalInsulationHH += iEffort;
       });
 
-      const totalHH = totalPipingHH + totalInsulationHH;
-      const dailyCapacity = 50; // Assumed daily capacity
+      // Add annotation effort (scaffolding, cranes, etc.)
+      let annotationHH = 0;
+      annotations.forEach(a => {
+          if (a.estimatedHours) annotationHH += a.estimatedHours;
+      });
+
+      const totalHH = totalPipingHH + totalInsulationHH + annotationHH;
+      
+      // Cálculo de capacidade total baseada em todas as equipes alocadas
+      const totalTeams = pipes.reduce((acc, p) => acc + (p.planningFactors?.teamCount || 1), 0) / (pipes.length || 1);
+      // Se não houver pipes, assume 1 equipe. Se houver, tira a média ou usa um valor global.
+      // Para o dashboard global, vamos usar a soma de HH dividida por (Equipes * Horas/Dia)
+      const globalTeams = pipes.length > 0 ? Math.max(1, Math.round(pipes.reduce((acc, p) => acc + (p.planningFactors?.teamCount || 1), 0) / pipes.length)) : 1;
+      const dailyCapacity = globalTeams * HOURS_PER_DAY; 
+
       const daysNeeded = Math.ceil(totalHH / dailyCapacity);
-      const projectedEnd = getWorkingEndDate(new Date(activityDate), daysNeeded).toLocaleDateString();
+
+      const projectedEnd = getWorkingEndDate(new Date(activityDate + 'T12:00:00'), daysNeeded).toLocaleDateString('pt-BR');
 
       return {
           totalLength,
           totalPipingHH,
           totalInsulationHH,
+          annotationHH,
           totalHH,
+          daysNeeded,
           projectedEnd,
           bom,
           pipeCounts,
           insulationCounts,
           total: pipes.length
       };
-  }, [pipes, prodSettings, activityDate]);
+  }, [pipes, annotations, prodSettings, activityDate]);
 
   const handleSelectPipe = useCallback((id: string | null, multi: boolean = false) => { if (pastePreview) return; if (id === null) { if (!multi) setSelectedIds([]); return; } setSelectedIds(prev => multi ? (prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]) : [id]); }, [pastePreview]);
   const handleSetSelection = useCallback((ids: string[]) => { if (!pastePreview) setSelectedIds(ids); }, [pastePreview]);
   const handleAddAnnotation = (pos: {x:number, y:number, z:number}) => setAnnotations(prev => [...prev, { id: `A-${Date.now()}`, position: pos, text: '' }]);
-  const handleUpdateAnnotation = (id: string, text: string) => setAnnotations(prev => prev.map(a => a.id === id ? { ...a, text } : a));
+  const handleUpdateAnnotation = (id: string, text: string, type?: AnnotationType, estimatedHours?: number) => setAnnotations(prev => prev.map(a => a.id === id ? { ...a, text, type: type || a.type, estimatedHours: estimatedHours !== undefined ? estimatedHours : a.estimatedHours } : a));
   const handleDeleteAnnotation = (id: string) => setAnnotations(prev => prev.filter(a => a.id !== id));
   const handleUpdateSinglePipe = (p: PipeSegment) => { const length = Math.sqrt(Math.pow(p.end.x - p.start.x, 2) + Math.pow(p.end.y - p.start.y, 2) + Math.pow(p.end.z - p.start.z, 2)); setPipes(prev => prev.map(old => old.id === p.id ? { ...p, length } : old)); };
   const handleMovePipes = (delta: {x:number, y:number, z:number}) => { setPipes(prev => prev.map(p => selectedIds.includes(p.id) ? { ...p, start: {x:p.start.x+delta.x, y:p.start.y+delta.y, z:p.start.z+delta.z}, end: {x:p.end.x+delta.x, y:p.end.y+delta.y, z:p.end.z+delta.z} } : p)); setAnnotations(prev => prev.map(a => selectedIds.includes(a.id) ? { ...a, position: {x:a.position.x+delta.x, y:a.position.y+delta.y, z:a.position.z+delta.z} } : a)); };
@@ -383,20 +377,16 @@ export default function App() {
     setIsExporting(true);
     console.log("Iniciando exportação de PDF...");
     try {
-        // Tenta capturar o screenshot do 3D sempre, para garantir que o PDF tenha a imagem atualizada
         const canvas = document.querySelector('canvas');
         if (canvas) {
             try {
                 const dataUrl = canvas.toDataURL('image/png');
                 setSceneScreenshot(dataUrl);
-                console.log("Screenshot 3D capturado com sucesso.");
             } catch (e) {
                 console.warn("Falha ao capturar screenshot do 3D:", e);
             }
         }
         
-        // Aguarda um tempo maior para o React atualizar o estado e o DOM oculto refletir as mudanças
-        // Aumentado para 1.2s para garantir que imagens pesadas carreguem no DOM oculto
         await new Promise(r => setTimeout(r, 1200));
 
         const pdf = new jsPDF('p', 'mm', 'a4');
@@ -405,11 +395,10 @@ export default function App() {
         const margin = 10;
         let currentY = 20;
 
-        const dashboardEl = document.getElementById('composed-dashboard-export');
-        if (dashboardEl) {
-             console.log("Capturando dashboard com html2canvas...");
-             // Opções otimizadas para html2canvas
-             const canvasExport = await html2canvas(dashboardEl, { 
+        const capturePage = async (id: string) => {
+            const el = document.getElementById(id);
+            if (!el) return null;
+            return await html2canvas(el, { 
                 backgroundColor: '#0f172a', 
                 scale: 1.5, 
                 width: 1920, 
@@ -417,12 +406,8 @@ export default function App() {
                 useCORS: true,
                 allowTaint: false,
                 logging: false,
-                imageTimeout: 15000, // Timeout de 15s para imagens
+                imageTimeout: 15000,
                 onclone: (clonedDoc) => {
-                    // Fix para o erro "unsupported color function oklch"
-                    // Removemos ou substituímos referências a oklch que o html2canvas não entende
-                    
-                    // 1. Limpar estilos inline que possam ter sido injetados
                     const elements = clonedDoc.getElementsByTagName('*');
                     for (let i = 0; i < elements.length; i++) {
                         const el = elements[i] as HTMLElement;
@@ -430,32 +415,10 @@ export default function App() {
                             el.style.cssText = el.style.cssText.replace(/oklch\([^)]+\)/g, '#888888');
                         }
                     }
-                    
-                    // 2. Limpar todos os stylesheets clonados
-                    try {
-                        const styleSheets = Array.from(clonedDoc.styleSheets);
-                        styleSheets.forEach(sheet => {
-                            try {
-                                const rules = Array.from(sheet.cssRules);
-                                rules.forEach((rule: any) => {
-                                    if (rule.style && rule.style.cssText.includes('oklch')) {
-                                        // Substituição bruta por hex cinza para evitar crash no parser
-                                        rule.style.cssText = rule.style.cssText.replace(/oklch\([^)]+\)/g, '#888888');
-                                    }
-                                });
-                            } catch (e) {
-                                // Ignorar erros de cross-origin ou regras inacessíveis
-                            }
-                        });
-                    } catch (e) {
-                        console.warn("Erro ao processar stylesheets no clone:", e);
-                    }
-
-                    // 3. Adicionar um style block extra para garantir overrides de cores críticas
                     const style = clonedDoc.createElement('style');
                     style.innerHTML = `
                         * { color-interpolation: sRGB !important; }
-                        #composed-dashboard-export { background-color: #0f172a !important; color: #f1f5f9 !important; }
+                        #${id} { background-color: #0f172a !important; color: #f1f5f9 !important; }
                         .text-white { color: #ffffff !important; }
                         .text-blue-400 { color: #60a5fa !important; }
                         .text-slate-400 { color: #94a3b8 !important; }
@@ -464,25 +427,30 @@ export default function App() {
                     `;
                     clonedDoc.head.appendChild(style);
                 }
-             });
-             
-             const imgData = canvasExport.toDataURL('image/png', 1.0);
-             const imgProps = pdf.getImageProperties(imgData);
-             const pdfImgWidth = pageWidth;
-             const pdfImgHeight = (imgProps.height * pdfImgWidth) / imgProps.width;
-             
-             pdf.addImage(imgData, 'PNG', 0, 0, pdfImgWidth, pdfImgHeight, undefined, 'FAST');
-             
-             if (pdfImgHeight > pageHeight - 30) { 
-                 pdf.addPage(); 
-                 currentY = 20; 
-             } else { 
-                 currentY = pdfImgHeight + 10; 
-             }
-             console.log("Dashboard adicionado ao PDF.");
-        } else {
-            console.error("Elemento 'composed-dashboard-export' não encontrado!");
+            });
+        };
+
+        const page1Canvas = await capturePage('export-page-1');
+        if (page1Canvas) {
+            const imgData = page1Canvas.toDataURL('image/png', 1.0);
+            const imgProps = pdf.getImageProperties(imgData);
+            const pdfImgHeight = (imgProps.height * pageWidth) / imgProps.width;
+            pdf.addImage(imgData, 'PNG', 0, 0, pageWidth, pdfImgHeight, undefined, 'FAST');
+            console.log("Página 1 (Técnica) adicionada.");
         }
+
+        pdf.addPage();
+        const page2Canvas = await capturePage('export-page-2');
+        if (page2Canvas) {
+            const imgData = page2Canvas.toDataURL('image/png', 1.0);
+            const imgProps = pdf.getImageProperties(imgData);
+            const pdfImgHeight = (imgProps.height * pageWidth) / imgProps.width;
+            pdf.addImage(imgData, 'PNG', 0, 0, pageWidth, pdfImgHeight, undefined, 'FAST');
+            console.log("Página 2 (Planejamento) adicionada.");
+        }
+
+        pdf.addPage();
+        currentY = 20;
 
         if (currentY + 20 > pageHeight) { pdf.addPage(); currentY = 20; }
         pdf.setFontSize(9); pdf.setTextColor(100); pdf.text('Isometrico Manager - Software desenvolvido por Marconi Fabian', margin, currentY); currentY += 6;
@@ -708,6 +676,10 @@ export default function App() {
                 projectClient={projectClient}
                 projectLocation={projectLocation}
                 activityDate={activityDate}
+                pipes={pipes}
+                prodSettings={prodSettings}
+                startDate={activityDate}
+                annotations={annotations}
             />
 
             <div className="flex-1 w-full h-full relative">
@@ -736,7 +708,7 @@ export default function App() {
                         </div>
                     </div>
                 </div>
-                {viewMode === 'dashboard' && (<div className="absolute inset-0 z-10 bg-slate-950/95 backdrop-blur-sm overflow-y-auto p-4 animate-in fade-in"><div className="max-w-[1600px] mx-auto h-full"><Dashboard pipes={pipes} onExportPDF={handleExportPDF} isExporting={isExporting} secondaryImage={secondaryImage} onUploadSecondary={setSecondaryImage} mapImage={mapImage} onUploadMap={setMapImage} sceneScreenshot={sceneScreenshot} onSelectPipe={handleSelectPipe} selectedIds={selectedIds} onSetSelection={handleSetSelection} /></div></div>)}
+                {viewMode === 'dashboard' && (<div className="absolute inset-0 z-10 bg-slate-950/95 backdrop-blur-sm overflow-y-auto p-4 animate-in fade-in"><div className="max-w-[1600px] mx-auto h-full"><Dashboard pipes={pipes} annotations={annotations} onExportPDF={handleExportPDF} isExporting={isExporting} secondaryImage={secondaryImage} onUploadSecondary={setSecondaryImage} mapImage={mapImage} onUploadMap={setMapImage} sceneScreenshot={sceneScreenshot} onSelectPipe={handleSelectPipe} selectedIds={selectedIds} onSetSelection={handleSetSelection} prodSettings={prodSettings} startDate={activityDate} /></div></div>)}
             </div>
             {selectedPipes.length > 0 && !isDrawing && !pastePreview && (
                 <div className="w-96 relative z-20 shadow-2xl border-l border-slate-700">
