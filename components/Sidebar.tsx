@@ -2,7 +2,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { PipeSegment, PipeStatus, InsulationStatus, PlanningFactors, ProductivitySettings } from '../types';
 import { STATUS_LABELS, STATUS_COLORS, ALL_STATUSES, INSULATION_LABELS, INSULATION_COLORS, ALL_INSULATION_STATUSES } from '../constants';
-import { X, CheckCircle, AlertCircle, FileText, Trash2, Shield, Wrench, Layers, MapPin, Timer, Truck, Construction, Users, ArrowUpCircle, Calendar, Moon, ShieldAlert, Clock, Activity, Settings2, Sliders, Info, Percent, ZapOff, HardHat, Copy } from 'lucide-react';
+import { X, CheckCircle, AlertCircle, FileText, Trash2, Shield, Wrench, Layers, MapPin, Timer, Truck, Construction, Users, ArrowUpCircle, Calendar, Moon, ShieldAlert, Clock, Activity, Settings2, Sliders, Info, Percent, ZapOff, HardHat, Copy, BarChart3 } from 'lucide-react';
+import PlanningReportModal from './PlanningReportModal';
 
 interface SidebarProps {
   selectedPipes: PipeSegment[];
@@ -66,6 +67,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     prodSettings, onUpdateProdSettings, onCopy
 }) => {
   const [showMetricsConfig, setShowMetricsConfig] = useState(false);
+  const [showReport, setShowReport] = useState(false);
   const [localTeamCount, setLocalTeamCount] = useState<string>('1');
 
   const isBatch = selectedPipes.length > 1;
@@ -127,7 +129,13 @@ const Sidebar: React.FC<SidebarProps> = ({
       const start = new Date((activeFactors.customStartDate || startDate) + 'T12:00:00');
       const end = addWorkingDays(start, daysNeeded);
 
-      return { totalHH, daysNeeded, endDate: end.toLocaleDateString('pt-BR'), isZeroIndex: hasWorkButZeroIndex && totalHH === 0 };
+      return { 
+          totalHH, 
+          weightedHours, // Retornando as horas ponderadas (tempo real)
+          daysNeeded, 
+          endDate: end.toLocaleDateString('pt-BR'), 
+          isZeroIndex: hasWorkButZeroIndex && totalHH === 0 
+      };
   }, [selectedPipes, startDate, prodSettings, activeFactors.customStartDate]);
 
   if (mode === 'PLANNING' && prodSettings && onUpdateProdSettings) {
@@ -162,6 +170,38 @@ const Sidebar: React.FC<SidebarProps> = ({
                             <div className="space-y-1">
                                 <label className="text-[9px] text-slate-500 uppercase font-bold">Base Isol. (h/m)</label>
                                 <input type="number" step="0.01" value={prodSettings.insulationBase} onChange={(e)=>onUpdateProdSettings({...prodSettings, insulationBase: parseFloat(e.target.value)||0})} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-white outline-none focus:border-purple-500" />
+                            </div>
+                        </div>
+
+                        <div className="border-t border-slate-800 pt-3 mt-2">
+                            <h4 className="text-[8px] font-black text-slate-600 uppercase tracking-[0.2em] mb-3">Pesos de Complexidade (Agravantes)</h4>
+                            <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                                {[
+                                    { key: 'crane', label: 'Guindaste' },
+                                    { key: 'blockage', label: 'Obstrução' },
+                                    { key: 'nightShift', label: 'Noturno' },
+                                    { key: 'criticalArea', label: 'Área Crítica' },
+                                    { key: 'scaffoldFloor', label: 'Andaime' },
+                                    { key: 'scaffoldHanging', label: 'Balanço' },
+                                    { key: 'pta', label: 'PTA' }
+                                ].map(item => (
+                                    <div key={item.key} className="flex items-center justify-between gap-2">
+                                        <label className="text-[8px] text-slate-500 uppercase font-bold truncate">{item.label}</label>
+                                        <input 
+                                            type="number" 
+                                            step="0.05" 
+                                            value={(prodSettings.weights as any)[item.key]} 
+                                            onChange={(e) => onUpdateProdSettings({
+                                                ...prodSettings,
+                                                weights: {
+                                                    ...prodSettings.weights,
+                                                    [item.key]: parseFloat(e.target.value) || 0
+                                                }
+                                            })}
+                                            className="w-12 bg-slate-900 border border-slate-800 rounded px-1 py-0.5 text-[10px] text-purple-400 font-bold outline-none focus:border-purple-500 text-right" 
+                                        />
+                                    </div>
+                                ))}
                             </div>
                         </div>
                     </div>
@@ -199,14 +239,28 @@ const Sidebar: React.FC<SidebarProps> = ({
 
                     <div className="grid grid-cols-2 gap-4 bg-slate-900/50 p-4 rounded-xl border border-slate-800">
                         <div className="flex flex-col">
-                            <span className="text-[9px] text-slate-500 font-bold uppercase tracking-widest mb-1">Saldo de Horas</span>
-                            <span className="text-2xl font-black text-white">{totals.totalHH.toFixed(1)}<span className="text-xs ml-1 text-slate-500">H/H</span></span>
+                            <span className="text-[9px] text-slate-500 font-bold uppercase tracking-widest mb-1">Saldo de Horas (Total)</span>
+                            <span className="text-xl font-black text-white">{totals.totalHH.toFixed(1)}<span className="text-[10px] ml-1 text-slate-500">H/H</span></span>
                         </div>
                         <div className="flex flex-col items-end">
                             <span className="text-[9px] text-slate-500 font-bold uppercase tracking-widest mb-1">Equipes</span>
-                            <span className="text-2xl font-black text-blue-400">{activeFactors.teamCount}<span className="text-xs ml-1 text-slate-500">EQP</span></span>
+                            <span className="text-xl font-black text-blue-400">{activeFactors.teamCount}<span className="text-[10px] ml-1 text-slate-500">EQP</span></span>
+                        </div>
+                        <div className="col-span-2 pt-2 mt-2 border-t border-slate-800 flex justify-between items-center">
+                            <span className="text-[9px] text-purple-400 font-black uppercase tracking-widest">Duração Estimada:</span>
+                            <span className="text-xl font-black text-purple-400 animate-in fade-in zoom-in duration-500" key={totals.weightedHours}>
+                                {totals.weightedHours.toFixed(1)}<span className="text-[10px] ml-1">HORAS</span>
+                            </span>
                         </div>
                     </div>
+
+                    <button 
+                        onClick={() => setShowReport(true)}
+                        className="w-full mt-4 bg-slate-900 hover:bg-slate-800 border border-purple-500/30 p-3 rounded-xl flex items-center justify-center gap-2 text-[10px] font-black text-purple-400 uppercase tracking-widest transition-all group"
+                    >
+                        <BarChart3 size={14} className="group-hover:scale-110 transition-transform" />
+                        Ver Análise Profissional
+                    </button>
                 </div>
 
                 <div className="space-y-4">
@@ -259,6 +313,8 @@ const Sidebar: React.FC<SidebarProps> = ({
             <div className="p-4 bg-slate-950 border-t border-slate-700">
                  <button onClick={onClose} className="w-full bg-purple-600 hover:bg-purple-500 text-white font-black py-4 rounded-2xl shadow-xl shadow-purple-600/20 transition-all uppercase tracking-[0.2em] text-xs">Atualizar Cronograma</button>
             </div>
+
+            <PlanningReportModal isOpen={showReport} onClose={() => setShowReport(false)} />
         </div>
       );
   }
@@ -291,6 +347,30 @@ const Sidebar: React.FC<SidebarProps> = ({
                         </div>
                     </div>
                 </div>
+
+                {/* Batch Spool Input */}
+                <div>
+                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2 block">Atribuir Spool (Lote)</label>
+                    <div className="flex gap-2">
+                        <input 
+                            type="text" 
+                            placeholder="Ex: SP-01"
+                            className="flex-1 bg-slate-950 border border-slate-700 rounded p-2 text-xs text-white outline-none focus:border-blue-500 font-mono uppercase"
+                            id="batch-spool-input"
+                        />
+                        <button 
+                            onClick={() => {
+                                const val = (document.getElementById('batch-spool-input') as HTMLInputElement).value;
+                                if(val) onUpdateBatch({ spoolId: val.toUpperCase() });
+                            }}
+                            className="bg-blue-600 hover:bg-blue-500 text-white px-4 rounded font-bold text-xs transition-colors"
+                        >
+                            APLICAR
+                        </button>
+                    </div>
+                    <p className="text-[9px] text-slate-600 mt-1">Define o mesmo ID para todos os itens selecionados.</p>
+                </div>
+
                 <div><label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2 block">Definir Status</label><div className="grid grid-cols-2 gap-2">{ALL_STATUSES.map(s => (<button key={s} onClick={() => onUpdateBatch({ status: s as PipeStatus })} className="p-2 rounded font-bold text-[10px] text-white transition-all uppercase" style={{ backgroundColor: STATUS_COLORS[s] }}>{STATUS_LABELS[s]}</button>))}</div></div>
                 <div><label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2 block">Proteção Térmica</label><div className="grid grid-cols-1 gap-2">{ALL_INSULATION_STATUSES.map(i => (<button key={i} onClick={() => onUpdateBatch({ insulationStatus: i as InsulationStatus })} className="flex items-center gap-3 p-2 rounded-lg bg-slate-800 border border-slate-700 text-xs font-bold text-slate-400 hover:text-white transition-all"><div className="w-3 h-3 rounded-full" style={{ backgroundColor: INSULATION_COLORS[i] === 'transparent' ? '#475569' : INSULATION_COLORS[i] }} /> {INSULATION_LABELS[i]}</button>))}</div></div>
             </div>
@@ -325,6 +405,19 @@ const Sidebar: React.FC<SidebarProps> = ({
             <div className="grid grid-cols-2 gap-4">
                 <div><label className="text-[10px] font-bold text-slate-500 uppercase">ID Linha</label><div className="text-blue-400 font-mono text-xs">{singlePipe.id}</div></div>
                 <div><label className="text-[10px] font-bold text-slate-500 uppercase">Comp.</label><div className="text-white font-bold text-xs">{singlePipe.length.toFixed(2)}m</div></div>
+                
+                {/* Spool ID Input */}
+                <div className="col-span-2">
+                    <label className="text-[10px] font-bold text-slate-500 uppercase mb-1 block">Spool ID</label>
+                    <input 
+                        type="text" 
+                        value={singlePipe.spoolId || ''} 
+                        onChange={(e) => onUpdateSingle({ ...singlePipe, spoolId: e.target.value.toUpperCase() })}
+                        className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-xs text-white outline-none focus:border-blue-500 font-mono uppercase"
+                        placeholder="Ex: SP-01"
+                    />
+                </div>
+
                 <div className="col-span-2 border-t border-slate-800 pt-2 flex justify-between items-center">
                     <label className="text-[10px] font-bold text-slate-500 uppercase">Área Superfície</label>
                     <div className="text-white font-mono text-xs font-bold">{(Math.PI * singlePipe.diameter * singlePipe.length).toFixed(2)}m²</div>

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Save, FolderOpen, Trash2, X, Database, Clock, Calendar } from 'lucide-react';
+import { Save, FolderOpen, Trash2, X, Database, Clock, Calendar, Cloud, CloudOff, Info } from 'lucide-react';
+import { isSupabaseConfigured } from '../lib/supabase';
 
 interface ProjectSummary {
   id: string;
@@ -30,6 +31,8 @@ export const DatabaseModal: React.FC<DatabaseModalProps> = ({
         return new Date(date).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute:'2-digit' });
     };
 
+    const isCloudEnabled = isSupabaseConfigured();
+
     return (
         <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
             <div className="bg-slate-900 border border-slate-700 w-full max-w-2xl rounded-2xl shadow-2xl flex flex-col max-h-[80vh]">
@@ -40,13 +43,35 @@ export const DatabaseModal: React.FC<DatabaseModalProps> = ({
                         <div className="bg-blue-600 p-2 rounded-lg"><Database className="text-white" size={24} /></div>
                         <div>
                             <h2 className="text-xl font-bold text-white">Banco de Dados de Projetos</h2>
-                            <p className="text-slate-400 text-sm">Gerenciamento Local (IndexedDB)</p>
+                            <div className="flex items-center gap-2">
+                                <p className="text-slate-400 text-sm">Gerenciamento Local (IndexedDB)</p>
+                                <span className="text-slate-600">|</span>
+                                {isCloudEnabled ? (
+                                    <span className="text-emerald-400 text-xs font-bold flex items-center gap-1">
+                                        <Cloud size={12} /> Nuvem Ativa (Supabase)
+                                    </span>
+                                ) : (
+                                    <span className="text-amber-500 text-xs font-bold flex items-center gap-1">
+                                        <CloudOff size={12} /> Apenas Local
+                                    </span>
+                                )}
+                            </div>
                         </div>
                     </div>
                     <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors">
                         <X size={24} />
                     </button>
                 </div>
+
+                {/* Info Alert if not cloud */}
+                {!isCloudEnabled && (
+                    <div className="mx-6 mt-4 p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg flex gap-3 items-start">
+                        <Info className="text-amber-500 shrink-0" size={18} />
+                        <p className="text-xs text-amber-200/70">
+                            <strong>Atenção:</strong> A sincronização em nuvem não está configurada. Seus projetos ficam salvos apenas neste navegador/computador. Configure as variáveis do Supabase no Vercel para habilitar o acesso em outros dispositivos.
+                        </p>
+                    </div>
+                )}
 
                 {/* Content */}
                 <div className="p-6 flex-1 overflow-y-auto">

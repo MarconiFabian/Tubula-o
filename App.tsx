@@ -226,12 +226,12 @@ export default function App() {
   // --- DATABASE ACTIONS ---
   const refreshProjects = useCallback(async () => {
       try {
-          const projs = await getAllProjects();
+          const projs = await getAllProjects(currentUser || undefined);
           setSavedProjects(projs);
       } catch (error) {
           console.error("Erro ao carregar projetos:", error);
       }
-  }, []);
+  }, [currentUser]);
 
   useEffect(() => {
       if (isDBModalOpen) {
@@ -250,7 +250,8 @@ export default function App() {
               location: projectLocation,
               client: projectClient,
               secondaryImage,
-              mapImage
+              mapImage,
+              userId: currentUser || undefined
           };
           await saveProjectToDB(projectData);
           await refreshProjects();
