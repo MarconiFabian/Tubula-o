@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { PipeSegment, PipeStatus, InsulationStatus, PlanningFactors, ProductivitySettings } from '../types';
 import { STATUS_LABELS, STATUS_COLORS, ALL_STATUSES, INSULATION_LABELS, INSULATION_COLORS, ALL_INSULATION_STATUSES, PIPING_REMAINING_FACTOR, INSULATION_REMAINING_FACTOR, HOURS_PER_DAY } from '../constants';
-import { X, CheckCircle, AlertCircle, FileText, Trash2, Shield, Wrench, Layers, MapPin, Timer, Truck, Construction, Users, ArrowUpCircle, Calendar, Moon, ShieldAlert, Clock, Activity, Settings2, Sliders, Info, Percent, ZapOff, HardHat, Copy, BarChart3 } from 'lucide-react';
+import { X, CheckCircle, AlertCircle, FileText, Trash2, Shield, Wrench, Layers, MapPin, Timer, Truck, Construction, Users, ArrowUpCircle, Calendar, Moon, ShieldAlert, Clock, Activity, Settings2, Sliders, Info, Percent, ZapOff, HardHat, Copy, BarChart3, Flag } from 'lucide-react';
 import PlanningReportModal from './PlanningReportModal';
 import { getWorkingEndDate } from '../utils/planning';
 
@@ -17,6 +17,8 @@ interface SidebarProps {
   prodSettings?: ProductivitySettings;
   onUpdateProdSettings?: (settings: ProductivitySettings) => void;
   onCopy?: () => void;
+  deadlineDate?: string | null;
+  onUpdateDeadline?: (date: string | null) => void;
 }
 
 const DEFAULT_FACTORS: PlanningFactors = { 
@@ -34,7 +36,7 @@ const DEFAULT_FACTORS: PlanningFactors = {
 const Sidebar: React.FC<SidebarProps> = ({ 
     selectedPipes, onUpdateSingle, onUpdateBatch, onDelete, onClose, 
     mode = 'TRACKING', startDate = new Date().toISOString().split('T')[0],
-    prodSettings, onUpdateProdSettings, onCopy
+    prodSettings, onUpdateProdSettings, onCopy, deadlineDate, onUpdateDeadline
 }) => {
   const [showMetricsConfig, setShowMetricsConfig] = useState(false);
   const [showReport, setShowReport] = useState(false);
@@ -231,6 +233,44 @@ const Sidebar: React.FC<SidebarProps> = ({
                         <BarChart3 size={14} className="group-hover:scale-110 transition-transform" />
                         Ver Análise Profissional
                     </button>
+                </div>
+
+                {/* DEADLINE SECTION */}
+                <div className={`bg-slate-950 border p-5 rounded-2xl shadow-inner relative overflow-hidden transition-all ${deadlineDate ? 'border-amber-500/50 shadow-amber-900/10' : 'border-slate-800'}`}>
+                    <div className="flex justify-between items-center mb-4">
+                        <span className={`text-[10px] font-black uppercase tracking-widest ${deadlineDate ? 'text-amber-400' : 'text-slate-500'}`}>Meta de Término (Deadline)</span>
+                        {deadlineDate && <button onClick={() => onUpdateDeadline?.(null)} className="text-[9px] text-slate-500 hover:text-red-400 font-bold uppercase">Limpar</button>}
+                    </div>
+                    
+                    <div className="flex items-center gap-3">
+                        <div className={`w-10 h-10 rounded-full border flex items-center justify-center shadow-lg relative overflow-hidden group/deadline ${deadlineDate ? 'bg-amber-900/20 border-amber-500/50' : 'bg-slate-900 border-slate-700'}`}>
+                            <Flag size={16} className={deadlineDate ? 'text-amber-400' : 'text-slate-600'} />
+                            <input 
+                                type="date" 
+                                value={deadlineDate || ''} 
+                                min={activeFactors.customStartDate || startDate}
+                                onChange={(e) => onUpdateDeadline?.(e.target.value || null)} 
+                                className="absolute inset-0 opacity-0 cursor-pointer [color-scheme:dark]" 
+                            />
+                        </div>
+                        <div className="flex-1">
+                            {deadlineDate ? (
+                                <>
+                                    <div className="text-[11px] font-bold text-white">
+                                        {new Date(deadlineDate + 'T12:00:00').toLocaleDateString('pt-BR')}
+                                    </div>
+                                    <div className="text-[9px] text-amber-400 font-bold uppercase">
+                                        Meta Definida
+                                    </div>
+                                </>
+                            ) : (
+                                <>
+                                    <div className="text-[11px] font-bold text-slate-500">Nenhuma meta definida</div>
+                                    <div className="text-[9px] text-slate-600 font-bold uppercase">Clique para definir data</div>
+                                </>
+                            )}
+                        </div>
+                    </div>
                 </div>
 
                 <div className="space-y-4">

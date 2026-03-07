@@ -17,10 +17,11 @@ interface ExportContainerProps {
   prodSettings: ProductivitySettings;
   startDate: string;
   annotations?: Annotation[];
+  deadlineDate?: string | null;
 }
 
 export const ExportContainer: React.FC<ExportContainerProps> = ({
-  viewMode, reportStats, sceneScreenshot, secondaryImage, mapImage, projectClient, projectLocation, activityDate, pipes, prodSettings, startDate, annotations = []
+  viewMode, reportStats, sceneScreenshot, secondaryImage, mapImage, projectClient, projectLocation, activityDate, pipes, prodSettings, startDate, annotations = [], deadlineDate
 }) => {
   const sCurveData = useMemo(() => {
     const data: any[] = [];
@@ -104,6 +105,15 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
             <Calendar style={{ color: '#4ade80', marginBottom: '8px' }} size={32} />
             <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#64748b' }}>Término Projetado</span>
             <div className="text-3xl font-bold mt-1" style={{ color: '#4ade80' }}>{reportStats.totalHH > 0 ? reportStats.projectedEnd : 'CONCLUÍDO'}</div>
+            {deadlineDate && (
+                <div className="text-[10px] font-bold mt-2 uppercase px-2 py-1 rounded" style={{ 
+                    color: reportStats.deadlineStats?.isFeasible ? '#4ade80' : '#f87171',
+                    backgroundColor: reportStats.deadlineStats?.isFeasible ? 'rgba(74, 222, 128, 0.1)' : 'rgba(248, 113, 113, 0.1)',
+                    border: `1px solid ${reportStats.deadlineStats?.isFeasible ? 'rgba(74, 222, 128, 0.2)' : 'rgba(248, 113, 113, 0.2)'}`
+                }}>
+                    Meta: {deadlineDate.split('-').reverse().join('/')}
+                </div>
+            )}
             </div>
         </div>
 
@@ -276,19 +286,84 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
                     <h3 className="text-2xl font-bold uppercase tracking-widest flex items-center gap-3" style={{ color: '#a855f7' }}>
                         <BarChart3 size={28}/> Distribuição de Esforço por Status
                     </h3>
-                    <div style={{ width: '100%', height: '350px' }}>
-                        <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={effortData} layout="vertical" margin={{ left: 40, right: 40 }}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" horizontal={false} />
-                                <XAxis type="number" hide />
-                                <YAxis dataKey="name" type="category" stroke="#94a3b8" fontSize={14} width={150} />
-                                <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={40}>
-                                    {effortData.map((entry, index) => (
-                                        <Cell key={`cell-${index}`} fill={entry.color} />
-                                    ))}
-                                </Bar>
-                            </BarChart>
-                        </ResponsiveContainer>
+                    <div style={{ width: '100%', height: '350px', display: 'flex', flexDirection: 'column', gap: '24px', overflowY: 'auto' }}>
+                        {/* TUBULAÇÃO */}
+                        <div>
+                            <div className="text-sm font-bold uppercase tracking-widest mb-4" style={{ color: '#64748b' }}>Tubulação</div>
+                            <div className="flex flex-col gap-3">
+                                {ALL_STATUSES.map(status => {
+                                    const count = reportStats.pipeCounts[status] || 0;
+                                    const percentage = reportStats.total > 0 ? (count / reportStats.total) * 100 : 0;
+                                    return (
+                                        <div key={status} className="flex flex-col gap-1">
+                                            <div className="flex justify-between text-xs font-bold uppercase">
+                                                <span style={{ color: '#94a3b8' }}>{STATUS_LABELS[status]}</span>
+                                                <span style={{ color: '#ffffff' }}>{percentage.toFixed(1)}%</span>
+                                            </div>
+                                            <div className="w-full h-3 rounded-full overflow-hidden" style={{ backgroundColor: '#1e293b' }}>
+                                                <div style={{ width: `${percentage}%`, height: '100%', backgroundColor: STATUS_COLORS[status] }}></div>
+                                            </div>
+                                        </div>
+                                    )
+                                })}
+                            </div>
+                        </div>
+
+                        {/* PROTEÇÃO TÉRMICA */}
+                        <div>
+                            <div className="text-sm font-bold uppercase tracking-widest mb-4" style={{ color: '#64748b' }}>Proteção Térmica</div>
+                            <div className="flex flex-col gap-3">
+                                {ALL_INSULATION_STATUSES.filter(s => s !== 'NONE').map(status => {
+                                    const count = reportStats.insulationCounts[status] || 0;
+                                    const percentage = reportStats.total > 0 ? (count / reportStats.total) * 100 : 0;
+                                    return (
+                                        <div key={status} className="flex flex-col gap-1">
+                                            <div className="flex justify-between text-xs font-bold uppercase">
+                                                <span style={{ color: '#94a3b8' }}>{INSULATION_LABELS[status]}</span>
+                                                <span style={{ color: '#ffffff' }}>{percentage.toFixed(1)}%</span>
+                                            </div>
+                                            <div className="w-full h-3 rounded-full overflow-hidden" style={{ backgroundColor: '#1e293b' }}>
+                                                <div style={{ width: `${percentage}%`, height: '100%', backgroundColor: INSULATION_COLORS[status] }}></div>
+                                            </div>
+                                        </div>
+                                    )
+                                })}
+                            </div>
+                        </div>
+
+                        {/* APOIO / INFRAESTRUTURA */}
+                        {reportStats.annotationHH > 0 && (
+                            <div>
+                                <div className="text-sm font-bold uppercase tracking-widest mb-4" style={{ color: '#64748b' }}>Apoio / Infraestrutura</div>
+                                <div className="flex flex-col gap-3">
+                                    {Object.entries(reportStats.annotationBreakdown || {}).map(([type, hours]) => {
+                                        const h = hours as number;
+                                        const percentage = (h / reportStats.annotationHH) * 100;
+                                        let label = type;
+                                        let color = '#94a3b8';
+                                        
+                                        switch(type) {
+                                            case 'SCAFFOLD': label = 'Andaime'; color = '#eab308'; break;
+                                            case 'SCAFFOLD_CANTILEVER': label = 'Andaime em Balanço'; color = '#ca8a04'; break;
+                                            case 'CRANE': label = 'Guindaste'; color = '#f97316'; break;
+                                            default: label = 'Outros'; color = '#64748b';
+                                        }
+
+                                        return (
+                                            <div key={type} className="flex flex-col gap-1">
+                                                <div className="flex justify-between text-xs font-bold uppercase">
+                                                    <span style={{ color: '#94a3b8' }}>{label}</span>
+                                                    <span style={{ color: '#ffffff' }}>{h.toFixed(1)}h ({percentage.toFixed(1)}%)</span>
+                                                </div>
+                                                <div className="w-full h-3 rounded-full overflow-hidden" style={{ backgroundColor: '#1e293b' }}>
+                                                    <div style={{ width: `${percentage}%`, height: '100%', backgroundColor: color }}></div>
+                                                </div>
+                                            </div>
+                                        )
+                                    })}
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>
@@ -303,6 +378,13 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
                             <div className="p-6 rounded-xl border border-red-500/20" style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)' }}>
                                 <p className="text-xl text-red-200 leading-relaxed font-medium">
                                     <span className="font-bold text-red-400">CRÍTICO:</span> Volume de saldo H/H elevado ({reportStats.totalHH.toFixed(1)}h). Recomenda-se reforço de equipe imediato.
+                                </p>
+                            </div>
+                        )}
+                        {reportStats.deadlineStats && !reportStats.deadlineStats.isFeasible && (
+                            <div className="p-6 rounded-xl border border-red-500/20" style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)' }}>
+                                <p className="text-xl text-red-200 leading-relaxed font-medium">
+                                    <span className="font-bold text-red-400">ALERTA DE PRAZO:</span> A meta de {deadlineDate?.split('-').reverse().join('/')} é inviável com a capacidade atual. Necessário aumento de {(reportStats.deadlineStats.ratio - 100).toFixed(0)}% na produtividade.
                                 </p>
                             </div>
                         )}

@@ -4,7 +4,7 @@ import { PipeSegment, ProductivitySettings, Annotation } from '../types';
 import { STATUS_COLORS, STATUS_LABELS, ALL_STATUSES, INSULATION_COLORS, INSULATION_LABELS, ALL_INSULATION_STATUSES, PIPING_REMAINING_FACTOR, INSULATION_REMAINING_FACTOR, HOURS_PER_DAY } from '../constants';
 import { Activity, FileDown, Upload, Image as ImageIcon, Map as MapIcon, Layers, Shield, Ruler, Package, AlertCircle, Search, Filter, ClipboardList, UserCog, Calendar, CheckSquare, TrendingUp, Timer, Users, Target, BarChart3 } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area } from 'recharts';
-import { getWorkingEndDate } from '../utils/planning';
+import { getWorkingEndDate, getWorkingDaysBetween } from '../utils/planning';
 
 interface DashboardProps {
   pipes: PipeSegment[];
@@ -22,6 +22,7 @@ interface DashboardProps {
   prodSettings?: ProductivitySettings;
   startDate?: string;
   annotations?: Annotation[];
+  deadlineDate?: string | null;
 }
 
 type TabType = 'overview' | 'tracking' | 'planning';
@@ -41,7 +42,8 @@ const Dashboard: React.FC<DashboardProps> = ({
     selectedIds = [],
     onSetSelection,
     prodSettings,
-    startDate
+    startDate,
+    deadlineDate
 }) => {
   const [activeTab, setActiveTab] = useState<TabType>('overview');
   const [searchTerm, setSearchTerm] = useState('');
@@ -121,12 +123,45 @@ const Dashboard: React.FC<DashboardProps> = ({
     const avgTeams = pipes.length > 0 ? Math.max(1, Math.round(totalTeams / pipes.length)) : 1;
     
     // Support Effort from Annotations
-    const annotationHH = annotations.reduce((acc, a) => acc + (a.estimatedHours || 0), 0);
+    let annotationHH = 0;
+    const annotationBreakdown: Record<string, number> = {};
+    
+    annotations.forEach(a => {
+        if (a.estimatedHours) {
+            annotationHH += a.estimatedHours;
+            const type = a.type || 'COMMENT';
+            annotationBreakdown[type] = (annotationBreakdown[type] || 0) + a.estimatedHours;
+        }
+    });
+
     const finalTotalHH = totalHH + annotationHH;
 
     const dailyCapacity = avgTeams * HOURS_PER_DAY;
     const daysNeeded = Math.ceil(finalTotalHH / dailyCapacity);
     const projectedEnd = getWorkingEndDate(new Date((startDate || new Date().toISOString().split('T')[0]) + 'T12:00:00'), daysNeeded).toLocaleDateString('pt-BR');
+
+    // Deadline Calculation
+    let deadlineStats = null;
+    if (deadlineDate) {
+        const start = new Date((startDate || new Date().toISOString().split('T')[0]) + 'T12:00:00');
+        const end = new Date(deadlineDate + 'T12:00:00');
+        const daysUntilDeadline = getWorkingDaysBetween(start, end);
+        
+        if (daysUntilDeadline > 0) {
+            const requiredDailyOutput = totalLength / daysUntilDeadline; // meters/day
+            const requiredDailyHH = finalTotalHH / daysUntilDeadline; // HH/day
+            const currentDailyOutput = (dailyCapacity / finalTotalHH) * totalLength; // Approximate meters/day based on capacity
+            
+            deadlineStats = {
+                daysUntilDeadline,
+                requiredDailyOutput,
+                requiredDailyHH,
+                currentDailyOutput,
+                isFeasible: requiredDailyHH <= dailyCapacity,
+                ratio: (requiredDailyHH / dailyCapacity) * 100
+            };
+        }
+    }
 
     const sCurveData: any[] = [];
     if (pipes.length > 0) {
@@ -139,10 +174,13 @@ const Dashboard: React.FC<DashboardProps> = ({
         const totalLengthValue = totalLength;
 
         // Theoretical Planned Curve (Linear for now, could be Sigmoid)
-        const days = daysNeeded || 30; 
+        const days = deadlineStats ? deadlineStats.daysUntilDeadline : (daysNeeded || 30); 
         const start = new Date((startDate || new Date().toISOString().split('T')[0]) + 'T12:00:00');
         
-        for (let i = 0; i <= days; i++) {
+        // Se tiver deadline, mostra até o deadline. Se não, mostra até a previsão de término.
+        const plotDays = Math.max(days, daysNeeded || 0);
+
+        for (let i = 0; i <= plotDays; i++) {
             const d = new Date(start);
             d.setDate(d.getDate() + i);
             const dateStr = d.toISOString().split('T')[0];
@@ -151,8 +189,10 @@ const Dashboard: React.FC<DashboardProps> = ({
             const dayProd = pipes.filter(p => p.welderInfo?.weldDate === dateStr).reduce((acc, p) => acc + p.length, 0);
             cumulativeActual += dayProd;
 
-            // Planned (Linear)
-            const planned = (i / days) * totalLengthValue;
+            // Planned (Linear based on Deadline or Estimated Duration)
+            // Se i > days (no caso de atraso além do deadline), planned continua no máximo ou projeta? 
+            // Vamos travar no máximo para mostrar o desvio.
+            const planned = Math.min((i / days) * totalLengthValue, totalLengthValue);
 
             sCurveData.push({
                 date: dateStr.split('-').slice(1).join('/'),
@@ -162,8 +202,8 @@ const Dashboard: React.FC<DashboardProps> = ({
         }
     }
 
-    return { totalLength, totalPipes, pipeCounts, insulationCounts, bom, progress, sortedDailyProd, sCurveData, totalHH: finalTotalHH, annotationHH, totalTeams, projectedEnd, daysNeeded };
-  }, [pipes, annotations, startDate, prodSettings]);
+    return { totalLength, totalPipes, pipeCounts, insulationCounts, bom, progress, sortedDailyProd, sCurveData, totalHH: finalTotalHH, annotationHH, annotationBreakdown, totalTeams, projectedEnd, daysNeeded, deadlineStats };
+  }, [pipes, annotations, startDate, prodSettings, deadlineDate]);
 
   const filteredPipes = useMemo(() => {
       return pipes.filter(p => {
@@ -401,15 +441,24 @@ const Dashboard: React.FC<DashboardProps> = ({
                           <span className="text-xs text-slate-500 ml-1">EQP</span>
                       </div>
                   </div>
-                  <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 p-5 rounded-xl flex flex-col justify-between relative overflow-hidden">
+                  <div className={`bg-slate-900/50 backdrop-blur-sm border p-5 rounded-xl flex flex-col justify-between relative overflow-hidden transition-all ${stats.deadlineStats ? (stats.deadlineStats.isFeasible ? 'border-green-500/30 bg-green-900/10' : 'border-red-500/30 bg-red-900/10') : 'border-slate-800'}`}>
                       <div className="flex items-center gap-2 mb-1">
-                          <Target className="text-green-400" size={14} />
-                          <span className="text-slate-500 text-[10px] font-mono uppercase tracking-widest">Meta Diária</span>
+                          <Target className={stats.deadlineStats ? (stats.deadlineStats.isFeasible ? 'text-green-400' : 'text-red-400') : 'text-green-400'} size={14} />
+                          <span className={`text-[10px] font-mono uppercase tracking-widest ${stats.deadlineStats ? (stats.deadlineStats.isFeasible ? 'text-green-400' : 'text-red-400') : 'text-slate-500'}`}>
+                              {stats.deadlineStats ? 'Meta (Deadline)' : 'Capacidade Atual'}
+                          </span>
                       </div>
                       <div className="text-3xl font-bold text-white font-mono tracking-tighter">
-                          {(stats.totalLength / Math.max(1, stats.daysNeeded)).toFixed(1)}
+                          {stats.deadlineStats 
+                              ? stats.deadlineStats.requiredDailyOutput.toFixed(1) 
+                              : (stats.totalLength / Math.max(1, stats.daysNeeded)).toFixed(1)}
                           <span className="text-xs text-slate-500 ml-1">m/dia</span>
                       </div>
+                      {stats.deadlineStats && (
+                          <div className={`text-[9px] font-mono mt-1 ${stats.deadlineStats.isFeasible ? 'text-green-400' : 'text-red-400'}`}>
+                              {stats.deadlineStats.isFeasible ? 'Dentro da capacidade' : `Excede capacidade em ${(stats.deadlineStats.ratio - 100).toFixed(0)}%`}
+                          </div>
+                      )}
                   </div>
                   <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 p-5 rounded-xl flex flex-col justify-between relative overflow-hidden">
                       <div className="flex items-center gap-2 mb-1">
@@ -505,6 +554,37 @@ const Dashboard: React.FC<DashboardProps> = ({
                                       </div>
                                   )
                               })}
+
+                              {stats.annotationHH > 0 && (
+                                  <>
+                                      <div className="text-[8px] font-mono text-slate-500 uppercase tracking-widest mt-4 mb-2">Apoio / Infraestrutura</div>
+                                      {Object.entries(stats.annotationBreakdown || {}).map(([type, hours]) => {
+                                          const h = hours as number;
+                                          const percentage = (h / stats.annotationHH) * 100;
+                                          let label = type;
+                                          let color = '#94a3b8';
+                                          
+                                          switch(type) {
+                                              case 'SCAFFOLD': label = 'Andaime'; color = '#eab308'; break;
+                                              case 'SCAFFOLD_CANTILEVER': label = 'Andaime em Balanço'; color = '#ca8a04'; break;
+                                              case 'CRANE': label = 'Guindaste'; color = '#f97316'; break;
+                                              default: label = 'Outros'; color = '#64748b';
+                                          }
+
+                                          return (
+                                              <div key={type} className="space-y-1">
+                                                  <div className="flex justify-between text-[9px] font-mono uppercase">
+                                                      <span className="text-slate-400">{label}</span>
+                                                      <span className="text-white">{h.toFixed(1)}h ({percentage.toFixed(1)}%)</span>
+                                                  </div>
+                                                  <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                                                      <div className="h-full transition-all duration-1000" style={{ width: `${percentage}%`, backgroundColor: color }}></div>
+                                                  </div>
+                                              </div>
+                                          )
+                                      })}
+                                  </>
+                              )}
                           </div>
                       </div>
 
@@ -513,6 +593,19 @@ const Dashboard: React.FC<DashboardProps> = ({
                               <AlertCircle size={14}/> ALERTAS DE PLANEJAMENTO
                           </h3>
                           <div className="space-y-3">
+                              {stats.deadlineStats && !stats.deadlineStats.isFeasible && (
+                                  <div className="bg-red-500/10 border border-red-500/20 p-3 rounded-lg flex gap-3 animate-pulse">
+                                      <div className="bg-red-500/20 p-2 rounded-lg h-fit"><AlertCircle size={16} className="text-red-500"/></div>
+                                      <div>
+                                          <h4 className="text-[10px] font-bold text-red-400 uppercase mb-1">Meta Inviável</h4>
+                                          <p className="text-[9px] text-slate-400 leading-relaxed">
+                                              Para cumprir o prazo de <strong className="text-white">{deadlineDate?.split('-').reverse().join('/')}</strong>, você precisa aumentar sua capacidade em <strong className="text-red-400">{(stats.deadlineStats.ratio - 100).toFixed(0)}%</strong>.
+                                              Considere adicionar mais equipes ou estender o prazo.
+                                          </p>
+                                      </div>
+                                  </div>
+                              )}
+
                               {stats.progress < 20 && (
                                   <div className="bg-red-500/10 border border-red-500/20 p-3 rounded-lg flex gap-3">
                                       <AlertCircle className="text-red-500 shrink-0" size={16} />

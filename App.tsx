@@ -14,7 +14,7 @@ import { LayoutDashboard, Cuboid, PenTool, XCircle, FileDown, Save, FolderOpen, 
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
 import * as XLSX from 'xlsx';
-import { getWorkingEndDate } from './utils/planning';
+import { getWorkingEndDate, getWorkingDaysBetween } from './utils/planning';
 
 // Auxiliar global para cálculo de término em dias úteis (REMOVIDO - USANDO UTILS)
 
@@ -59,6 +59,7 @@ export default function App() {
   const [projectLocation, setProjectLocation] = useState('ÁREA / SETOR 01');
   const [projectClient, setProjectClient] = useState('VALE'); 
   const [activityDate, setActivityDate] = useState(new Date().toISOString().split('T')[0]);
+  const [deadlineDate, setDeadlineDate] = useState<string | null>(null);
 
   const [prodSettings, setProdSettings] = useState<ProductivitySettings>({
       pipingBase: BASE_PRODUCTIVITY.PIPING,
@@ -170,8 +171,14 @@ export default function App() {
 
       // Add annotation effort (scaffolding, cranes, etc.)
       let annotationHH = 0;
+      const annotationBreakdown: Record<string, number> = {};
+      
       annotations.forEach(a => {
-          if (a.estimatedHours) annotationHH += a.estimatedHours;
+          if (a.estimatedHours) {
+              annotationHH += a.estimatedHours;
+              const type = a.type || 'COMMENT';
+              annotationBreakdown[type] = (annotationBreakdown[type] || 0) + a.estimatedHours;
+          }
       });
 
       const totalHH = totalPipingHH + totalInsulationHH + annotationHH;
@@ -198,7 +205,9 @@ export default function App() {
           bom,
           pipeCounts,
           insulationCounts,
-          total: pipes.length
+          annotationBreakdown,
+          total: pipes.length,
+          deadlineStats: null
       };
   }, [pipes, annotations, prodSettings, activityDate]);
 
@@ -325,6 +334,9 @@ export default function App() {
 
   // FUNÇÃO PARA EXPORTAR PARA CAD (DXF) MELHORADA
   const handleExportDXF = () => {
+    const pipesToExport = selectedIds.length > 0 ? pipes.filter(p => selectedIds.includes(p.id)) : pipes;
+    const annotationsToExport = selectedIds.length > 0 ? annotations.filter(a => selectedIds.includes(a.id)) : annotations;
+
     // Cabeçalho padrão DXF para garantir compatibilidade
     let dxf = "0\nSECTION\n2\nHEADER\n9\n$ACADVER\n1\nAC1015\n0\nENDSEC\n";
     
@@ -336,7 +348,7 @@ export default function App() {
     // Seção de Entidades (Os tubos reais)
     dxf += "0\nSECTION\n2\nENTITIES\n";
     
-    pipes.forEach(p => {
+    pipesToExport.forEach(p => {
         // 1. Criar a LINHA (Eixo do tubo)
         dxf += "0\nLINE\n8\nTubulacao\n"; 
         dxf += `10\n${p.start.x.toFixed(4)}\n20\n${p.start.y.toFixed(4)}\n30\n${p.start.z.toFixed(4)}\n`;
@@ -354,7 +366,7 @@ export default function App() {
     });
 
     // 3. Adicionar as ANOTAÇÕES do projeto
-    annotations.forEach(ann => {
+    annotationsToExport.forEach(ann => {
         dxf += "0\nTEXT\n8\nAnotacoes\n";
         dxf += `10\n${ann.position.x.toFixed(4)}\n20\n${ann.position.y.toFixed(4)}\n30\n${ann.position.z.toFixed(4)}\n`;
         dxf += `40\n0.25\n`; // Texto de anotação um pouco maior
@@ -377,6 +389,95 @@ export default function App() {
     setIsExporting(true);
     console.log("Iniciando exportação de PDF...");
     try {
+        const pipesToExport = selectedIds.length > 0 ? pipes.filter(p => selectedIds.includes(p.id)) : pipes;
+        const annotationsToExport = selectedIds.length > 0 ? annotations.filter(a => selectedIds.includes(a.id)) : annotations;
+
+        // Recalcular estatísticas para a seleção (ou usar as globais se for tudo)
+        let exportStats = reportStats;
+        
+        if (selectedIds.length > 0) {
+            let totalPipingHH = 0;
+            let totalInsulationHH = 0;
+            let annotationHH = 0;
+            const annotationBreakdown: Record<string, number> = {};
+
+            pipesToExport.forEach(p => {
+                const pipingF = PIPING_REMAINING_FACTOR[p.status] || 0;
+                const insF = INSULATION_REMAINING_FACTOR[p.insulationStatus || 'NONE'] || 0;
+                
+                let pEffort = p.length * prodSettings.pipingBase * pipingF;
+                let iEffort = p.length * prodSettings.insulationBase * insF;
+
+                if (p.planningFactors) {
+                    let mult = 1.0;
+                    if (p.planningFactors.hasCrane) mult += prodSettings.weights.crane;
+                    if (p.planningFactors.hasBlockage) mult += prodSettings.weights.blockage;
+                    if (p.planningFactors.isNightShift) mult += prodSettings.weights.nightShift;
+                    if (p.planningFactors.isCriticalArea) mult += prodSettings.weights.criticalArea;
+                    if (p.planningFactors.accessType === 'SCAFFOLD_FLOOR') mult += prodSettings.weights.scaffoldFloor;
+                    if (p.planningFactors.accessType === 'SCAFFOLD_HANGING') mult += prodSettings.weights.scaffoldHanging;
+                    if (p.planningFactors.accessType === 'PTA') mult += prodSettings.weights.pta;
+                    
+                    pEffort *= mult;
+                    iEffort *= mult;
+                    
+                    if (pipingF > 0) pEffort += (p.planningFactors.delayHours || 0);
+                }
+
+                totalPipingHH += pEffort;
+                totalInsulationHH += iEffort;
+            });
+
+            annotationsToExport.forEach(a => {
+                if (a.estimatedHours) {
+                    annotationHH += a.estimatedHours;
+                    const type = a.type || 'COMMENT';
+                    annotationBreakdown[type] = (annotationBreakdown[type] || 0) + a.estimatedHours;
+                }
+            });
+
+            const totalHH = totalPipingHH + totalInsulationHH + annotationHH;
+            const globalTeams = pipesToExport.length > 0 ? Math.max(1, Math.round(pipesToExport.reduce((acc, p) => acc + (p.planningFactors?.teamCount || 1), 0) / pipesToExport.length)) : 1;
+            const dailyCapacity = globalTeams * HOURS_PER_DAY; 
+            const daysNeeded = Math.ceil(totalHH / dailyCapacity);
+            const projectedEnd = getWorkingEndDate(new Date(activityDate + 'T12:00:00'), daysNeeded).toLocaleDateString('pt-BR');
+
+            // Deadline Calculation for Export
+            let deadlineStats = null;
+            if (deadlineDate) {
+                const start = new Date(activityDate + 'T12:00:00');
+                const end = new Date(deadlineDate + 'T12:00:00');
+                const daysUntilDeadline = getWorkingDaysBetween(start, end);
+                const totalLength = pipesToExport.reduce((acc, p) => acc + p.length, 0);
+                
+                if (daysUntilDeadline > 0) {
+                    const requiredDailyOutput = totalLength / daysUntilDeadline;
+                    const requiredDailyHH = totalHH / daysUntilDeadline;
+                    const currentDailyOutput = (dailyCapacity / totalHH) * totalLength;
+                    
+                    deadlineStats = {
+                        daysUntilDeadline,
+                        requiredDailyOutput,
+                        requiredDailyHH,
+                        currentDailyOutput,
+                        isFeasible: requiredDailyHH <= dailyCapacity,
+                        ratio: (requiredDailyHH / dailyCapacity) * 100
+                    };
+                }
+            }
+
+            exportStats = {
+                ...reportStats,
+                totalPipingHH,
+                totalInsulationHH,
+                annotationHH,
+                annotationBreakdown,
+                totalHH,
+                projectedEnd,
+                deadlineStats
+            };
+        }
+
         const canvas = document.querySelector('canvas');
         if (canvas) {
             try {
@@ -460,11 +561,11 @@ export default function App() {
         pdf.text(isPlanning ? 'CRONOGRAMA DE CAMPO (SALDO REMANESCENTE)' : 'RELATÓRIO DE RASTREABILIDADE', margin, currentY); currentY += 8;
         pdf.setFontSize(11); pdf.setTextColor(0); pdf.text(`Local: ${projectLocation} | Cliente: ${projectClient} | Ref: ${activityDate.split('-').reverse().join('/')}`, margin, currentY); currentY += 10;
         
-        if (reportStats.totalHH > 0) {
+        if (exportStats.totalHH > 0) {
             pdf.setFontSize(10); pdf.setTextColor(50); pdf.setFont(undefined, 'bold');
-            pdf.text(`SALDO PIPING: ${reportStats.totalPipingHH.toFixed(1)} h | SALDO ISOLAMENTO: ${reportStats.totalInsulationHH.toFixed(1)} h`, margin, currentY);
+            pdf.text(`SALDO PIPING: ${exportStats.totalPipingHH.toFixed(1)} h | SALDO ISOLAMENTO: ${exportStats.totalInsulationHH.toFixed(1)} h`, margin, currentY);
             currentY += 5;
-            pdf.text(`TOTAL GERAL: ${reportStats.totalHH.toFixed(1)} Horas (Saldo) | Previsão de Término: ${reportStats.projectedEnd}`, margin, currentY);
+            pdf.text(`TOTAL GERAL: ${exportStats.totalHH.toFixed(1)} Horas (Saldo) | Previsão de Término: ${exportStats.projectedEnd}`, margin, currentY);
             pdf.setFont(undefined, 'normal'); currentY += 10;
         }
 
@@ -475,7 +576,7 @@ export default function App() {
         pdf.text(isPlanning ? "Saldo(H/H)" : "Nível Esf.", col7, currentY + 5);
         pdf.setFont(undefined, 'normal'); currentY += 10;
 
-        pipes.forEach((pipe) => {
+        pipesToExport.forEach((pipe) => {
             if (currentY > pageHeight - 15) { 
                 pdf.addPage(); 
                 currentY = 20; 
@@ -554,7 +655,7 @@ export default function App() {
         pdf.setFontSize(8); pdf.setTextColor(0); pdf.setFont(undefined, 'normal');
         
         const bom: Record<string, number> = {};
-        pipes.forEach(p => {
+        pipesToExport.forEach(p => {
             const entry = Object.entries(PIPE_DIAMETERS).find(([_, v]) => Math.abs(v - p.diameter) < 0.001);
             const label = entry ? entry[0] : `${(p.diameter * 39.37).toFixed(1)}"`;
             bom[label] = (bom[label] || 0) + p.length;
@@ -575,12 +676,14 @@ export default function App() {
   // FUNÇÃO PARA EXPORTAR PARA EXCEL (XLSX)
   const handleExportExcel = () => {
     try {
+        const pipesToExport = selectedIds.length > 0 ? pipes.filter(p => selectedIds.includes(p.id)) : pipes;
+
         const getDiameterLabel = (val: number) => {
             const entry = Object.entries(PIPE_DIAMETERS).find(([_, v]) => Math.abs(v - val) < 0.001);
             return entry ? entry[0] : `${(val * 39.37).toFixed(1)}"`;
         };
 
-        const data = pipes.map(p => {
+        const data = pipesToExport.map(p => {
             const pipingF = PIPING_REMAINING_FACTOR[p.status] || 0;
             const insF = INSULATION_REMAINING_FACTOR[p.insulationStatus || 'NONE'] || 0;
             
@@ -619,7 +722,7 @@ export default function App() {
         // Adicionar BOM (Bill of Materials)
         const bomData: any[] = [];
         const bom: Record<string, number> = {};
-        pipes.forEach(p => { 
+        pipesToExport.forEach(p => { 
             const label = getDiameterLabel(p.diameter);
             bom[label] = (bom[label] || 0) + p.length; 
         });
@@ -680,6 +783,7 @@ export default function App() {
                 prodSettings={prodSettings}
                 startDate={activityDate}
                 annotations={annotations}
+                deadlineDate={deadlineDate}
             />
 
             <div className="flex-1 w-full h-full relative">
@@ -708,11 +812,11 @@ export default function App() {
                         </div>
                     </div>
                 </div>
-                {viewMode === 'dashboard' && (<div className="absolute inset-0 z-10 bg-slate-950/95 backdrop-blur-sm overflow-y-auto p-4 animate-in fade-in"><div className="max-w-[1600px] mx-auto h-full"><Dashboard pipes={pipes} annotations={annotations} onExportPDF={handleExportPDF} isExporting={isExporting} secondaryImage={secondaryImage} onUploadSecondary={setSecondaryImage} mapImage={mapImage} onUploadMap={setMapImage} sceneScreenshot={sceneScreenshot} onSelectPipe={handleSelectPipe} selectedIds={selectedIds} onSetSelection={handleSetSelection} prodSettings={prodSettings} startDate={activityDate} /></div></div>)}
+                {viewMode === 'dashboard' && (<div className="absolute inset-0 z-10 bg-slate-950/95 backdrop-blur-sm overflow-y-auto p-4 animate-in fade-in"><div className="max-w-[1600px] mx-auto h-full"><Dashboard pipes={pipes} annotations={annotations} onExportPDF={handleExportPDF} isExporting={isExporting} secondaryImage={secondaryImage} onUploadSecondary={setSecondaryImage} mapImage={mapImage} onUploadMap={setMapImage} sceneScreenshot={sceneScreenshot} onSelectPipe={handleSelectPipe} selectedIds={selectedIds} onSetSelection={handleSetSelection} prodSettings={prodSettings} startDate={activityDate} deadlineDate={deadlineDate} /></div></div>)}
             </div>
             {selectedPipes.length > 0 && !isDrawing && !pastePreview && (
                 <div className="w-96 relative z-20 shadow-2xl border-l border-slate-700">
-                    <Sidebar selectedPipes={selectedPipes} onUpdateSingle={handleUpdateSinglePipe} onUpdateBatch={handleBatchUpdate} onDelete={handleDeleteSelected} onClose={() => setSelectedIds([])} mode={viewMode === 'planning' ? 'PLANNING' : 'TRACKING'} startDate={activityDate} prodSettings={prodSettings} onUpdateProdSettings={setProdSettings} onCopy={handleCopy} />
+                    <Sidebar selectedPipes={selectedPipes} onUpdateSingle={handleUpdateSinglePipe} onUpdateBatch={handleBatchUpdate} onDelete={handleDeleteSelected} onClose={() => setSelectedIds([])} mode={viewMode === 'planning' ? 'PLANNING' : 'TRACKING'} startDate={activityDate} prodSettings={prodSettings} onUpdateProdSettings={setProdSettings} onCopy={handleCopy} deadlineDate={deadlineDate} onUpdateDeadline={setDeadlineDate} />
                 </div>
             )}
         </main>

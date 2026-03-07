@@ -26,3 +26,26 @@ export const getWorkingEndDate = (startDate: Date, daysNeeded: number): Date => 
     
     return result;
 };
+
+/**
+ * Calcula a quantidade de dias úteis entre duas datas (inclusive).
+ * @param startDate Data de início
+ * @param endDate Data de término
+ * @returns Quantidade de dias úteis
+ */
+export const getWorkingDaysBetween = (startDate: Date, endDate: Date): number => {
+    let count = 0;
+    const curDate = new Date(startDate);
+    const end = new Date(endDate);
+    
+    // Normalizar para meia-noite para evitar problemas de hora
+    curDate.setHours(12, 0, 0, 0);
+    end.setHours(12, 0, 0, 0);
+
+    while (curDate <= end) {
+        const dayOfWeek = curDate.getDay();
+        if (dayOfWeek !== 0 && dayOfWeek !== 6) count++;
+        curDate.setDate(curDate.getDate() + 1);
+    }
+    return count;
+};
