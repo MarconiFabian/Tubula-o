@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { PipeSegment, PipeStatus, InsulationStatus, PlanningFactors, ProductivitySettings } from '../types';
 import { STATUS_LABELS, STATUS_COLORS, ALL_STATUSES, INSULATION_LABELS, INSULATION_COLORS, ALL_INSULATION_STATUSES, PIPING_REMAINING_FACTOR, INSULATION_REMAINING_FACTOR, HOURS_PER_DAY } from '../constants';
-import { X, CheckCircle, AlertCircle, FileText, Trash2, Shield, Wrench, Layers, MapPin, Timer, Truck, Construction, Users, ArrowUpCircle, Calendar, Moon, ShieldAlert, Clock, Activity, Settings2, Sliders, Info, Percent, ZapOff, HardHat, Copy, BarChart3, Flag } from 'lucide-react';
+import { X, CheckCircle, AlertCircle, FileText, Trash2, Shield, Wrench, Layers, MapPin, Timer, Truck, Construction, Users, ArrowUpCircle, Calendar, Moon, ShieldAlert, Clock, Activity, Settings2, Sliders, Info, Percent, ZapOff, HardHat, Copy, BarChart3, Flag, Package, Zap, CheckSquare, Check } from 'lucide-react';
 import PlanningReportModal from './PlanningReportModal';
 import { getWorkingEndDate } from '../utils/planning';
 
@@ -71,7 +71,6 @@ const Sidebar: React.FC<SidebarProps> = ({
           const pipingFactor = PIPING_REMAINING_FACTOR[p.status] || 0;
           const insulationFactor = INSULATION_REMAINING_FACTOR[p.insulationStatus || 'NONE'] || 0;
 
-          // Se o status é pendente mas o índice de produtividade está 0
           if ((pipingFactor > 0 && prodSettings.pipingBase === 0) || (insulationFactor > 0 && prodSettings.insulationBase === 0)) {
               hasWorkButZeroIndex = true;
           }
@@ -83,7 +82,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           if (baseEffort <= 0) return;
 
           const factors = p.planningFactors || DEFAULT_FACTORS;
-          let mult = 1.0; // Nível de Esforço 0
+          let mult = 1.0;
           if (factors.hasCrane) mult += prodSettings.weights.crane;
           if (factors.hasBlockage) mult += prodSettings.weights.blockage;
           if (factors.isNightShift) mult += prodSettings.weights.nightShift;
@@ -92,18 +91,25 @@ const Sidebar: React.FC<SidebarProps> = ({
           if (factors.accessType === 'SCAFFOLD_HANGING') mult += prodSettings.weights.scaffoldHanging;
           if (factors.accessType === 'PTA') mult += prodSettings.weights.pta;
           
-          const finalHH = (baseEffort * mult) + (factors.delayHours || 0);
+          // Novos Fatores
+          if (factors.weatherExposed) mult += prodSettings.globalConfig.weatherFactor;
+          if (!factors.materialAvailable) mult += prodSettings.globalConfig.materialDelayFactor;
+
+          let finalHH = (baseEffort * mult) * (1 + prodSettings.globalConfig.reworkFactor) + (factors.delayHours || 0);
           totalHH += finalHH;
           weightedHours += (finalHH / (factors.teamCount || 1));
       });
 
-      const daysNeeded = Math.ceil(weightedHours / HOURS_PER_DAY);
+      const totalHHWithBuffer = totalHH * (1 + prodSettings.globalConfig.safetyBuffer);
+      const weightedHoursWithBuffer = weightedHours * (1 + prodSettings.globalConfig.safetyBuffer);
+
+      const daysNeeded = Math.ceil(weightedHoursWithBuffer / prodSettings.globalConfig.shiftHours);
       const start = new Date((activeFactors.customStartDate || startDate) + 'T12:00:00');
-      const end = getWorkingEndDate(start, daysNeeded);
+      const end = getWorkingEndDate(start, daysNeeded, prodSettings.globalConfig.workOnWeekends);
 
       return { 
-          totalHH, 
-          weightedHours, // Retornando as horas ponderadas (tempo real)
+          totalHH: totalHHWithBuffer, 
+          weightedHours: weightedHoursWithBuffer,
           daysNeeded, 
           endDate: end.toLocaleDateString('pt-BR'), 
           isZeroIndex: hasWorkButZeroIndex && totalHH === 0 
@@ -130,23 +136,42 @@ const Sidebar: React.FC<SidebarProps> = ({
                     <div className="bg-slate-950 border border-purple-500/50 p-4 rounded-xl space-y-4 animate-in slide-in-from-top duration-300 shadow-xl">
                         <div className="flex items-center justify-between border-b border-slate-800 pb-2">
                             <h3 className="text-[10px] font-black text-purple-400 uppercase tracking-widest flex items-center gap-2">
-                                <Sliders size={12}/> Editor de Índices (h/m)
+                                <Sliders size={12}/> Configurações Globais
                             </h3>
-                            <Percent size={12} className="text-slate-600" />
+                            <Settings2 size={12} className="text-slate-600" />
                         </div>
+                        
                         <div className="grid grid-cols-2 gap-3">
                             <div className="space-y-1">
-                                <label className="text-[9px] text-slate-500 uppercase font-bold">Base Tubo (h/m)</label>
-                                <input type="number" step="0.01" value={prodSettings.pipingBase} onChange={(e)=>onUpdateProdSettings({...prodSettings, pipingBase: parseFloat(e.target.value)||0})} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-white outline-none focus:border-purple-500" />
+                                <label className="text-[9px] text-slate-500 uppercase font-bold">Jornada (h/dia)</label>
+                                <input type="number" step="0.1" value={prodSettings.globalConfig.shiftHours} onChange={(e)=>onUpdateProdSettings({...prodSettings, globalConfig: {...prodSettings.globalConfig, shiftHours: parseFloat(e.target.value)||0}})} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-white outline-none focus:border-purple-500" />
                             </div>
                             <div className="space-y-1">
-                                <label className="text-[9px] text-slate-500 uppercase font-bold">Base Isol. (h/m)</label>
-                                <input type="number" step="0.01" value={prodSettings.insulationBase} onChange={(e)=>onUpdateProdSettings({...prodSettings, insulationBase: parseFloat(e.target.value)||0})} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-white outline-none focus:border-purple-500" />
+                                <label className="text-[9px] text-slate-500 uppercase font-bold">Margem Seg. (%)</label>
+                                <input type="number" step="0.01" value={prodSettings.globalConfig.safetyBuffer * 100} onChange={(e)=>onUpdateProdSettings({...prodSettings, globalConfig: {...prodSettings.globalConfig, safetyBuffer: (parseFloat(e.target.value)||0)/100}})} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-white outline-none focus:border-purple-500" />
+                            </div>
+                            <div className="flex items-center gap-2 col-span-2">
+                                <input type="checkbox" checked={prodSettings.globalConfig.workOnWeekends} onChange={(e)=>onUpdateProdSettings({...prodSettings, globalConfig: {...prodSettings.globalConfig, workOnWeekends: e.target.checked}})} className="rounded border-slate-700 bg-slate-900 text-purple-600" />
+                                <label className="text-[9px] text-slate-400 uppercase font-bold">Trabalhar Fins de Semana</label>
+                            </div>
+                        </div>
+
+                        <div className="border-t border-slate-800 pt-3">
+                            <h4 className="text-[8px] font-black text-slate-600 uppercase tracking-[0.2em] mb-3">Índices Base (h/m)</h4>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-1">
+                                    <label className="text-[9px] text-slate-500 uppercase font-bold">Tubo</label>
+                                    <input type="number" step="0.01" value={prodSettings.pipingBase} onChange={(e)=>onUpdateProdSettings({...prodSettings, pipingBase: parseFloat(e.target.value)||0})} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-white outline-none focus:border-purple-500" />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-[9px] text-slate-500 uppercase font-bold">Isol.</label>
+                                    <input type="number" step="0.01" value={prodSettings.insulationBase} onChange={(e)=>onUpdateProdSettings({...prodSettings, insulationBase: parseFloat(e.target.value)||0})} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-white outline-none focus:border-purple-500" />
+                                </div>
                             </div>
                         </div>
 
                         <div className="border-t border-slate-800 pt-3 mt-2">
-                            <h4 className="text-[8px] font-black text-slate-600 uppercase tracking-[0.2em] mb-3">Pesos de Complexidade (Agravantes)</h4>
+                            <h4 className="text-[8px] font-black text-slate-600 uppercase tracking-[0.2em] mb-3">Pesos de Complexidade</h4>
                             <div className="grid grid-cols-2 gap-x-4 gap-y-2">
                                 {[
                                     { key: 'crane', label: 'Guindaste' },
@@ -305,17 +330,24 @@ const Sidebar: React.FC<SidebarProps> = ({
                             { id: 'hasCrane', label: 'Içamento / Guindaste', weight: prodSettings.weights.crane, icon: <Truck size={16}/>, color: 'text-blue-400' },
                             { id: 'hasBlockage', label: 'Interferência / Obstrução', weight: prodSettings.weights.blockage, icon: <AlertCircle size={16}/>, color: 'text-orange-400' },
                             { id: 'isNightShift', label: 'Turno Noturno', weight: prodSettings.weights.nightShift, icon: <Moon size={16}/>, color: 'text-yellow-200' },
-                            { id: 'isCriticalArea', label: 'Área Crítica / Risco', weight: prodSettings.weights.criticalArea, icon: <ShieldAlert size={16}/>, color: 'text-red-400' }
-                        ].map(factor => (
-                            <button key={factor.id} onClick={() => handleUpdateFactors({ [factor.id]: !(activeFactors as any)[factor.id] })} className={`flex items-center gap-3 p-3.5 rounded-xl border transition-all text-left ${ (activeFactors as any)[factor.id] ? 'bg-purple-900/40 border-purple-500 text-white shadow-lg ring-1 ring-purple-500/50' : 'bg-slate-800/40 border-slate-800 text-slate-500 hover:border-slate-700'}`}>
-                                <div className={(activeFactors as any)[factor.id] ? factor.color : 'text-slate-600'}>{factor.icon}</div>
-                                <div className="flex-1">
-                                    <p className="text-[11px] font-black uppercase tracking-tight">{factor.label}</p>
-                                    <p className="text-[9px] opacity-70 font-bold">Esforço +{ (factor.weight * 100).toFixed(0) }%</p>
-                                </div>
-                                {(activeFactors as any)[factor.id] && <div className="w-5 h-5 bg-purple-500 rounded-full flex items-center justify-center shadow-lg"><CheckCircle size={12} className="text-white"/></div>}
-                            </button>
-                        ))}
+                            { id: 'isCriticalArea', label: 'Área Crítica / Risco', weight: prodSettings.weights.criticalArea, icon: <ShieldAlert size={16}/>, color: 'text-red-400' },
+                            { id: 'weatherExposed', label: 'Exposto a Intempéries', weight: prodSettings.globalConfig.weatherFactor, icon: <Activity size={16}/>, color: 'text-cyan-400' },
+                            { id: 'materialAvailable', label: 'Material em Campo', weight: -prodSettings.globalConfig.materialDelayFactor, icon: <Package size={16}/>, color: 'text-emerald-400', invert: true }
+                        ].map(factor => {
+                            const isActive = factor.invert ? (activeFactors as any)[factor.id] : (activeFactors as any)[factor.id];
+                            const displayActive = factor.invert ? !(activeFactors as any)[factor.id] : (activeFactors as any)[factor.id];
+
+                            return (
+                                <button key={factor.id} onClick={() => handleUpdateFactors({ [factor.id]: !(activeFactors as any)[factor.id] })} className={`flex items-center gap-3 p-3.5 rounded-xl border transition-all text-left ${ displayActive ? 'bg-purple-900/40 border-purple-500 text-white shadow-lg ring-1 ring-purple-500/50' : 'bg-slate-800/40 border-slate-800 text-slate-500 hover:border-slate-700'}`}>
+                                    <div className={displayActive ? factor.color : 'text-slate-600'}>{factor.icon}</div>
+                                    <div className="flex-1">
+                                        <p className="text-[11px] font-black uppercase tracking-tight">{factor.label}</p>
+                                        <p className="text-[9px] opacity-70 font-bold">{factor.invert ? (displayActive ? 'Falta Material (+50%)' : 'Material OK') : `Esforço +${ (factor.weight * 100).toFixed(0) }%`}</p>
+                                    </div>
+                                    {displayActive && <div className="w-5 h-5 bg-purple-500 rounded-full flex items-center justify-center shadow-lg"><CheckCircle size={12} className="text-white"/></div>}
+                                </button>
+                            );
+                        })}
                     </div>
                 </div>
             </div>
@@ -434,6 +466,53 @@ const Sidebar: React.FC<SidebarProps> = ({
                 </div>
             </div>
             <div><label className="text-[10px] font-bold text-slate-500 uppercase">Status Montagem</label><div className="grid grid-cols-2 gap-2">{ALL_STATUSES.map(s => (<button key={s} onClick={() => onUpdateSingle({ ...singlePipe, status: s as PipeStatus })} className={`p-2 rounded font-bold text-[9px] border transition-all ${singlePipe.status === s ? 'ring-2 ring-white scale-105 opacity-100' : 'opacity-40'}`} style={{ backgroundColor: STATUS_COLORS[s], color: '#fff' }}>{STATUS_LABELS[s]}</button>))}</div></div>
+
+            {(singlePipe.status === 'WELDED' || singlePipe.status === 'HYDROTEST') && (
+                <div className="bg-slate-950/60 p-4 rounded-xl border border-green-500/20 space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                    <label className="text-[10px] font-bold text-green-400 uppercase mb-1 block flex items-center gap-2">
+                        <CheckSquare size={14}/> Controle de Qualidade (CQ)
+                    </label>
+                    <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                            <label className="text-[9px] text-slate-500 uppercase font-bold">ID Inspetor/Soldador</label>
+                            <input 
+                                type="text" 
+                                value={singlePipe.welderInfo?.welderId || ''} 
+                                onChange={(e) => onUpdateSingle({ ...singlePipe, welderInfo: { ...(singlePipe.welderInfo || { weldDate: new Date().toISOString().split('T')[0], electrodeBatch: '', visualInspection: false }), welderId: e.target.value } })}
+                                className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-white outline-none focus:border-green-500 font-mono"
+                                placeholder="Ex: W-01"
+                            />
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-[9px] text-slate-500 uppercase font-bold">Data de Soldagem</label>
+                            <input 
+                                type="date" 
+                                value={singlePipe.welderInfo?.weldDate || new Date().toISOString().split('T')[0]} 
+                                onChange={(e) => onUpdateSingle({ ...singlePipe, welderInfo: { ...(singlePipe.welderInfo || { welderId: '', electrodeBatch: '', visualInspection: false }), weldDate: e.target.value } })}
+                                className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-white outline-none focus:border-green-500 [color-scheme:dark]"
+                            />
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-[9px] text-slate-500 uppercase font-bold">Lote Eletrodo</label>
+                            <input 
+                                type="text" 
+                                value={singlePipe.welderInfo?.electrodeBatch || ''} 
+                                onChange={(e) => onUpdateSingle({ ...singlePipe, welderInfo: { ...(singlePipe.welderInfo || { welderId: '', weldDate: new Date().toISOString().split('T')[0], visualInspection: false }), electrodeBatch: e.target.value } })}
+                                className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-white outline-none focus:border-green-500 font-mono"
+                                placeholder="Ex: E-7018"
+                            />
+                        </div>
+                        <div className="flex items-end pb-1">
+                            <button 
+                                onClick={() => onUpdateSingle({ ...singlePipe, welderInfo: { ...(singlePipe.welderInfo || { welderId: '', weldDate: new Date().toISOString().split('T')[0], electrodeBatch: '' }), visualInspection: !singlePipe.welderInfo?.visualInspection } })}
+                                className={`w-full flex items-center justify-center gap-2 p-2 rounded border transition-all font-bold text-[9px] uppercase ${singlePipe.welderInfo?.visualInspection ? 'bg-green-600 border-green-500 text-white' : 'bg-slate-900 border-slate-700 text-slate-500'}`}
+                            >
+                                <Check size={12} /> Insp. Visual
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
         <div className="bg-slate-950/40 p-4 rounded-xl border border-slate-800"><label className="text-[10px] font-bold text-slate-500 uppercase mb-3 block flex items-center gap-2"><Shield size={14}/> Isolamento</label><div className="grid grid-cols-1 gap-2">{ALL_INSULATION_STATUSES.map(i => (<button key={i} onClick={() => onUpdateSingle({ ...singlePipe, insulationStatus: i as InsulationStatus })} className={`flex items-center gap-3 p-2.5 rounded-lg text-[10px] font-bold border transition-all ${singlePipe.insulationStatus === i ? 'bg-slate-800 border-slate-700 text-white shadow-inner' : 'border-transparent text-slate-600 hover:text-slate-400'}`}><div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: INSULATION_COLORS[i] === 'transparent' ? '#334155' : INSULATION_COLORS[i] }} /> {INSULATION_LABELS[i]}</button>))}</div></div>
       </div>

@@ -1,8 +1,8 @@
 import React, { useMemo } from 'react';
-import { Ruler, Wrench, Shield, Timer, Calendar, Cuboid, Image as ImageIcon, Package, MapPin, TrendingUp, BarChart3, AlertCircle } from 'lucide-react';
+import { Ruler, Wrench, Shield, Timer, Calendar, Cuboid, Image as ImageIcon, Package, MapPin, TrendingUp, BarChart3, AlertCircle, Users } from 'lucide-react';
 import { PipeSegment, Annotation, PipeStatus, InsulationStatus, ProductivitySettings } from '../types';
-import { STATUS_LABELS, STATUS_COLORS, INSULATION_LABELS, INSULATION_COLORS, ALL_STATUSES, ALL_INSULATION_STATUSES } from '../constants';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell } from 'recharts';
+import { STATUS_LABELS, STATUS_COLORS, INSULATION_LABELS, INSULATION_COLORS, ALL_STATUSES, ALL_INSULATION_STATUSES, PIPING_REMAINING_FACTOR, INSULATION_REMAINING_FACTOR } from '../constants';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell, ReferenceDot } from 'recharts';
 
 interface ExportContainerProps {
   viewMode: string;
@@ -27,29 +27,63 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
     const data: any[] = [];
     if (pipes.length === 0) return data;
 
-    const totalLength = pipes.reduce((acc, p) => acc + (p?.length || 0), 0);
-    const start = new Date(startDate || new Date().toISOString().split('T')[0]);
-    const days = reportStats.daysNeeded || 30;
+    const totalLengthValue = pipes.reduce((acc, p) => acc + (p?.length || 0), 0);
+    const startStr = (startDate || new Date().toISOString().split('T')[0]);
+    const todayStr = new Date().toISOString().split('T')[0];
     
-    let cumulativeActual = 0;
+    let cumulativeActual = pipes
+        .filter(p => {
+            const d = p.welderInfo?.weldDate || todayStr;
+            return d < startStr;
+        })
+        .reduce((acc, p) => {
+            const pipingDone = 1 - (PIPING_REMAINING_FACTOR[p.status] ?? 1);
+            return acc + (p.length * pipingDone);
+        }, 0);
 
-    for (let i = 0; i <= days; i++) {
+    const days = reportStats.daysNeeded || 30;
+    const start = new Date(startStr + 'T12:00:00');
+    
+    const plotDays = Math.max(days, reportStats.daysNeeded || 0);
+
+    for (let i = 0; i <= plotDays; i++) {
         const d = new Date(start);
         d.setDate(d.getDate() + i);
         const dateStr = d.toISOString().split('T')[0];
         
-        const dayProd = pipes.filter(p => p.welderInfo?.weldDate === dateStr).reduce((acc, p) => acc + p.length, 0);
+        const dayProd = pipes.filter(p => {
+            const d = p.welderInfo?.weldDate || todayStr;
+            return d === dateStr;
+        }).reduce((acc, p) => {
+            const pipingDone = 1 - (PIPING_REMAINING_FACTOR[p.status] ?? 1);
+            return acc + (p.length * pipingDone);
+        }, 0);
         cumulativeActual += dayProd;
-        const planned = (i / days) * totalLength;
+
+        const x = (i / days) * 12 - 6;
+        const sigmoid = 1 / (1 + Math.exp(-x));
+        const planned = sigmoid * totalLengthValue;
+
+        let milestone = null;
+        if (i === Math.round(plotDays * 0.25)) milestone = "25%";
+        if (i === Math.round(plotDays * 0.50)) milestone = "50%";
+        if (i === Math.round(plotDays * 0.75)) milestone = "75%";
+        if (i === plotDays) milestone = "100%";
+
+        const isFuture = dateStr > todayStr;
 
         data.push({
             date: dateStr.split('-').slice(1).join('/'),
-            actual: cumulativeActual > 0 ? parseFloat(cumulativeActual.toFixed(2)) : null,
-            planned: parseFloat(planned.toFixed(2))
+            actual: !isFuture ? parseFloat(((cumulativeActual / totalLengthValue) * 100).toFixed(2)) : null,
+            planned: parseFloat(((planned / totalLengthValue) * 100).toFixed(2)),
+            actualMeters: parseFloat(cumulativeActual.toFixed(2)),
+            plannedMeters: parseFloat(planned.toFixed(2)),
+            milestone,
+            isLastActual: dateStr === todayStr
         });
     }
     return data;
-  }, [pipes, startDate]);
+  }, [pipes, startDate, reportStats.daysNeeded]);
 
   const effortData = useMemo(() => {
     return ALL_STATUSES.map(status => {
@@ -231,19 +265,19 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
         </div>
       </div>
 
-      {/* PAGE 2: PLANNING & S-CURVE */}
-      <div id="export-page-2" style={{ padding: '60px', minHeight: '1350px', display: 'flex', flexDirection: 'column', gap: '40px', backgroundColor: '#0f172a', width: '1920px' }}>
+      {/* PAGE 2: PLANNING & S-CURVE & HISTOGRAM & GANTT */}
+      <div id="export-page-2" style={{ padding: '60px', minHeight: '2715px', display: 'flex', flexDirection: 'column', gap: '40px', backgroundColor: '#0f172a', width: '1920px' }}>
         <div className="flex justify-between items-start pb-6" style={{ borderBottom: '1px solid #334155' }}>
             <div>
             <h1 className="text-6xl font-bold tracking-tight leading-none mb-2 uppercase" style={{ color: '#ffffff' }}>
                 CRONOGRAMA E PLANEJAMENTO 4D
             </h1>
-            <p className="text-xl font-medium tracking-widest uppercase" style={{ color: '#94a3b8' }}>Análise de Produtividade e Curva de Avanço</p>
+            <p className="text-xl font-medium tracking-widest uppercase" style={{ color: '#94a3b8' }}>Análise de Produtividade, Curva de Avanço e Recursos</p>
             </div>
             <div className="text-right text-2xl font-light tracking-[0.2em] uppercase" style={{ color: '#94a3b8' }}>Marconi Fabian - Isometrico Manager</div>
         </div>
 
-        <div className="grid grid-cols-12 gap-8 flex-1">
+        <div className="grid grid-cols-12 gap-8">
             <div className="col-span-8 flex flex-col gap-6">
                 <div className="bg-slate-900/50 rounded-2xl p-8 border border-slate-800 flex flex-col gap-6 shadow-2xl">
                     <h3 className="text-2xl font-bold uppercase tracking-widest flex items-center gap-3" style={{ color: '#60a5fa' }}>
@@ -264,9 +298,32 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
                                 </defs>
                                 <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
                                 <XAxis dataKey="date" stroke="#475569" fontSize={14} tickLine={false} axisLine={false} />
-                                <YAxis stroke="#475569" fontSize={14} tickLine={false} axisLine={false} tickFormatter={(value) => `${value}m`} />
+                                <YAxis stroke="#475569" fontSize={14} tickLine={false} axisLine={false} tickFormatter={(value) => `${value}%`} domain={[0, 100]} />
                                 <Area type="monotone" dataKey="planned" stroke="#3b82f6" strokeWidth={4} fillOpacity={1} fill="url(#colorPlannedExp)" dot={false} />
                                 <Area type="monotone" dataKey="actual" stroke="#22c55e" strokeWidth={4} fillOpacity={1} fill="url(#colorActualExp)" dot={{ r: 6, fill: '#22c55e' }} />
+                                {sCurveData.filter(d => d.milestone).map((d, idx) => (
+                                    <ReferenceDot 
+                                        key={idx} 
+                                        x={d.date} 
+                                        y={d.planned} 
+                                        r={6} 
+                                        fill="#3b82f6" 
+                                        stroke="#fff" 
+                                        label={{ value: d.milestone, position: 'top', fill: '#3b82f6', fontSize: 12, fontWeight: 'bold' }} 
+                                    />
+                                ))}
+                                {sCurveData.filter(d => d.isLastActual && d.actual !== null).map((d, idx) => (
+                                    <ReferenceDot 
+                                        key={`actual-${idx}`} 
+                                        x={d.date} 
+                                        y={d.actual} 
+                                        r={8} 
+                                        fill="#22c55e" 
+                                        stroke="#fff" 
+                                        strokeWidth={2}
+                                        label={{ value: `${d.actual}%`, position: 'top', fill: '#22c55e', fontSize: 14, fontWeight: 'bold' }} 
+                                    />
+                                ))}
                             </AreaChart>
                         </ResponsiveContainer>
                     </div>
@@ -419,6 +476,77 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
                             <span className="text-4xl font-bold text-yellow-400 font-mono">{reportStats.daysNeeded}</span>
                         </div>
                     </div>
+                </div>
+            </div>
+        </div>
+
+        <div className="flex flex-col gap-8 flex-1 mt-8">
+            <div className="bg-slate-900/50 rounded-2xl p-8 border border-slate-800 flex flex-col gap-6 shadow-2xl">
+                <div className="flex justify-between items-center mb-6">
+                    <h3 className="text-2xl font-bold uppercase tracking-widest flex items-center gap-3" style={{ color: '#f97316' }}>
+                        <Users size={28}/> Histograma de Recursos (Equipes Necessárias)
+                    </h3>
+                </div>
+                <div style={{ width: '100%', height: '400px' }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={sCurveData}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+                            <XAxis dataKey="date" stroke="#475569" fontSize={14} tickLine={false} axisLine={false} />
+                            <YAxis stroke="#475569" fontSize={14} tickLine={false} axisLine={false} />
+                            <Bar dataKey="planned" fill="#f97316" radius={[4, 4, 0, 0]} opacity={0.6}>
+                                {sCurveData.map((entry, index) => (
+                                    <Cell key={`cell-${index}`} fill={reportStats.deadlineStats?.isFeasible ? '#3b82f6' : '#ef4444'} />
+                                ))}
+                            </Bar>
+                        </BarChart>
+                    </ResponsiveContainer>
+                </div>
+            </div>
+
+            <div className="bg-slate-900/50 rounded-2xl p-8 border border-slate-800 flex flex-col gap-6 shadow-2xl flex-1">
+                <h3 className="text-2xl font-bold uppercase tracking-widest flex items-center gap-3 border-b border-slate-800 pb-6" style={{ color: '#22d3ee' }}>
+                    <Calendar size={28}/> Cronograma de Execução (Gantt Simplificado)
+                </h3>
+                <div className="space-y-4 overflow-y-auto" style={{ maxHeight: '600px' }}>
+                    {pipes.slice(0, 30).map((p, idx) => {
+                        const pipingF = PIPING_REMAINING_FACTOR[p.status] ?? 1;
+                        const hasInsulation = p.insulationStatus && p.insulationStatus !== 'NONE';
+                        const insF = hasInsulation ? (INSULATION_REMAINING_FACTOR[p.insulationStatus] ?? 1) : 0;
+                        
+                        const totalRemainingF = hasInsulation ? (pipingF + insF) / 2 : pipingF;
+                        const isDone = totalRemainingF === 0;
+                        const progressPercent = (1 - totalRemainingF) * 100;
+                        
+                        return (
+                            <div key={p.id} className="flex items-center gap-6 group">
+                                <div className="w-48 text-lg font-mono text-slate-400 truncate">{p.spoolId || p.name}</div>
+                                <div className="flex-1 bg-slate-800 h-10 rounded relative overflow-hidden">
+                                    <div 
+                                        className={`absolute h-full transition-all duration-500 ${isDone ? 'bg-green-500/40' : 'bg-blue-500/40'}`}
+                                        style={{ 
+                                            left: `${(idx * 3) % 60}%`, 
+                                            width: `${Math.max(10, progressPercent)}%`,
+                                            opacity: isDone ? 1 : 0.6
+                                        }}
+                                    >
+                                        <div className="h-full w-full flex items-center px-4">
+                                            <span className="text-sm font-bold text-white uppercase truncate">
+                                                {isDone ? 'Concluído' : 'Em Execução'}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="w-24 text-right text-lg font-mono text-slate-300">
+                                    {isDone ? 'OK' : `${progressPercent.toFixed(0)}%`}
+                                </div>
+                            </div>
+                        );
+                    })}
+                    {pipes.length > 30 && (
+                        <div className="text-center text-slate-500 mt-4 text-lg font-mono">
+                            + {pipes.length - 30} itens não exibidos
+                        </div>
+                    )}
                 </div>
             </div>
         </div>

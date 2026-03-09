@@ -22,6 +22,8 @@ export interface PlanningFactors {
   delayHours: number;
   teamCount?: number; 
   customStartDate?: string; // Novo: Permite definir início de trabalho manual por item/grupo
+  materialAvailable?: boolean; // Novo: Material disponível em campo
+  weatherExposed?: boolean; // Novo: Exposto a intempéries
 }
 
 // Added ProductivityWeights interface for 4D planning calculations
@@ -40,6 +42,19 @@ export interface ProductivitySettings {
   pipingBase: number;
   insulationBase: number;
   weights: ProductivityWeights;
+  globalConfig: {
+    weatherFactor: number; // Multiplicador para chuva/vento
+    materialDelayFactor: number; // Multiplicador se material não disponível
+    skillMultiplier: {
+      JUNIOR: number;
+      SENIOR: number;
+      EXPERT: number;
+    };
+    workOnWeekends: boolean;
+    shiftHours: number;
+    safetyBuffer: number; // 0.1 = 10% de folga
+    reworkFactor: number; // 0.05 = 5% de retrabalho
+  };
 }
 
 export interface Coordinates {

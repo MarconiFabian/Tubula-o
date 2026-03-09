@@ -89,7 +89,7 @@ export const TopNav: React.FC<TopNavProps> = ({
 
       <div className="flex items-center gap-2 flex-shrink-0">
         <div className="hidden xl:flex flex-col items-end mr-2">
-          <span className="text-[9px] text-slate-600 font-black uppercase tracking-widest">Operator</span>
+          <span className="text-[9px] text-slate-600 font-black uppercase tracking-widest">Operador</span>
           <span className="text-xs font-bold text-blue-400 leading-none">{currentUser}</span>
         </div>
         
@@ -107,7 +107,7 @@ export const TopNav: React.FC<TopNavProps> = ({
           onClick={() => setIsDBModalOpen(true)} 
           className="bg-slate-950 hover:bg-slate-800 text-blue-400 border border-slate-800 px-3 py-1.5 rounded-xl font-bold text-[10px] flex items-center gap-2 whitespace-nowrap transition-all uppercase tracking-widest"
         >
-          <Database size={14} /> Project DB
+          <Database size={14} /> Banco de Dados
         </button>
 
         <div className="bg-slate-950 p-1 rounded-xl flex gap-1 border border-slate-800 flex-shrink-0">
@@ -115,13 +115,13 @@ export const TopNav: React.FC<TopNavProps> = ({
             onClick={() => { setViewMode('3d'); setIsDrawing(false); }} 
             className={`px-3 py-1.5 text-[10px] font-black rounded-lg transition-all uppercase tracking-tighter flex items-center gap-1.5 ${viewMode === '3d' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' : 'text-slate-500 hover:text-slate-300'}`}
           >
-            <Cuboid size={14}/> 3D View
+            <Cuboid size={14}/> Vista 3D
           </button>
           <button 
             onClick={() => { setViewMode('planning'); setIsDrawing(false); }} 
             className={`px-3 py-1.5 text-[10px] font-black rounded-lg transition-all uppercase tracking-tighter flex items-center gap-1.5 ${viewMode === 'planning' ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/20' : 'text-slate-500 hover:text-slate-300'}`}
           >
-            <Timer size={14}/> 4D Plan
+            <Timer size={14}/> Plano 4D
           </button>
           <button 
             onClick={() => { setViewMode('dashboard'); setIsDrawing(false); }} 
@@ -135,21 +135,21 @@ export const TopNav: React.FC<TopNavProps> = ({
           <button 
             onClick={() => setShowDimensions(!showDimensions)}
             className={`p-2 rounded-xl border transition-all ${showDimensions ? 'bg-blue-600/10 border-blue-500/50 text-blue-400' : 'bg-slate-950 border-slate-800 text-slate-600'}`}
-            title="Toggle Dimensions"
+            title="Alternar Dimensões"
           >
             <Ruler size={18} />
           </button>
           <button 
             onClick={() => window.dispatchEvent(new CustomEvent('RESET_CAMERA'))}
             className="p-2 text-slate-500 hover:text-white hover:bg-slate-800 rounded-xl transition-all border border-slate-800"
-            title="Reset Camera View"
+            title="Resetar Câmera"
           >
             <MousePointer2 size={18} />
           </button>
           <button 
             onClick={() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'h' }))}
             className="p-2 text-slate-500 hover:text-white hover:bg-slate-800 rounded-xl transition-all border border-slate-800"
-            title="Help Guide (H)"
+            title="Ajuda (H)"
           >
             <HelpCircle size={18} />
           </button>
@@ -158,10 +158,10 @@ export const TopNav: React.FC<TopNavProps> = ({
         <div className="h-6 w-px bg-slate-800 mx-1"></div>
 
         <div className="flex gap-1.5">
-          <button onClick={handleExportDXF} className="bg-slate-950 hover:bg-slate-800 border border-slate-800 text-slate-300 px-3 py-1.5 rounded-xl font-bold flex items-center gap-2 text-[10px] uppercase tracking-widest transition-all" title="Export to AutoCAD">
+          <button onClick={handleExportDXF} className="bg-slate-950 hover:bg-slate-800 border border-slate-800 text-slate-300 px-3 py-1.5 rounded-xl font-bold flex items-center gap-2 text-[10px] uppercase tracking-widest transition-all" title="Exportar para AutoCAD">
             <FileCode size={14} className="text-blue-400"/> CAD
           </button>
-          <button onClick={handleExportExcel} className="bg-slate-950 hover:bg-slate-800 border border-slate-800 text-slate-300 px-3 py-1.5 rounded-xl font-bold flex items-center gap-2 text-[10px] uppercase tracking-widest transition-all" title="Export to Excel">
+          <button onClick={handleExportExcel} className="bg-slate-950 hover:bg-slate-800 border border-slate-800 text-slate-300 px-3 py-1.5 rounded-xl font-bold flex items-center gap-2 text-[10px] uppercase tracking-widest transition-all" title="Exportar para Excel">
             <FileSpreadsheet size={14} className="text-emerald-400"/> XLS
           </button>
           <button 

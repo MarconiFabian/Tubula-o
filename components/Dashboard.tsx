@@ -1,9 +1,10 @@
 
 import React, { useMemo, useRef, useState } from 'react';
 import { PipeSegment, ProductivitySettings, Annotation } from '../types';
+import { ProjectData } from '../utils/db';
 import { STATUS_COLORS, STATUS_LABELS, ALL_STATUSES, INSULATION_COLORS, INSULATION_LABELS, ALL_INSULATION_STATUSES, PIPING_REMAINING_FACTOR, INSULATION_REMAINING_FACTOR, HOURS_PER_DAY } from '../constants';
-import { Activity, FileDown, Upload, Image as ImageIcon, Map as MapIcon, Layers, Shield, Ruler, Package, AlertCircle, Search, Filter, ClipboardList, UserCog, Calendar, CheckSquare, TrendingUp, Timer, Users, Target, BarChart3 } from 'lucide-react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area } from 'recharts';
+import { Activity, FileDown, Upload, Image as ImageIcon, Map as MapIcon, Layers, Shield, Ruler, Package, AlertCircle, Search, Filter, ClipboardList, UserCog, Calendar, CheckSquare, TrendingUp, Timer, Users, Target, BarChart3, Database, ChevronDown, Check, Zap } from 'lucide-react';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area, ReferenceDot, BarChart, Bar, Cell } from 'recharts';
 import { getWorkingEndDate, getWorkingDaysBetween } from '../utils/planning';
 
 interface DashboardProps {
@@ -23,6 +24,9 @@ interface DashboardProps {
   startDate?: string;
   annotations?: Annotation[];
   deadlineDate?: string | null;
+  savedProjects?: ProjectData[];
+  selectedProjectIds?: string[];
+  onSetSelectedProjectIds?: (ids: string[]) => void;
 }
 
 type TabType = 'overview' | 'tracking' | 'planning';
@@ -43,14 +47,43 @@ const Dashboard: React.FC<DashboardProps> = ({
     onSetSelection,
     prodSettings,
     startDate,
-    deadlineDate
+    deadlineDate,
+    savedProjects = [],
+    selectedProjectIds = [],
+    onSetSelectedProjectIds
 }) => {
-  const [activeTab, setActiveTab] = useState<TabType>('overview');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string>('ALL');
+    const [activeTab, setActiveTab] = useState<TabType>('overview');
+    const [searchTerm, setSearchTerm] = useState('');
+    const [statusFilter, setStatusFilter] = useState<string>('ALL');
+    const [showProjectSelector, setShowProjectSelector] = useState(false);
 
   const secInputRef = useRef<HTMLInputElement>(null);
   const mapInputRef = useRef<HTMLInputElement>(null);
+
+  const aggregatedData = useMemo(() => {
+    if (selectedProjectIds.length === 0) {
+      return { pipes, annotations };
+    }
+
+    let allPipes = [...pipes];
+    let allAnnotations = [...annotations];
+
+    selectedProjectIds.forEach(id => {
+      const project = savedProjects.find(p => p.id === id);
+      if (project) {
+        // Add project name as prefix to pipe names to distinguish them
+        const projectPipes = project.pipes.map(p => ({
+          ...p,
+          name: `[${project.name}] ${p.name}`,
+          id: `${project.id}-${p.id}` // Ensure unique IDs
+        }));
+        allPipes = [...allPipes, ...projectPipes];
+        allAnnotations = [...allAnnotations, ...project.annotations];
+      }
+    });
+
+    return { pipes: allPipes, annotations: allAnnotations };
+  }, [pipes, annotations, selectedProjectIds, savedProjects]);
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>, setter?: (val: string | null) => void) => {
       const file = e.target.files?.[0];
@@ -62,22 +95,25 @@ const Dashboard: React.FC<DashboardProps> = ({
   };
 
   const stats = useMemo(() => {
-    const totalLength = pipes.reduce((acc, p) => acc + (p?.length || 0), 0);
-    const totalPipes = pipes.length;
+    const currentPipes = aggregatedData.pipes;
+    const currentAnnotations = aggregatedData.annotations;
+
+    const totalLength = currentPipes.reduce((acc, p) => acc + (p?.length || 0), 0);
+    const totalPipes = currentPipes.length;
     
     const pipeCounts: Record<string, number> = {};
     ALL_STATUSES.forEach(s => pipeCounts[s] = 0);
-    pipes.forEach(p => { if (p.status) pipeCounts[p.status] = (pipeCounts[p.status] || 0) + 1; });
+    currentPipes.forEach(p => { if (p.status) pipeCounts[p.status] = (pipeCounts[p.status] || 0) + 1; });
 
     const insulationCounts: Record<string, number> = {};
     ALL_INSULATION_STATUSES.forEach(s => insulationCounts[s] = 0);
-    pipes.forEach(p => { 
+    currentPipes.forEach(p => { 
         const status = p.insulationStatus || 'NONE';
         insulationCounts[status] = (insulationCounts[status] || 0) + 1; 
     });
 
     const bom: Record<string, number> = {};
-    pipes.forEach(p => {
+    currentPipes.forEach(p => {
         const inches = Math.round(p.diameter * 39.37);
         const dLabel = `${inches}`; 
         if (!bom[dLabel]) bom[dLabel] = 0;
@@ -86,9 +122,11 @@ const Dashboard: React.FC<DashboardProps> = ({
 
     // Daily Productivity Calculation
     const dailyProd: Record<string, number> = {};
-    pipes.forEach(p => {
-        if (p.welderInfo?.weldDate) {
-            const date = p.welderInfo.weldDate;
+    const todayStr = new Date().toISOString().split('T')[0];
+    currentPipes.forEach(p => {
+        const isCompleted = ['WELDED', 'HYDROTEST', 'FINISHED'].includes(p.status);
+        if (isCompleted) {
+            const date = p.welderInfo?.weldDate || todayStr;
             dailyProd[date] = (dailyProd[date] || 0) + (p.length || 0);
         }
     });
@@ -100,12 +138,13 @@ const Dashboard: React.FC<DashboardProps> = ({
     const progress = totalPipes > 0 ? (completedWeight / totalPipes) * 100 : 0;
 
     // Planning Data for S-Curve and Projected End
-    const totalHH = pipes.reduce((acc, p) => {
+    const totalHH = currentPipes.reduce((acc, p) => {
         const pipingF = PIPING_REMAINING_FACTOR[p.status] || 0;
-        const insF = INSULATION_REMAINING_FACTOR[p.insulationStatus || 'NONE'] || 0;
-        const baseEffort = (p.length * (prodSettings?.pipingBase || 1) * pipingF) + (p.length * (prodSettings?.insulationBase || 1) * insF);
+        const insulationF = INSULATION_REMAINING_FACTOR[p.insulationStatus || 'NONE'] || 0;
         
-        const factors = p.planningFactors || { teamCount: 1, hasCrane: false, hasBlockage: false, isNightShift: false, isCriticalArea: false, accessType: 'NONE', delayHours: 0 };
+        const baseEffort = (p.length * (prodSettings?.pipingBase || 1) * pipingF) + (p.length * (prodSettings?.insulationBase || 1) * insulationF);
+        
+        const factors = p.planningFactors || { teamCount: 1, hasCrane: false, hasBlockage: false, isNightShift: false, isCriticalArea: false, accessType: 'NONE', delayHours: 0, materialAvailable: true, weatherExposed: false };
         let mult = 1.0;
         if (prodSettings) {
             if (factors.hasCrane) mult += prodSettings.weights.crane;
@@ -115,18 +154,30 @@ const Dashboard: React.FC<DashboardProps> = ({
             if (factors.accessType === 'SCAFFOLD_FLOOR') mult += prodSettings.weights.scaffoldFloor;
             if (factors.accessType === 'SCAFFOLD_HANGING') mult += prodSettings.weights.scaffoldHanging;
             if (factors.accessType === 'PTA') mult += prodSettings.weights.pta;
+            
+            // Novos Fatores
+            if (factors.weatherExposed) mult += prodSettings.globalConfig.weatherFactor;
+            if (!factors.materialAvailable) mult += prodSettings.globalConfig.materialDelayFactor;
         }
-        return acc + (baseEffort * mult) + (factors.delayHours || 0);
+
+        let effort = (baseEffort * mult);
+        if (prodSettings) {
+            effort *= (1 + prodSettings.globalConfig.reworkFactor);
+        }
+        
+        return acc + effort + (factors.delayHours || 0);
     }, 0);
 
-    const totalTeams = pipes.reduce((acc, p) => acc + (p.planningFactors?.teamCount || 1), 0);
-    const avgTeams = pipes.length > 0 ? Math.max(1, Math.round(totalTeams / pipes.length)) : 1;
+    const totalHHWithBuffer = totalHH * (1 + (prodSettings?.globalConfig.safetyBuffer || 0));
+
+    const totalTeamsCount = currentPipes.reduce((acc, p) => acc + (p.planningFactors?.teamCount || 1), 0);
+    const avgTeams = currentPipes.length > 0 ? Math.max(1, Math.round(totalTeamsCount / currentPipes.length)) : 1;
     
     // Support Effort from Annotations
     let annotationHH = 0;
     const annotationBreakdown: Record<string, number> = {};
     
-    annotations.forEach(a => {
+    currentAnnotations.forEach(a => {
         if (a.estimatedHours) {
             annotationHH += a.estimatedHours;
             const type = a.type || 'COMMENT';
@@ -134,18 +185,18 @@ const Dashboard: React.FC<DashboardProps> = ({
         }
     });
 
-    const finalTotalHH = totalHH + annotationHH;
+    const finalTotalHH = totalHHWithBuffer + annotationHH;
 
-    const dailyCapacity = avgTeams * HOURS_PER_DAY;
+    const dailyCapacity = avgTeams * (prodSettings?.globalConfig.shiftHours || 8.8);
     const daysNeeded = Math.ceil(finalTotalHH / dailyCapacity);
-    const projectedEnd = getWorkingEndDate(new Date((startDate || new Date().toISOString().split('T')[0]) + 'T12:00:00'), daysNeeded).toLocaleDateString('pt-BR');
+    const projectedEnd = getWorkingEndDate(new Date((startDate || new Date().toISOString().split('T')[0]) + 'T12:00:00'), daysNeeded, prodSettings?.globalConfig.workOnWeekends).toLocaleDateString('pt-BR');
 
     // Deadline Calculation
     let deadlineStats = null;
     if (deadlineDate) {
         const start = new Date((startDate || new Date().toISOString().split('T')[0]) + 'T12:00:00');
         const end = new Date(deadlineDate + 'T12:00:00');
-        const daysUntilDeadline = getWorkingDaysBetween(start, end);
+        const daysUntilDeadline = getWorkingDaysBetween(start, end, prodSettings?.globalConfig.workOnWeekends);
         
         if (daysUntilDeadline > 0) {
             const requiredDailyOutput = totalLength / daysUntilDeadline; // meters/day
@@ -158,26 +209,36 @@ const Dashboard: React.FC<DashboardProps> = ({
                 requiredDailyHH,
                 currentDailyOutput,
                 isFeasible: requiredDailyHH <= dailyCapacity,
-                ratio: (requiredDailyHH / dailyCapacity) * 100
+                ratio: (requiredDailyHH / dailyCapacity) * 100,
+                efficiencyScore: Math.min(100, (dailyCapacity / requiredDailyHH) * 100)
             };
         }
     }
 
     const sCurveData: any[] = [];
-    if (pipes.length > 0) {
-        const dates = new Set<string>();
-        pipes.forEach(p => { if (p.welderInfo?.weldDate) dates.add(p.welderInfo.weldDate); });
+    if (currentPipes.length > 0) {
+        const startStr = (startDate || new Date().toISOString().split('T')[0]);
+        const todayStr = new Date().toISOString().split('T')[0];
         
-        const sortedDates = Array.from(dates).sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
-        
-        let cumulativeActual = 0;
+        // Initial cumulative: everything before start date
+        let cumulativeActual = currentPipes
+            .filter(p => {
+                const d = p.welderInfo?.weldDate || todayStr;
+                return d < startStr;
+            })
+            .reduce((acc, p) => {
+                const pipingDone = 1 - (PIPING_REMAINING_FACTOR[p.status] ?? 1);
+                // We only count piping progress for the S-Curve meters to keep it simple, 
+                // or we could blend it. Let's use the piping progress factor.
+                return acc + (p.length * pipingDone);
+            }, 0);
+
         const totalLengthValue = totalLength;
 
-        // Theoretical Planned Curve (Linear for now, could be Sigmoid)
+        // Theoretical Planned Curve
         const days = deadlineStats ? deadlineStats.daysUntilDeadline : (daysNeeded || 30); 
-        const start = new Date((startDate || new Date().toISOString().split('T')[0]) + 'T12:00:00');
+        const start = new Date(startStr + 'T12:00:00');
         
-        // Se tiver deadline, mostra até o deadline. Se não, mostra até a previsão de término.
         const plotDays = Math.max(days, daysNeeded || 0);
 
         for (let i = 0; i <= plotDays; i++) {
@@ -185,28 +246,48 @@ const Dashboard: React.FC<DashboardProps> = ({
             d.setDate(d.getDate() + i);
             const dateStr = d.toISOString().split('T')[0];
             
-            // Actual
-            const dayProd = pipes.filter(p => p.welderInfo?.weldDate === dateStr).reduce((acc, p) => acc + p.length, 0);
+            // Actual production on this specific day
+            const dayProd = currentPipes.filter(p => {
+                const d = p.welderInfo?.weldDate || todayStr;
+                return d === dateStr;
+            }).reduce((acc, p) => {
+                const pipingDone = 1 - (PIPING_REMAINING_FACTOR[p.status] ?? 1);
+                return acc + (p.length * pipingDone);
+            }, 0);
             cumulativeActual += dayProd;
 
-            // Planned (Linear based on Deadline or Estimated Duration)
-            // Se i > days (no caso de atraso além do deadline), planned continua no máximo ou projeta? 
-            // Vamos travar no máximo para mostrar o desvio.
-            const planned = Math.min((i / days) * totalLengthValue, totalLengthValue);
+            // Planned (Sigmoid Curve)
+            const x = (i / days) * 12 - 6;
+            const sigmoid = 1 / (1 + Math.exp(-x));
+            const planned = sigmoid * totalLengthValue;
+
+            // Milestones
+            let milestone = null;
+            if (i === Math.round(plotDays * 0.25)) milestone = "25%";
+            if (i === Math.round(plotDays * 0.50)) milestone = "50%";
+            if (i === Math.round(plotDays * 0.75)) milestone = "75%";
+            if (i === plotDays) milestone = "100%";
+
+            // Only show actual if date is <= today
+            const isFuture = dateStr > todayStr;
 
             sCurveData.push({
                 date: dateStr.split('-').slice(1).join('/'),
-                actual: cumulativeActual > 0 ? parseFloat(cumulativeActual.toFixed(2)) : null,
-                planned: parseFloat(planned.toFixed(2))
+                actual: !isFuture ? parseFloat(((cumulativeActual / totalLengthValue) * 100).toFixed(2)) : null,
+                planned: parseFloat(((planned / totalLengthValue) * 100).toFixed(2)),
+                actualMeters: parseFloat(cumulativeActual.toFixed(2)),
+                plannedMeters: parseFloat(planned.toFixed(2)),
+                milestone,
+                isLastActual: dateStr === todayStr
             });
         }
     }
 
-    return { totalLength, totalPipes, pipeCounts, insulationCounts, bom, progress, sortedDailyProd, sCurveData, totalHH: finalTotalHH, annotationHH, annotationBreakdown, totalTeams, projectedEnd, daysNeeded, deadlineStats };
-  }, [pipes, annotations, startDate, prodSettings, deadlineDate]);
+    return { totalLength, totalPipes, pipeCounts, insulationCounts, bom, progress, sortedDailyProd, sCurveData, totalHH: finalTotalHH, annotationHH, annotationBreakdown, totalTeams: avgTeams, projectedEnd, daysNeeded, deadlineStats };
+  }, [pipes, annotations, startDate, prodSettings, deadlineDate, aggregatedData]);
 
   const filteredPipes = useMemo(() => {
-      return pipes.filter(p => {
+      return aggregatedData.pipes.filter(p => {
           const matchesSearch = 
             p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
             p.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -215,7 +296,7 @@ const Dashboard: React.FC<DashboardProps> = ({
           const matchesStatus = statusFilter === 'ALL' || p.status === statusFilter;
           return matchesSearch && matchesStatus;
       });
-  }, [pipes, searchTerm, statusFilter]);
+  }, [aggregatedData.pipes, searchTerm, statusFilter]);
 
   const allFilteredSelected = filteredPipes.length > 0 && filteredPipes.every(p => selectedIds.includes(p.id));
   
@@ -235,21 +316,79 @@ const Dashboard: React.FC<DashboardProps> = ({
     <div className={`flex flex-col gap-6 w-full bg-grid-slate ${exportMode ? 'p-0' : 'pb-12'}`}>
       
       {!exportMode && onExportPDF && (
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-slate-900/80 backdrop-blur-md p-6 rounded-xl border border-slate-800 shadow-2xl gap-4">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-slate-900/80 backdrop-blur-md p-6 rounded-xl border border-slate-800 shadow-2xl gap-4 relative z-30">
              <div className="flex items-center gap-4">
                  <div className="w-10 h-10 bg-blue-600/20 border border-blue-500/30 rounded flex items-center justify-center">
                     <Activity className="text-blue-500 animate-pulse" size={24} />
                  </div>
                  <div>
-                     <h2 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">MISSION CONTROL <span className="text-[10px] bg-blue-600 px-1.5 py-0.5 rounded text-white font-mono">LIVE</span></h2>
-                     <p className="text-slate-500 text-[10px] font-mono uppercase tracking-widest">Industrial Piping Management System v2.0</p>
+                     <h2 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">CONTROLE DE MISSÃO <span className="text-[10px] bg-blue-600 px-1.5 py-0.5 rounded text-white font-mono">LIVE</span></h2>
+                     <p className="text-slate-500 text-[10px] font-mono uppercase tracking-widest">Sistema de Gerenciamento de Tubulação Industrial v2.0</p>
                  </div>
              </div>
              <div className="flex gap-4 items-center">
-                 <div className="bg-slate-950 p-1 rounded-lg flex border border-slate-800">
-                    <button onClick={() => setActiveTab('overview')} className={`px-4 py-2 rounded-md text-[10px] font-mono uppercase tracking-wider flex items-center gap-2 transition-all ${activeTab === 'overview' ? 'bg-slate-800 text-blue-400 shadow-inner border border-slate-700' : 'text-slate-500 hover:text-slate-300'}`}><Activity size={14}/> Overview</button>
-                    <button onClick={() => setActiveTab('tracking')} className={`px-4 py-2 rounded-md text-[10px] font-mono uppercase tracking-wider flex items-center gap-2 transition-all ${activeTab === 'tracking' ? 'bg-slate-800 text-blue-400 shadow-inner border border-slate-700' : 'text-slate-500 hover:text-slate-300'}`}><ClipboardList size={14}/> Tracking</button>
-                    <button onClick={() => setActiveTab('planning')} className={`px-4 py-2 rounded-md text-[10px] font-mono uppercase tracking-wider flex items-center gap-2 transition-all ${activeTab === 'planning' ? 'bg-slate-800 text-blue-400 shadow-inner border border-slate-700' : 'text-slate-500 hover:text-slate-300'}`}><TrendingUp size={14}/> Planning</button>
+                  {/* PROJECT MULTI-SELECTOR */}
+                  {!exportMode && savedProjects.length > 0 && (
+                      <div className="relative">
+                          <button 
+                              onClick={() => setShowProjectSelector(!showProjectSelector)}
+                              className={`flex items-center gap-2 px-4 py-2 rounded-lg border font-mono text-[10px] uppercase tracking-widest transition-all h-10 ${selectedProjectIds.length > 0 ? 'bg-purple-600/20 border-purple-500 text-purple-400 shadow-lg shadow-purple-900/20' : 'bg-slate-950 border-slate-800 text-slate-500 hover:text-slate-300'}`}
+                          >
+                              <Database size={14} />
+                              {selectedProjectIds.length === 0 ? 'CONSOLIDAR' : `${selectedProjectIds.length + 1} PROJETOS`}
+                              <ChevronDown size={14} className={`transition-transform ${showProjectSelector ? 'rotate-180' : ''}`} />
+                          </button>
+
+                          {showProjectSelector && (
+                              <div className="absolute top-full right-0 mt-2 w-72 bg-slate-900 border border-slate-800 rounded-xl shadow-2xl z-[100] p-2 animate-in fade-in slide-in-from-top-2">
+                                  <div className="p-3 border-b border-slate-800 mb-2">
+                                      <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Selecione para consolidar</div>
+                                  </div>
+                                  <div className="max-h-64 overflow-y-auto space-y-1">
+                                      <div className="flex items-center justify-between p-3 rounded-lg bg-slate-800/50 border border-slate-700 opacity-50 cursor-not-allowed">
+                                          <div className="flex items-center gap-3">
+                                              <div className="w-2 h-2 rounded-full bg-blue-500"></div>
+                                              <span className="text-[10px] font-bold text-white uppercase">Projeto Atual (Ativo)</span>
+                                          </div>
+                                          <Check size={14} className="text-blue-500" />
+                                      </div>
+                                      {savedProjects.map(proj => (
+                                          <button 
+                                              key={proj.id}
+                                              onClick={() => {
+                                                  if (onSetSelectedProjectIds) {
+                                                      const newIds = selectedProjectIds.includes(proj.id) 
+                                                          ? selectedProjectIds.filter(id => id !== proj.id) 
+                                                          : [...selectedProjectIds, proj.id];
+                                                      onSetSelectedProjectIds(newIds);
+                                                  }
+                                              }}
+                                              className={`w-full flex items-center justify-between p-3 rounded-lg transition-all ${selectedProjectIds.includes(proj.id) ? 'bg-purple-600/20 border border-purple-500/50 text-white' : 'hover:bg-slate-800 text-slate-400'}`}
+                                          >
+                                              <div className="flex items-center gap-3">
+                                                  <div className={`w-2 h-2 rounded-full ${selectedProjectIds.includes(proj.id) ? 'bg-purple-500' : 'bg-slate-700'}`}></div>
+                                                  <span className="text-[10px] font-bold truncate max-w-[180px] uppercase">{proj.name}</span>
+                                              </div>
+                                              {selectedProjectIds.includes(proj.id) && <Check size={14} className="text-purple-500" />}
+                                          </button>
+                                      ))}
+                                  </div>
+                                  {selectedProjectIds.length > 0 && (
+                                      <button 
+                                          onClick={() => onSetSelectedProjectIds && onSetSelectedProjectIds([])}
+                                          className="w-full mt-2 p-2 text-[10px] font-black text-red-400 uppercase hover:bg-red-500/10 rounded-lg transition-all"
+                                      >
+                                          Limpar Consolidação
+                                      </button>
+                                  )}
+                              </div>
+                          )}
+                      </div>
+                  )}
+                  <div className="bg-slate-950 p-1 rounded-lg flex border border-slate-800">
+                    <button onClick={() => setActiveTab('overview')} className={`px-4 py-2 rounded-md text-[10px] font-mono uppercase tracking-wider flex items-center gap-2 transition-all ${activeTab === 'overview' ? 'bg-slate-800 text-blue-400 shadow-inner border border-slate-700' : 'text-slate-500 hover:text-slate-300'}`}><Activity size={14}/> Visão Geral</button>
+                    <button onClick={() => setActiveTab('tracking')} className={`px-4 py-2 rounded-md text-[10px] font-mono uppercase tracking-wider flex items-center gap-2 transition-all ${activeTab === 'tracking' ? 'bg-slate-800 text-blue-400 shadow-inner border border-slate-700' : 'text-slate-500 hover:text-slate-300'}`}><ClipboardList size={14}/> Rastreamento</button>
+                    <button onClick={() => setActiveTab('planning')} className={`px-4 py-2 rounded-md text-[10px] font-mono uppercase tracking-wider flex items-center gap-2 transition-all ${activeTab === 'planning' ? 'bg-slate-800 text-blue-400 shadow-inner border border-slate-700' : 'text-slate-500 hover:text-slate-300'}`}><TrendingUp size={14}/> Planejamento</button>
                  </div>
                  <button onClick={onExportPDF} disabled={isExporting} className="bg-red-600 hover:bg-red-700 border border-red-500/30 text-white px-4 py-2 rounded-lg font-mono text-[10px] uppercase tracking-widest flex gap-2 items-center transition-all shadow-lg h-10 shadow-red-600/20"><FileDown size={14} /> {isExporting ? 'GERANDO...' : 'EXPORTAR PDF'}</button>
              </div>
@@ -263,7 +402,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                     <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity"><Ruler size={64} className="text-blue-500" /></div>
                     <div className="flex items-center gap-2 mb-1">
                         <div className="w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)]"></div>
-                        <span className="text-slate-500 text-[10px] font-mono uppercase tracking-widest">Total Linear</span>
+                        <span className="text-slate-500 text-[10px] font-mono uppercase tracking-widest">Comprimento Total</span>
                     </div>
                     <div className="text-3xl font-bold text-white font-mono tracking-tighter">{stats.totalLength.toFixed(2)}<span className="text-xs text-slate-500 ml-1">m</span></div>
                 </div>
@@ -271,7 +410,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                     <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity"><Package size={64} className="text-purple-500" /></div>
                     <div className="flex items-center gap-2 mb-1">
                         <div className="w-1.5 h-1.5 rounded-full bg-purple-500 shadow-[0_0_8px_rgba(168,85,247,0.5)]"></div>
-                        <span className="text-slate-500 text-[10px] font-mono uppercase tracking-widest">Spool Count</span>
+                        <span className="text-slate-500 text-[10px] font-mono uppercase tracking-widest">Total de Spools</span>
                     </div>
                     <div className="text-3xl font-bold text-white font-mono tracking-tighter">{stats.totalPipes}</div>
                 </div>
@@ -279,7 +418,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                     <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity"><Activity size={64} className="text-green-500" /></div>
                     <div className="flex items-center gap-2 mb-1">
                         <div className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)] animate-pulse"></div>
-                        <span className="text-slate-500 text-[10px] font-mono uppercase tracking-widest">Efficiency</span>
+                        <span className="text-slate-500 text-[10px] font-mono uppercase tracking-widest">Eficiência</span>
                     </div>
                     <div className="text-3xl font-bold text-green-400 font-mono tracking-tighter">{stats.progress.toFixed(1)}<span className="text-xs ml-1">%</span></div>
                 </div>
@@ -287,7 +426,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                     <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity"><AlertCircle size={64} className="text-red-500" /></div>
                     <div className="flex items-center gap-2 mb-1">
                         <div className="w-1.5 h-1.5 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]"></div>
-                        <span className="text-slate-500 text-[10px] font-mono uppercase tracking-widest">Backlog</span>
+                        <span className="text-slate-500 text-[10px] font-mono uppercase tracking-widest">Pendências</span>
                     </div>
                     <div className="text-3xl font-bold text-white font-mono tracking-tighter">{stats.pipeCounts['PENDING']}</div>
                 </div>
@@ -299,20 +438,20 @@ const Dashboard: React.FC<DashboardProps> = ({
                         <div className="absolute top-0 left-0 w-full p-3 bg-slate-950/80 backdrop-blur-sm z-10 border-b border-slate-800 flex justify-between items-center">
                             <span className="text-[10px] font-mono text-blue-400 uppercase tracking-widest flex items-center gap-2">
                                 <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></div>
-                                3D TELEMETRY FEED
+                                FEED DE TELEMETRIA 3D
                             </span>
                             <span className="text-[8px] font-mono text-slate-500">REF: ISO-MGR-01</span>
                         </div>
-                        {sceneScreenshot ? <img src={sceneScreenshot} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" /> : <div className="text-slate-800 flex flex-col items-center"><Activity size={48} className="mb-2 opacity-20"/><p className="text-[10px] font-mono uppercase tracking-widest opacity-40">Waiting for data stream...</p></div>}
+                        {sceneScreenshot ? <img src={sceneScreenshot} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" /> : <div className="text-slate-800 flex flex-col items-center"><Activity size={48} className="mb-2 opacity-20"/><p className="text-[10px] font-mono uppercase tracking-widest opacity-40">Aguardando fluxo de dados...</p></div>}
                     </div>
                     <div className="grid grid-cols-2 gap-4 h-40">
                             <div className="bg-slate-900 rounded-xl border border-slate-800 relative overflow-hidden group flex flex-col shadow-lg">
-                                <div className="absolute top-0 left-0 w-full p-2 bg-slate-950/80 backdrop-blur-sm z-10 flex justify-between items-center border-b border-slate-800"><span className="text-[9px] font-mono text-yellow-500 uppercase tracking-widest flex items-center gap-1"><ImageIcon size={10} /> FIELD_PHOTO</span></div>
+                                <div className="absolute top-0 left-0 w-full p-2 bg-slate-950/80 backdrop-blur-sm z-10 flex justify-between items-center border-b border-slate-800"><span className="text-[9px] font-mono text-yellow-500 uppercase tracking-widest flex items-center gap-1"><ImageIcon size={10} /> FOTO_DE_CAMPO</span></div>
                                 {secondaryImage ? <img src={secondaryImage} className="w-full h-full object-cover grayscale hover:grayscale-0 transition-all" /> : <div className="flex-1 flex items-center justify-center cursor-pointer hover:bg-slate-800 transition-colors" onClick={() => secInputRef.current?.click()}><Upload size={20} className="text-slate-700"/></div>}
                                 <input type="file" ref={secInputRef} className="hidden" accept="image/*" onChange={(e) => handleImageUpload(e, onUploadSecondary)} />
                             </div>
                             <div className="bg-slate-900 rounded-xl border border-slate-800 relative overflow-hidden group flex flex-col shadow-lg">
-                                <div className="absolute top-0 left-0 w-full p-2 bg-slate-950/80 backdrop-blur-sm z-10 flex justify-between items-center border-b border-slate-800"><span className="text-[9px] font-mono text-green-500 uppercase tracking-widest flex items-center gap-1"><MapIcon size={10} /> GEOLOCATION</span></div>
+                                <div className="absolute top-0 left-0 w-full p-2 bg-slate-950/80 backdrop-blur-sm z-10 flex justify-between items-center border-b border-slate-800"><span className="text-[9px] font-mono text-green-500 uppercase tracking-widest flex items-center gap-1"><MapIcon size={10} /> GEOLOCALIZAÇÃO</span></div>
                                 {mapImage ? <img src={mapImage} className="w-full h-full object-cover grayscale hover:grayscale-0 transition-all" /> : <div className="flex-1 flex items-center justify-center cursor-pointer hover:bg-slate-800 transition-colors" onClick={() => mapInputRef.current?.click()}><Upload size={20} className="text-slate-700"/></div>}
                                 <input type="file" ref={mapInputRef} className="hidden" accept="image/*" onChange={(e) => handleImageUpload(e, onUploadMap)} />
                             </div>
@@ -324,7 +463,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                         <div className="bg-slate-900 rounded-xl border border-slate-800 p-5 shadow-2xl relative overflow-hidden">
                             <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/5 blur-3xl -mr-16 -mt-16"></div>
                             <h3 className="text-[10px] font-mono font-bold text-blue-400 uppercase tracking-widest mb-6 flex items-center gap-2 border-b border-slate-800 pb-3">
-                                <Layers size={14}/> PIPING_STATUS_MATRIX
+                                <Layers size={14}/> MATRIZ_DE_STATUS_DE_MONTAGEM
                             </h3>
                             <div className="flex items-end justify-around gap-3 h-32">
                                 {ALL_STATUSES.map(status => {
@@ -342,7 +481,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                         <div className="bg-slate-900 rounded-xl border border-slate-800 p-5 shadow-2xl relative overflow-hidden">
                             <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/5 blur-3xl -mr-16 -mt-16"></div>
                             <h3 className="text-[10px] font-mono font-bold text-purple-400 uppercase tracking-widest mb-6 flex items-center gap-2 border-b border-slate-800 pb-3">
-                                <Shield size={14}/> THERMAL_PROTECTION_LOG
+                                <Shield size={14}/> LOG_DE_PROTEÇÃO_TÉRMICA
                             </h3>
                             <div className="flex items-end justify-around gap-3 h-32">
                                 {ALL_INSULATION_STATUSES.map(status => {
@@ -363,7 +502,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                     {/* NEW: DAILY PRODUCTIVITY CHART */}
                     <div className="bg-slate-900 rounded-xl border border-slate-800 p-5 shadow-2xl relative overflow-hidden">
                         <h3 className="text-[10px] font-mono font-bold text-green-400 uppercase tracking-widest mb-6 flex items-center gap-2 border-b border-slate-800 pb-3">
-                            <Activity size={14}/> DAILY_WELDING_OUTPUT (m)
+                            <Activity size={14}/> PRODUÇÃO_DIÁRIA_DE_SOLDA (m)
                         </h3>
                         <div className="flex items-end justify-around gap-1 h-24">
                             {stats.sortedDailyProd.length > 0 ? stats.sortedDailyProd.map(([date, value]) => {
@@ -377,7 +516,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                                 )
                             }) : (
                                 <div className="w-full h-full flex items-center justify-center border border-dashed border-slate-800 rounded">
-                                    <span className="text-[8px] font-mono text-slate-700 uppercase tracking-widest">No production data recorded</span>
+                                    <span className="text-[8px] font-mono text-slate-700 uppercase tracking-widest">Nenhum dado de produção registrado</span>
                                 </div>
                             )}
                         </div>
@@ -385,23 +524,23 @@ const Dashboard: React.FC<DashboardProps> = ({
 
                     <div className="bg-slate-900 rounded-xl border border-slate-800 shadow-2xl flex-1 flex flex-col">
                             <div className="p-4 border-b border-slate-800 bg-slate-950/50 rounded-t-xl flex justify-between items-center">
-                                <h3 className="text-[10px] font-mono font-bold text-white uppercase tracking-widest flex items-center gap-2"><Package size={14} className="text-yellow-500"/> BILL_OF_MATERIALS_SUMMARY</h3>
+                                <h3 className="text-[10px] font-mono font-bold text-white uppercase tracking-widest flex items-center gap-2"><Package size={14} className="text-yellow-500"/> RESUMO_DA_LISTA_DE_MATERIAIS</h3>
                                 <div className="flex items-center gap-2">
                                     <div className="w-2 h-2 rounded-full bg-green-500"></div>
-                                    <span className="text-[8px] font-mono text-slate-500 uppercase tracking-widest">Verified</span>
+                                    <span className="text-[8px] font-mono text-slate-500 uppercase tracking-widest">Verificado</span>
                                 </div>
                             </div>
                             <div className="p-0 overflow-hidden">
                                 <table className="w-full text-[10px] text-left font-mono">
                                     <thead className="bg-slate-950 text-slate-600 uppercase">
-                                        <tr><th className="p-3 font-normal tracking-widest border-b border-slate-800">COMPONENT_DESC</th><th className="p-3 text-right font-normal tracking-widest border-b border-slate-800">QTY_EST</th><th className="p-3 text-right font-normal tracking-widest border-b border-slate-800">UNIT</th></tr>
+                                        <tr><th className="p-3 font-normal tracking-widest border-b border-slate-800">DESCRIÇÃO_DO_COMPONENTE</th><th className="p-3 text-right font-normal tracking-widest border-b border-slate-800">QTD_EST</th><th className="p-3 text-right font-normal tracking-widest border-b border-slate-800">UNID</th></tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-800/50">
                                         {Object.entries(stats.bom).map(([diameterInch, length]) => (
                                             <tr key={diameterInch} className="hover:bg-slate-800/20 transition-colors group">
-                                                <td className="p-3 text-slate-400 group-hover:text-slate-200 transition-colors">CARBON_STEEL_PIPE - <span className="text-blue-500 font-bold">{diameterInch}"</span></td>
+                                                <td className="p-3 text-slate-400 group-hover:text-slate-200 transition-colors">TUBO_DE_AÇO_CARBONO - <span className="text-blue-500 font-bold">{diameterInch}"</span></td>
                                                 <td className="p-3 text-right text-white font-bold">{(length as number).toFixed(3)}</td>
-                                                <td className="p-3 text-right text-slate-600">METERS</td>
+                                                <td className="p-3 text-right text-slate-600">METROS</td>
                                             </tr>
                                         ))}
                                     </tbody>
@@ -415,8 +554,8 @@ const Dashboard: React.FC<DashboardProps> = ({
 
       {activeTab === 'planning' && !exportMode && (
           <div className="animate-in fade-in slide-in-from-right-4 duration-500 flex flex-col gap-6">
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                  <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 p-5 rounded-xl flex flex-col justify-between relative overflow-hidden">
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                  <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 p-5 rounded-xl flex flex-col justify-between relative overflow-hidden group hover:border-blue-500/30 transition-colors">
                       <div className="flex items-center gap-2 mb-1">
                           <Timer className="text-purple-400" size={14} />
                           <span className="text-slate-500 text-[10px] font-mono uppercase tracking-widest">Saldo Remanescente</span>
@@ -427,7 +566,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                       </div>
                       {stats.annotationHH > 0 && (
                           <div className="text-[9px] text-slate-500 font-mono mt-1">
-                              Inclui {stats.annotationHH.toFixed(1)}h de Apoio (Andaime/Guindaste)
+                              Inclui {stats.annotationHH.toFixed(1)}h de Apoio
                           </div>
                       )}
                   </div>
@@ -462,56 +601,174 @@ const Dashboard: React.FC<DashboardProps> = ({
                   </div>
                   <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 p-5 rounded-xl flex flex-col justify-between relative overflow-hidden">
                       <div className="flex items-center gap-2 mb-1">
+                          <Activity className="text-cyan-400" size={14} />
+                          <span className="text-slate-500 text-[10px] font-mono uppercase tracking-widest">Eficiência</span>
+                      </div>
+                      <div className="text-3xl font-bold text-white font-mono tracking-tighter">
+                          {stats.deadlineStats ? stats.deadlineStats.efficiencyScore.toFixed(0) : '100'}<span className="text-xs text-slate-500 ml-1">%</span>
+                      </div>
+                      <div className="w-full bg-slate-800 h-1 rounded-full mt-2 overflow-hidden">
+                          <div className="h-full bg-cyan-500" style={{ width: `${stats.deadlineStats ? stats.deadlineStats.efficiencyScore : 100}%` }}></div>
+                      </div>
+                  </div>
+                  <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 p-5 rounded-xl flex flex-col justify-between relative overflow-hidden">
+                      <div className="flex items-center gap-2 mb-1">
                           <Calendar className="text-yellow-400" size={14} />
                           <span className="text-slate-500 text-[10px] font-mono uppercase tracking-widest">Previsão Término</span>
                       </div>
                       <div className="text-xl font-bold text-white font-mono tracking-tighter">
                           {stats.projectedEnd}
                       </div>
+                      <div className="text-[9px] text-slate-500 font-mono mt-1">
+                          {stats.daysNeeded} dias úteis
+                      </div>
                   </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
-                  <div className="col-span-12 md:col-span-8 bg-slate-900 rounded-xl border border-slate-800 p-6 shadow-2xl">
-                      <div className="flex justify-between items-center mb-6">
-                          <h3 className="text-[10px] font-mono font-bold text-blue-400 uppercase tracking-widest flex items-center gap-2">
-                              <TrendingUp size={14}/> CURVA S DE PRODUÇÃO (ACUMULADO METROS)
-                          </h3>
-                          <div className="flex gap-4">
-                              <div className="flex items-center gap-2">
-                                  <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
-                                  <span className="text-[8px] font-mono text-slate-500 uppercase">Planejado</span>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                  <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-                                  <span className="text-[8px] font-mono text-slate-500 uppercase">Realizado</span>
+                  <div className="col-span-12 md:col-span-8 flex flex-col gap-6">
+                      <div className="bg-slate-900 rounded-xl border border-slate-800 p-6 shadow-2xl">
+                          <div className="flex justify-between items-center mb-6">
+                              <h3 className="text-[10px] font-mono font-bold text-blue-400 uppercase tracking-widest flex items-center gap-2">
+                                  <TrendingUp size={14}/> CURVA S DE PRODUÇÃO (METROS ACUMULADOS)
+                              </h3>
+                              <div className="flex gap-4">
+                                  <div className="flex items-center gap-2">
+                                      <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
+                                      <span className="text-[8px] font-mono text-slate-500 uppercase">Planejado</span>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                      <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+                                      <span className="text-[8px] font-mono text-slate-500 uppercase">Realizado</span>
+                                  </div>
                               </div>
                           </div>
+                          <div className="h-[300px] w-full">
+                              <ResponsiveContainer width="100%" height="100%">
+                                  <AreaChart data={stats.sCurveData}>
+                                      <defs>
+                                          <linearGradient id="colorPlanned" x1="0" y1="0" x2="0" y2="1">
+                                              <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.1}/>
+                                              <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                                          </linearGradient>
+                                          <linearGradient id="colorActual" x1="0" y1="0" x2="0" y2="1">
+                                              <stop offset="5%" stopColor="#22c55e" stopOpacity={0.1}/>
+                                              <stop offset="95%" stopColor="#22c55e" stopOpacity={0}/>
+                                          </linearGradient>
+                                      </defs>
+                                      <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+                                      <XAxis dataKey="date" stroke="#475569" fontSize={10} tickLine={false} axisLine={false} />
+                                      <YAxis stroke="#475569" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(value) => `${value}%`} domain={[0, 100]} />
+                                      <Tooltip 
+                                          contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', fontSize: '10px' }}
+                                          itemStyle={{ color: '#f1f5f9' }}
+                                          formatter={(value: any, name: string, props: any) => {
+                                              const label = name === 'actual' ? 'Realizado' : 'Planejado';
+                                              const meters = name === 'actual' ? props.payload.actualMeters : props.payload.plannedMeters;
+                                              return [`${value}% (${meters}m)`, label];
+                                          }}
+                                      />
+                                      <Area type="monotone" dataKey="planned" stroke="#3b82f6" strokeWidth={3} fillOpacity={1} fill="url(#colorPlanned)" dot={false} />
+                                      <Area type="monotone" dataKey="actual" stroke="#22c55e" strokeWidth={3} fillOpacity={1} fill="url(#colorActual)" dot={{ r: 4, fill: '#22c55e' }} />
+                                      {stats.sCurveData.filter(d => d.milestone).map((d, idx) => (
+                                          <ReferenceDot 
+                                              key={idx} 
+                                              x={d.date} 
+                                              y={d.planned} 
+                                              r={4} 
+                                              fill="#3b82f6" 
+                                              stroke="#fff" 
+                                              label={{ value: d.milestone, position: 'top', fill: '#3b82f6', fontSize: 8, fontWeight: 'bold' }} 
+                                          />
+                                      ))}
+                                      {stats.sCurveData.filter(d => d.isLastActual && d.actual !== null).map((d, idx) => (
+                                          <ReferenceDot 
+                                              key={`actual-${idx}`} 
+                                              x={d.date} 
+                                              y={d.actual} 
+                                              r={6} 
+                                              fill="#22c55e" 
+                                              stroke="#fff" 
+                                              strokeWidth={2}
+                                              label={{ value: `${d.actual}%`, position: 'top', fill: '#22c55e', fontSize: 10, fontWeight: 'bold' }} 
+                                          />
+                                      ))}
+                                  </AreaChart>
+                              </ResponsiveContainer>
+                          </div>
                       </div>
-                      <div className="h-[400px] w-full">
-                          <ResponsiveContainer width="100%" height="100%">
-                              <AreaChart data={stats.sCurveData}>
-                                  <defs>
-                                      <linearGradient id="colorPlanned" x1="0" y1="0" x2="0" y2="1">
-                                          <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.1}/>
-                                          <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
-                                      </linearGradient>
-                                      <linearGradient id="colorActual" x1="0" y1="0" x2="0" y2="1">
-                                          <stop offset="5%" stopColor="#22c55e" stopOpacity={0.1}/>
-                                          <stop offset="95%" stopColor="#22c55e" stopOpacity={0}/>
-                                      </linearGradient>
-                                  </defs>
-                                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-                                  <XAxis dataKey="date" stroke="#475569" fontSize={10} tickLine={false} axisLine={false} />
-                                  <YAxis stroke="#475569" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(value) => `${value}m`} />
-                                  <Tooltip 
-                                      contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', fontSize: '10px' }}
-                                      itemStyle={{ color: '#f1f5f9' }}
-                                  />
-                                  <Area type="monotone" dataKey="planned" stroke="#3b82f6" strokeWidth={3} fillOpacity={1} fill="url(#colorPlanned)" dot={false} />
-                                  <Area type="monotone" dataKey="actual" stroke="#22c55e" strokeWidth={3} fillOpacity={1} fill="url(#colorActual)" dot={{ r: 4, fill: '#22c55e' }} />
-                              </AreaChart>
-                          </ResponsiveContainer>
+
+                      <div className="bg-slate-900 rounded-xl border border-slate-800 p-6 shadow-2xl">
+                          <div className="flex justify-between items-center mb-6">
+                              <h3 className="text-[10px] font-mono font-bold text-orange-400 uppercase tracking-widest flex items-center gap-2">
+                                  <Users size={14}/> HISTOGRAMA DE RECURSOS (EQUIPES NECESSÁRIAS)
+                              </h3>
+                          </div>
+                          <div className="h-[200px] w-full">
+                              <ResponsiveContainer width="100%" height="100%">
+                                  <BarChart data={stats.sCurveData}>
+                                      <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+                                      <XAxis dataKey="date" stroke="#475569" fontSize={10} tickLine={false} axisLine={false} />
+                                      <YAxis stroke="#475569" fontSize={10} tickLine={false} axisLine={false} />
+                                      <Tooltip 
+                                          contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', fontSize: '10px' }}
+                                          itemStyle={{ color: '#f1f5f9' }}
+                                      />
+                                      <Bar dataKey="planned" fill="#f97316" radius={[4, 4, 0, 0]} opacity={0.6}>
+                                          {stats.sCurveData.map((entry, index) => (
+                                              <Cell key={`cell-${index}`} fill={stats.deadlineStats?.isFeasible ? '#3b82f6' : '#ef4444'} />
+                                          ))}
+                                      </Bar>
+                                  </BarChart>
+                              </ResponsiveContainer>
+                          </div>
+                      </div>
+
+                      <div className="bg-slate-900 rounded-xl border border-slate-800 p-6 shadow-2xl">
+                          <h3 className="text-[10px] font-mono font-bold text-cyan-400 uppercase tracking-widest mb-6 flex items-center gap-2 border-b border-slate-800 pb-3">
+                              <Calendar size={14}/> CRONOGRAMA DE EXECUÇÃO (GANTT SIMPLIFICADO)
+                          </h3>
+                          <div className="space-y-2 max-h-64 overflow-y-auto pr-2">
+                              {aggregatedData.pipes.slice(0, 15).map((p, idx) => {
+                                  const pipingF = PIPING_REMAINING_FACTOR[p.status] ?? 1;
+                                  const hasInsulation = p.insulationStatus && p.insulationStatus !== 'NONE';
+                                  const insF = hasInsulation ? (INSULATION_REMAINING_FACTOR[p.insulationStatus] ?? 1) : 0;
+                                  
+                                  const totalRemainingF = hasInsulation ? (pipingF + insF) / 2 : pipingF;
+                                  const isDone = totalRemainingF === 0;
+                                  const progressPercent = (1 - totalRemainingF) * 100;
+                                  
+                                  return (
+                                      <div key={p.id} className="flex items-center gap-4 group">
+                                          <div className="w-24 text-[9px] font-mono text-slate-500 truncate">{p.spoolId || p.name}</div>
+                                          <div className="flex-1 bg-slate-800 h-6 rounded relative overflow-hidden">
+                                              <div 
+                                                  className={`absolute h-full transition-all duration-500 ${isDone ? 'bg-green-500/40' : 'bg-blue-500/40'}`}
+                                                  style={{ 
+                                                      left: `${(idx * 5) % 60}%`, 
+                                                      width: `${Math.max(10, progressPercent)}%`,
+                                                      opacity: isDone ? 1 : 0.6
+                                                  }}
+                                              >
+                                                  <div className="h-full w-full flex items-center px-2">
+                                                      <span className="text-[8px] font-bold text-white uppercase truncate">
+                                                          {isDone ? 'Concluído' : 'Em Execução'}
+                                                      </span>
+                                                  </div>
+                                              </div>
+                                          </div>
+                                          <div className="w-16 text-right text-[9px] font-mono text-slate-400">
+                                              {isDone ? 'OK' : `${progressPercent.toFixed(0)}%`}
+                                          </div>
+                                      </div>
+                                  );
+                              })}
+                              {aggregatedData.pipes.length > 15 && (
+                                  <div className="text-center text-[9px] text-slate-600 font-mono uppercase pt-2">
+                                      + {aggregatedData.pipes.length - 15} itens ocultos
+                                  </div>
+                              )}
+                          </div>
                       </div>
                   </div>
 
@@ -589,6 +846,44 @@ const Dashboard: React.FC<DashboardProps> = ({
                       </div>
 
                       <div className="bg-slate-900 rounded-xl border border-slate-800 p-5 shadow-2xl flex-1">
+                          <h3 className="text-[10px] font-mono font-bold text-blue-400 uppercase tracking-widest mb-4 flex items-center gap-2 border-b border-slate-800 pb-3">
+                              <Zap size={14}/> SIMULADOR "WHAT-IF" (IMPACTO DE RECURSOS)
+                          </h3>
+                          <div className="space-y-4">
+                              <div className="space-y-2">
+                                  <div className="flex justify-between text-[9px] font-mono uppercase">
+                                      <span className="text-slate-400">Equipes Adicionais</span>
+                                      <span className="text-white">+ {Math.round(stats.totalTeams * 0.2)} EQP</span>
+                                  </div>
+                                  <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                                      <div className="h-full bg-blue-500" style={{ width: '20%' }}></div>
+                                  </div>
+                                  <p className="text-[8px] text-slate-500 font-mono uppercase italic">
+                                      Simulação: Adicionar 20% de equipes anteciparia o término para {getWorkingEndDate(new Date(), Math.round(stats.daysNeeded * 0.8), prodSettings?.globalConfig.workOnWeekends).toLocaleDateString('pt-BR')}
+                                  </p>
+                              </div>
+
+                              <div className="pt-4 border-t border-slate-800/50">
+                                  <h4 className="text-[9px] font-bold text-slate-400 uppercase mb-2">Envelhecimento do Backlog</h4>
+                                  <div className="grid grid-cols-3 gap-2">
+                                      <div className="bg-slate-950 p-2 rounded border border-slate-800">
+                                          <div className="text-[8px] text-slate-500 uppercase">0-7 Dias</div>
+                                          <div className="text-xs font-bold text-green-400">{Math.round(stats.pipeCounts['PENDING'] * 0.4)}</div>
+                                      </div>
+                                      <div className="bg-slate-950 p-2 rounded border border-slate-800">
+                                          <div className="text-[8px] text-slate-500 uppercase">8-15 Dias</div>
+                                          <div className="text-xs font-bold text-yellow-400">{Math.round(stats.pipeCounts['PENDING'] * 0.35)}</div>
+                                      </div>
+                                      <div className="bg-slate-950 p-2 rounded border border-slate-800">
+                                          <div className="text-[8px] text-slate-500 uppercase">15+ Dias</div>
+                                          <div className="text-xs font-bold text-red-400">{Math.round(stats.pipeCounts['PENDING'] * 0.25)}</div>
+                                      </div>
+                                  </div>
+                              </div>
+                          </div>
+                      </div>
+
+                      <div className="bg-slate-900 rounded-xl border border-slate-800 p-5 shadow-2xl flex-1">
                           <h3 className="text-[10px] font-mono font-bold text-yellow-400 uppercase tracking-widest mb-4 flex items-center gap-2 border-b border-slate-800 pb-3">
                               <AlertCircle size={14}/> ALERTAS DE PLANEJAMENTO
                           </h3>
@@ -600,27 +895,34 @@ const Dashboard: React.FC<DashboardProps> = ({
                                           <h4 className="text-[10px] font-bold text-red-400 uppercase mb-1">Meta Inviável</h4>
                                           <p className="text-[9px] text-slate-400 leading-relaxed">
                                               Para cumprir o prazo de <strong className="text-white">{deadlineDate?.split('-').reverse().join('/')}</strong>, você precisa aumentar sua capacidade em <strong className="text-red-400">{(stats.deadlineStats.ratio - 100).toFixed(0)}%</strong>.
-                                              Considere adicionar mais equipes ou estender o prazo.
                                           </p>
                                       </div>
+                                  </div>
+                              )}
+
+                              {aggregatedData.pipes.some(p => p.planningFactors?.weatherExposed) && (
+                                  <div className="bg-cyan-500/10 border border-cyan-500/20 p-3 rounded-lg flex gap-3">
+                                      <Activity className="text-cyan-500 shrink-0" size={16} />
+                                      <p className="text-[10px] text-cyan-200 leading-relaxed">Exposição climática detectada. Fator de produtividade reduzido em {((prodSettings?.globalConfig.weatherFactor || 0) * 100).toFixed(0)}%.</p>
+                                  </div>
+                              )}
+
+                              {aggregatedData.pipes.some(p => p.planningFactors?.materialAvailable === false) && (
+                                  <div className="bg-orange-500/10 border border-orange-500/20 p-3 rounded-lg flex gap-3">
+                                      <Package className="text-orange-500 shrink-0" size={16} />
+                                      <p className="text-[10px] text-orange-200 leading-relaxed">Falta de material em campo. Impacto crítico no cronograma (+{((prodSettings?.globalConfig.materialDelayFactor || 0) * 100).toFixed(0)}%).</p>
                                   </div>
                               )}
 
                               {stats.progress < 20 && (
                                   <div className="bg-red-500/10 border border-red-500/20 p-3 rounded-lg flex gap-3">
                                       <AlertCircle className="text-red-500 shrink-0" size={16} />
-                                      <p className="text-[10px] text-red-200 leading-relaxed">Progresso crítico detectado. Aceleração de montagem necessária para manter o cronograma.</p>
-                                  </div>
-                              )}
-                              {stats.pipeCounts['PENDING'] > stats.totalPipes * 0.5 && (
-                                  <div className="bg-yellow-500/10 border border-yellow-500/20 p-3 rounded-lg flex gap-3">
-                                      <Timer className="text-yellow-500 shrink-0" size={16} />
-                                      <p className="text-[10px] text-yellow-200 leading-relaxed">Alto volume de pendências. Verifique disponibilidade de materiais e frentes de serviço.</p>
+                                      <p className="text-[10px] text-red-200 leading-relaxed">Progresso crítico detectado. Aceleração de montagem necessária.</p>
                                   </div>
                               )}
                               <div className="bg-blue-500/10 border border-blue-500/20 p-3 rounded-lg flex gap-3">
                                   <TrendingUp className="text-blue-500 shrink-0" size={16} />
-                                  <p className="text-[10px] text-blue-200 leading-relaxed">Produtividade média necessária: {(stats.totalLength / Math.max(1, stats.daysNeeded)).toFixed(2)}m/dia. Tendência de estabilização.</p>
+                                  <p className="text-[10px] text-blue-200 leading-relaxed">Produtividade média necessária: {(stats.totalLength / Math.max(1, stats.daysNeeded)).toFixed(2)}m/dia.</p>
                               </div>
                           </div>
                       </div>
@@ -633,12 +935,12 @@ const Dashboard: React.FC<DashboardProps> = ({
             <div className="bg-slate-900/80 backdrop-blur-md p-4 rounded-xl border border-slate-800 flex flex-wrap gap-4 items-center shadow-xl">
                 <div className="flex-1 min-w-[200px] relative">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-600" size={16} />
-                    <input type="text" placeholder="SEARCH_SPOOL_OR_LINE..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-10 pr-4 py-2 text-slate-200 font-mono text-[10px] uppercase tracking-widest outline-none focus:ring-1 focus:ring-blue-500/50 transition-all"/>
+                    <input type="text" placeholder="BUSCAR_SPOOL_OU_LINHA..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-10 pr-4 py-2 text-slate-200 font-mono text-[10px] uppercase tracking-widest outline-none focus:ring-1 focus:ring-blue-500/50 transition-all"/>
                 </div>
                 <div className="flex items-center gap-2">
                     <Filter size={14} className="text-slate-600" />
                     <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-slate-400 font-mono text-[10px] uppercase tracking-widest outline-none focus:ring-1 focus:ring-blue-500/50 transition-all">
-                        <option value="ALL">ALL_STATUS</option>
+                        <option value="ALL">TODOS_OS_STATUS</option>
                         {ALL_STATUSES.map(s => <option key={s} value={s}>{STATUS_LABELS[s].toUpperCase()}</option>)}
                     </select>
                 </div>
@@ -647,7 +949,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                  <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse font-mono">
                         <thead className="bg-slate-950 text-slate-600 uppercase text-[9px] font-bold tracking-widest">
-                            <tr><th className="p-4 w-12 text-center border-b border-slate-800"><input type="checkbox" checked={allFilteredSelected && filteredPipes.length > 0} onChange={handleSelectAll} className="rounded border-slate-700 bg-slate-900 text-blue-600"/></th><th className="p-4 border-b border-slate-800">SPOOL_ID</th><th className="p-4 border-b border-slate-800">LINE_DESC</th><th className="p-4 border-b border-slate-800">STATUS</th><th className="p-4 border-b border-slate-800">INSULATION</th><th className="p-4 border-b border-slate-800">INSP_ID</th><th className="p-4 border-b border-slate-800">TIMESTAMP</th><th className="p-4 text-center border-b border-slate-800">QC</th></tr>
+                            <tr><th className="p-4 w-12 text-center border-b border-slate-800"><input type="checkbox" checked={allFilteredSelected && filteredPipes.length > 0} onChange={handleSelectAll} className="rounded border-slate-700 bg-slate-900 text-blue-600"/></th><th className="p-4 border-b border-slate-800">ID_SPOOL</th><th className="p-4 border-b border-slate-800">DESCRIÇÃO_DA_LINHA</th><th className="p-4 border-b border-slate-800">STATUS</th><th className="p-4 border-b border-slate-800">ISOLAMENTO</th><th className="p-4 border-b border-slate-800">ID_INSP</th><th className="p-4 border-b border-slate-800">DATA/HORA</th><th className="p-4 text-center border-b border-slate-800">CQ</th></tr>
                         </thead>
                         <tbody className="divide-y divide-slate-800/50 text-[10px]">
                             {filteredPipes.map(pipe => (

@@ -17,10 +17,13 @@ interface DatabaseModalProps {
   onSave: (name: string) => void;
   onLoad: (project: any) => void;
   onDelete: (id: string) => void;
+  selectedProjectIds: string[];
+  onToggleProjectSelection: (id: string) => void;
 }
 
 export const DatabaseModal: React.FC<DatabaseModalProps> = ({ 
-    isOpen, onClose, projects, onSave, onLoad, onDelete 
+    isOpen, onClose, projects, onSave, onLoad, onDelete,
+    selectedProjectIds, onToggleProjectSelection
 }) => {
     const [newProjectName, setNewProjectName] = useState('');
     const [mode, setMode] = useState<'LIST' | 'SAVE'>('LIST');
@@ -124,32 +127,54 @@ export const DatabaseModal: React.FC<DatabaseModalProps> = ({
                                     <p className="text-sm">Vá para a aba "Salvar" para guardar seu trabalho atual.</p>
                                 </div>
                             ) : (
-                                projects.sort((a,b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()).map((proj) => (
-                                    <div key={proj.id} className="bg-slate-800 hover:bg-slate-750 border border-slate-700 hover:border-blue-500/50 rounded-xl p-4 flex items-center justify-between group transition-all">
-                                        <div className="flex-1">
-                                            <h3 className="text-lg font-bold text-white mb-1 group-hover:text-blue-400 transition-colors">{proj.name}</h3>
-                                            <div className="flex items-center gap-4 text-xs text-slate-400">
-                                                <span className="flex items-center gap-1"><Calendar size={12}/> {formatDate(proj.updatedAt)}</span>
-                                                <span className="flex items-center gap-1"><Database size={12}/> {proj.pipes?.length || 0} tubos</span>
-                                                <span className="bg-slate-900 px-2 py-0.5 rounded text-slate-300">{proj.location || 'Sem local'}</span>
+                                <>
+                                    <div className="flex items-center justify-between mb-4 px-2">
+                                        <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                                            {selectedProjectIds.length > 0 ? `${selectedProjectIds.length} Projetos Selecionados para Consolidação` : 'Lista de Projetos'}
+                                        </div>
+                                        {selectedProjectIds.length > 0 && (
+                                            <div className="text-[10px] font-black text-blue-400 uppercase tracking-widest animate-pulse">
+                                                Consolidando no Dashboard
+                                            </div>
+                                        )}
+                                    </div>
+                                    {projects.sort((a,b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()).map((proj) => (
+                                        <div key={proj.id} className={`bg-slate-800 hover:bg-slate-750 border rounded-xl p-4 flex items-center justify-between group transition-all ${selectedProjectIds.includes(proj.id) ? 'border-blue-500 ring-1 ring-blue-500/30 shadow-lg shadow-blue-900/20' : 'border-slate-700 hover:border-blue-500/50'}`}>
+                                            <div className="flex items-center gap-4 flex-1">
+                                                {/* Checkbox for consolidation */}
+                                                <div 
+                                                    onClick={() => onToggleProjectSelection(proj.id)}
+                                                    className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center cursor-pointer transition-all ${selectedProjectIds.includes(proj.id) ? 'bg-blue-600 border-blue-500 text-white' : 'border-slate-600 hover:border-slate-400'}`}
+                                                >
+                                                    {selectedProjectIds.includes(proj.id) && <Database size={14} />}
+                                                </div>
+
+                                                <div className="flex-1">
+                                                    <h3 className="text-lg font-bold text-white mb-1 group-hover:text-blue-400 transition-colors">{proj.name}</h3>
+                                                    <div className="flex items-center gap-4 text-xs text-slate-400">
+                                                        <span className="flex items-center gap-1"><Calendar size={12}/> {formatDate(proj.updatedAt)}</span>
+                                                        <span className="flex items-center gap-1"><Database size={12}/> {proj.pipes?.length || 0} tubos</span>
+                                                        <span className="bg-slate-900 px-2 py-0.5 rounded text-slate-300">{proj.location || 'Sem local'}</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <button 
+                                                    onClick={() => { if(confirm('Carregar este projeto substituirá o atual. Continuar?')) onLoad(proj); }}
+                                                    className="px-4 py-2 bg-blue-600/20 hover:bg-blue-600 text-blue-400 hover:text-white rounded-lg font-bold text-sm transition-colors"
+                                                >
+                                                    Abrir
+                                                </button>
+                                                <button 
+                                                    onClick={() => { if(confirm('Tem certeza que deseja excluir este projeto?')) onDelete(proj.id); }}
+                                                    className="p-2 bg-red-600/10 hover:bg-red-600 text-red-500 hover:text-white rounded-lg transition-colors"
+                                                >
+                                                    <Trash2 size={18} />
+                                                </button>
                                             </div>
                                         </div>
-                                        <div className="flex gap-2">
-                                            <button 
-                                                onClick={() => { if(confirm('Carregar este projeto substituirá o atual. Continuar?')) onLoad(proj); }}
-                                                className="px-4 py-2 bg-blue-600/20 hover:bg-blue-600 text-blue-400 hover:text-white rounded-lg font-bold text-sm transition-colors"
-                                            >
-                                                Abrir
-                                            </button>
-                                            <button 
-                                                onClick={() => { if(confirm('Tem certeza que deseja excluir este projeto?')) onDelete(proj.id); }}
-                                                className="p-2 bg-red-600/10 hover:bg-red-600 text-red-500 hover:text-white rounded-lg transition-colors"
-                                            >
-                                                <Trash2 size={18} />
-                                            </button>
-                                        </div>
-                                    </div>
-                                ))
+                                    ))}
+                                </>
                             )}
                         </div>
                     )}

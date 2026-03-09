@@ -1,5 +1,5 @@
 
-import { PipeStatus, PipeSegment, InsulationStatus } from './types';
+import { PipeStatus, PipeSegment, InsulationStatus, ProductivitySettings } from './types';
 
 export const STATUS_COLORS: Record<string, string> = {
   'PENDING': '#94a3b8', 
@@ -23,6 +23,33 @@ export const HOURS_PER_DAY = 8.8; // Jornada de trabalho padrão em horas
 export const BASE_PRODUCTIVITY = {
   PIPING: 0.98,      // Homem-Hora por Metro para Montagem (Base: ~9m/dia)
   INSULATION: 1.95,  // Homem-Hora por Metro para Isolamento (Base: ~4.5m/dia)
+};
+
+export const DEFAULT_PROD_SETTINGS: ProductivitySettings = {
+  pipingBase: BASE_PRODUCTIVITY.PIPING,
+  insulationBase: BASE_PRODUCTIVITY.INSULATION,
+  weights: {
+    crane: 0.75,
+    blockage: 0.65,
+    nightShift: 0.40,
+    criticalArea: 0.50,
+    scaffoldFloor: 1.35,
+    scaffoldHanging: 2.10,
+    pta: 0.95
+  },
+  globalConfig: {
+    weatherFactor: 0.30, // +30% se exposto
+    materialDelayFactor: 0.50, // +50% se sem material
+    skillMultiplier: {
+      JUNIOR: 1.4, // 40% mais lento
+      SENIOR: 1.0, // Base
+      EXPERT: 0.8  // 20% mais rápido
+    },
+    workOnWeekends: false,
+    shiftHours: 8.8,
+    safetyBuffer: 0.15, // 15% de margem de segurança
+    reworkFactor: 0.05  // 5% de retrabalho previsto
+  }
 };
 
 export const DIFFICULTY_WEIGHTS = {

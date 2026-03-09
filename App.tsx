@@ -8,7 +8,7 @@ import { ExportContainer } from './components/ExportContainer';
 import { Login } from './components/Login';
 import { DatabaseModal } from './components/DatabaseModal';
 import { saveProjectToDB, getAllProjects, deleteProjectFromDB } from './utils/db';
-import { INITIAL_PIPES, STATUS_LABELS, STATUS_COLORS, INSULATION_LABELS, PIPE_DIAMETERS, AVAILABLE_DIAMETERS, ALL_STATUSES, ALL_INSULATION_STATUSES, INSULATION_COLORS, BASE_PRODUCTIVITY, DIFFICULTY_WEIGHTS, PIPING_REMAINING_FACTOR, INSULATION_REMAINING_FACTOR, HOURS_PER_DAY } from './constants';
+import { INITIAL_PIPES, STATUS_LABELS, STATUS_COLORS, INSULATION_LABELS, PIPE_DIAMETERS, AVAILABLE_DIAMETERS, ALL_STATUSES, ALL_INSULATION_STATUSES, INSULATION_COLORS, BASE_PRODUCTIVITY, DIFFICULTY_WEIGHTS, PIPING_REMAINING_FACTOR, INSULATION_REMAINING_FACTOR, HOURS_PER_DAY, DEFAULT_PROD_SETTINGS } from './constants';
 import { PipeSegment, PipeStatus, Annotation, AnnotationType, Accessory, AccessoryType, ProductivitySettings } from './types';
 import { LayoutDashboard, Cuboid, PenTool, XCircle, FileDown, Save, FolderOpen, FilePlus, Loader2, MapPin, Database, Undo, Redo, Wrench, Grid as GridIcon, CircleDot, MousePointer2, Ruler, Calendar, Lock, LogOut, ChevronRight, Copy, ClipboardPaste, Activity, Package, AlertCircle, Image as ImageIcon, Shield, Building2, Timer, FileCode, X, HelpCircle, FileSpreadsheet } from 'lucide-react';
 import { jsPDF } from 'jspdf';
@@ -61,19 +61,7 @@ export default function App() {
   const [activityDate, setActivityDate] = useState(new Date().toISOString().split('T')[0]);
   const [deadlineDate, setDeadlineDate] = useState<string | null>(null);
 
-  const [prodSettings, setProdSettings] = useState<ProductivitySettings>({
-      pipingBase: BASE_PRODUCTIVITY.PIPING,
-      insulationBase: BASE_PRODUCTIVITY.INSULATION,
-      weights: {
-          crane: DIFFICULTY_WEIGHTS.CRANE,
-          blockage: DIFFICULTY_WEIGHTS.BLOCKAGE,
-          nightShift: DIFFICULTY_WEIGHTS.NIGHT_SHIFT,
-          criticalArea: DIFFICULTY_WEIGHTS.CRITICAL_AREA,
-          scaffoldFloor: DIFFICULTY_WEIGHTS.SCAFFOLD_FLOOR,
-          scaffoldHanging: DIFFICULTY_WEIGHTS.SCAFFOLD_HANGING,
-          pta: DIFFICULTY_WEIGHTS.PTA
-      }
-  });
+  const [prodSettings, setProdSettings] = useState<ProductivitySettings>(DEFAULT_PROD_SETTINGS);
   
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [viewMode, setViewMode] = useState<'3d' | 'dashboard' | 'planning'>('3d'); 
@@ -93,6 +81,7 @@ export default function App() {
   const [mapImage, setMapImage] = useState<string | null>(null);
   const [isDBModalOpen, setIsDBModalOpen] = useState(false);
   const [savedProjects, setSavedProjects] = useState<any[]>([]);
+  const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>([]);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
     return localStorage.getItem('iso-manager-auth') === 'true';
   });
@@ -159,9 +148,17 @@ export default function App() {
               if (p.planningFactors.accessType === 'SCAFFOLD_HANGING') mult += prodSettings.weights.scaffoldHanging;
               if (p.planningFactors.accessType === 'PTA') mult += prodSettings.weights.pta;
               
+              // Novos Fatores Globais
+              if (p.planningFactors.weatherExposed) mult += prodSettings.globalConfig.weatherFactor;
+              if (!p.planningFactors.materialAvailable) mult += prodSettings.globalConfig.materialDelayFactor;
+
               pEffort *= mult;
               iEffort *= mult;
               
+              // Fator de Retrabalho e Buffer de Segurança
+              pEffort *= (1 + prodSettings.globalConfig.reworkFactor);
+              iEffort *= (1 + prodSettings.globalConfig.reworkFactor);
+
               if (pipingF > 0) pEffort += (p.planningFactors.delayHours || 0);
           }
 
@@ -181,18 +178,15 @@ export default function App() {
           }
       });
 
-      const totalHH = totalPipingHH + totalInsulationHH + annotationHH;
+      const totalHH = (totalPipingHH + totalInsulationHH + annotationHH) * (1 + prodSettings.globalConfig.safetyBuffer);
       
       // Cálculo de capacidade total baseada em todas as equipes alocadas
-      const totalTeams = pipes.reduce((acc, p) => acc + (p.planningFactors?.teamCount || 1), 0) / (pipes.length || 1);
-      // Se não houver pipes, assume 1 equipe. Se houver, tira a média ou usa um valor global.
-      // Para o dashboard global, vamos usar a soma de HH dividida por (Equipes * Horas/Dia)
       const globalTeams = pipes.length > 0 ? Math.max(1, Math.round(pipes.reduce((acc, p) => acc + (p.planningFactors?.teamCount || 1), 0) / pipes.length)) : 1;
-      const dailyCapacity = globalTeams * HOURS_PER_DAY; 
+      const dailyCapacity = globalTeams * prodSettings.globalConfig.shiftHours; 
 
       const daysNeeded = Math.ceil(totalHH / dailyCapacity);
 
-      const projectedEnd = getWorkingEndDate(new Date(activityDate + 'T12:00:00'), daysNeeded).toLocaleDateString('pt-BR');
+      const projectedEnd = getWorkingEndDate(new Date(activityDate + 'T12:00:00'), daysNeeded, prodSettings.globalConfig.workOnWeekends).toLocaleDateString('pt-BR');
 
       return {
           totalLength,
@@ -739,13 +733,28 @@ export default function App() {
     }
   };
 
+  const handleToggleProjectSelection = (id: string) => {
+    setSelectedProjectIds(prev => 
+      prev.includes(id) ? prev.filter(pid => pid !== id) : [...prev, id]
+    );
+  };
+
   if (!isAuthenticated) {
     return <Login onLogin={handleLogin} />;
   }
 
   return (
     <div className="h-screen w-screen bg-slate-950 text-slate-100 flex flex-col overflow-hidden font-sans">
-        <DatabaseModal isOpen={isDBModalOpen} onClose={() => setIsDBModalOpen(false)} projects={savedProjects} onSave={handleDBAction_Save} onLoad={handleDBAction_Load} onDelete={handleDBAction_Delete} />
+        <DatabaseModal 
+            isOpen={isDBModalOpen} 
+            onClose={() => setIsDBModalOpen(false)} 
+            projects={savedProjects} 
+            onSave={handleDBAction_Save} 
+            onLoad={handleDBAction_Load} 
+            onDelete={handleDBAction_Delete}
+            selectedProjectIds={selectedProjectIds}
+            onToggleProjectSelection={handleToggleProjectSelection}
+        />
         
         <TopNav 
             projectClient={projectClient}
@@ -812,7 +821,7 @@ export default function App() {
                         </div>
                     </div>
                 </div>
-                {viewMode === 'dashboard' && (<div className="absolute inset-0 z-10 bg-slate-950/95 backdrop-blur-sm overflow-y-auto p-4 animate-in fade-in"><div className="max-w-[1600px] mx-auto h-full"><Dashboard pipes={pipes} annotations={annotations} onExportPDF={handleExportPDF} isExporting={isExporting} secondaryImage={secondaryImage} onUploadSecondary={setSecondaryImage} mapImage={mapImage} onUploadMap={setMapImage} sceneScreenshot={sceneScreenshot} onSelectPipe={handleSelectPipe} selectedIds={selectedIds} onSetSelection={handleSetSelection} prodSettings={prodSettings} startDate={activityDate} deadlineDate={deadlineDate} /></div></div>)}
+                {viewMode === 'dashboard' && (<div className="absolute inset-0 z-50 bg-slate-950/95 backdrop-blur-sm overflow-y-auto p-4 animate-in fade-in"><div className="max-w-[1600px] mx-auto h-full"><Dashboard pipes={pipes} annotations={annotations} onExportPDF={handleExportPDF} isExporting={isExporting} secondaryImage={secondaryImage} onUploadSecondary={setSecondaryImage} mapImage={mapImage} onUploadMap={setMapImage} sceneScreenshot={sceneScreenshot} onSelectPipe={handleSelectPipe} selectedIds={selectedIds} onSetSelection={handleSetSelection} prodSettings={prodSettings} startDate={activityDate} deadlineDate={deadlineDate} savedProjects={savedProjects} selectedProjectIds={selectedProjectIds} onSetSelectedProjectIds={setSelectedProjectIds} /></div></div>)}
             </div>
             {selectedPipes.length > 0 && !isDrawing && !pastePreview && (
                 <div className="w-96 relative z-20 shadow-2xl border-l border-slate-700">
