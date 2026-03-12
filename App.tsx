@@ -75,6 +75,7 @@ export default function App() {
   const [pastePreview, setPastePreview] = useState<PipeSegment[] | null>(null);
   const [pasteCentroid, setPasteCentroid] = useState<{x:number, y:number, z:number} | null>(null);
   const [isExporting, setIsExporting] = useState(false);
+  const [pdfExportStats, setPdfExportStats] = useState<any>(null);
   const [sceneScreenshot, setSceneScreenshot] = useState<string | null>(null);
   const [colorMode, setColorMode] = useState<'STATUS' | 'SPOOL'>('STATUS');
   const [secondaryImage, setSecondaryImage] = useState<string | null>(null);
@@ -112,17 +113,38 @@ export default function App() {
       let totalLength = 0;
       let totalPipingHH = 0;
       let totalInsulationHH = 0;
+      let pipingTotalLength = 0;
+      let pipingRemainingLength = 0;
+      let insulationTotalLength = 0;
+      let insulationRemainingLength = 0;
       const bom: Record<string, number> = {};
       const pipeCounts: Record<string, number> = {};
       const insulationCounts: Record<string, number> = {};
+      const pipeLengths: Record<string, number> = {};
+      const insulationLengths: Record<string, number> = {};
 
       // Initialize counts
-      ALL_STATUSES.forEach(s => pipeCounts[s] = 0);
-      ALL_INSULATION_STATUSES.forEach(s => insulationCounts[s] = 0);
+      ALL_STATUSES.forEach(s => { pipeCounts[s] = 0; pipeLengths[s] = 0; });
+      ALL_INSULATION_STATUSES.forEach(s => { insulationCounts[s] = 0; insulationLengths[s] = 0; });
 
       pipes.forEach(p => {
           totalLength += p.length;
           
+          pipingTotalLength += p.length;
+          pipingRemainingLength += p.length * (PIPING_REMAINING_FACTOR[p.status] ?? 1);
+          
+          if (p.status) {
+              pipeLengths[p.status] = (pipeLengths[p.status] || 0) + p.length;
+          }
+          
+          if (p.insulationStatus && p.insulationStatus !== 'NONE') {
+              insulationTotalLength += p.length;
+              insulationRemainingLength += p.length * (INSULATION_REMAINING_FACTOR[p.insulationStatus] ?? 1);
+          }
+          
+          const insStatus = p.insulationStatus || 'NONE';
+          insulationLengths[insStatus] = (insulationLengths[insStatus] || 0) + p.length;
+
           // BOM
           const diam = AVAILABLE_DIAMETERS.find(d => PIPE_DIAMETERS[d] === p.diameter) || 'Unknown';
           bom[diam] = (bom[diam] || 0) + p.length;
@@ -199,9 +221,17 @@ export default function App() {
           bom,
           pipeCounts,
           insulationCounts,
+          pipeLengths,
+          insulationLengths,
           annotationBreakdown,
           total: pipes.length,
-          deadlineStats: null
+          deadlineStats: null,
+          pipingTotalLength,
+          pipingRemainingLength,
+          pipingExecutedLength: pipingTotalLength - pipingRemainingLength,
+          insulationTotalLength,
+          insulationRemainingLength,
+          insulationExecutedLength: insulationTotalLength - insulationRemainingLength
       };
   }, [pipes, annotations, prodSettings, activityDate]);
 
@@ -393,11 +423,33 @@ export default function App() {
             let totalPipingHH = 0;
             let totalInsulationHH = 0;
             let annotationHH = 0;
+            let pipingTotalLength = 0;
+            let pipingRemainingLength = 0;
+            let insulationTotalLength = 0;
+            let insulationRemainingLength = 0;
             const annotationBreakdown: Record<string, number> = {};
+            const pipeLengths: Record<string, number> = {};
+            const insulationLengths: Record<string, number> = {};
+            ALL_STATUSES.forEach(s => pipeLengths[s] = 0);
+            ALL_INSULATION_STATUSES.forEach(s => insulationLengths[s] = 0);
 
             pipesToExport.forEach(p => {
                 const pipingF = PIPING_REMAINING_FACTOR[p.status] || 0;
                 const insF = INSULATION_REMAINING_FACTOR[p.insulationStatus || 'NONE'] || 0;
+                
+                pipingTotalLength += p.length;
+                pipingRemainingLength += p.length * (PIPING_REMAINING_FACTOR[p.status] ?? 1);
+                
+                if (p.status) {
+                    pipeLengths[p.status] = (pipeLengths[p.status] || 0) + p.length;
+                }
+                
+                if (p.insulationStatus && p.insulationStatus !== 'NONE') {
+                    insulationTotalLength += p.length;
+                    insulationRemainingLength += p.length * (INSULATION_REMAINING_FACTOR[p.insulationStatus] ?? 1);
+                }
+                const insStatus = p.insulationStatus || 'NONE';
+                insulationLengths[insStatus] = (insulationLengths[insStatus] || 0) + p.length;
                 
                 let pEffort = p.length * prodSettings.pipingBase * pipingF;
                 let iEffort = p.length * prodSettings.insulationBase * insF;
@@ -466,9 +518,17 @@ export default function App() {
                 totalInsulationHH,
                 annotationHH,
                 annotationBreakdown,
+                pipeLengths,
+                insulationLengths,
                 totalHH,
                 projectedEnd,
-                deadlineStats
+                deadlineStats,
+                pipingTotalLength,
+                pipingRemainingLength,
+                pipingExecutedLength: pipingTotalLength - pipingRemainingLength,
+                insulationTotalLength,
+                insulationRemainingLength,
+                insulationExecutedLength: insulationTotalLength - insulationRemainingLength
             };
         }
 
@@ -482,6 +542,7 @@ export default function App() {
             }
         }
         
+        setPdfExportStats(exportStats);
         await new Promise(r => setTimeout(r, 1200));
 
         const pdf = new jsPDF('p', 'mm', 'a4');
@@ -529,8 +590,13 @@ export default function App() {
         if (page1Canvas) {
             const imgData = page1Canvas.toDataURL('image/png', 1.0);
             const imgProps = pdf.getImageProperties(imgData);
-            const pdfImgHeight = (imgProps.height * pageWidth) / imgProps.width;
-            pdf.addImage(imgData, 'PNG', 0, 0, pageWidth, pdfImgHeight, undefined, 'FAST');
+            let pdfImgHeight = (imgProps.height * pageWidth) / imgProps.width;
+            let pdfImgWidth = pageWidth;
+            if (pdfImgHeight > pageHeight) {
+                pdfImgWidth = (imgProps.width * pageHeight) / imgProps.height;
+                pdfImgHeight = pageHeight;
+            }
+            pdf.addImage(imgData, 'PNG', (pageWidth - pdfImgWidth) / 2, 0, pdfImgWidth, pdfImgHeight, undefined, 'FAST');
             console.log("Página 1 (Técnica) adicionada.");
         }
 
@@ -539,8 +605,13 @@ export default function App() {
         if (page2Canvas) {
             const imgData = page2Canvas.toDataURL('image/png', 1.0);
             const imgProps = pdf.getImageProperties(imgData);
-            const pdfImgHeight = (imgProps.height * pageWidth) / imgProps.width;
-            pdf.addImage(imgData, 'PNG', 0, 0, pageWidth, pdfImgHeight, undefined, 'FAST');
+            let pdfImgHeight = (imgProps.height * pageWidth) / imgProps.width;
+            let pdfImgWidth = pageWidth;
+            if (pdfImgHeight > pageHeight) {
+                pdfImgWidth = (imgProps.width * pageHeight) / imgProps.height;
+                pdfImgHeight = pageHeight;
+            }
+            pdf.addImage(imgData, 'PNG', (pageWidth - pdfImgWidth) / 2, 0, pdfImgWidth, pdfImgHeight, undefined, 'FAST');
             console.log("Página 2 (Planejamento) adicionada.");
         }
 
@@ -664,7 +735,10 @@ export default function App() {
     } catch (err) { 
         console.error("Erro ao gerar PDF:", err);
         alert("Erro ao gerar PDF: " + (err instanceof Error ? err.message : String(err))); 
-    } finally { setIsExporting(false); }
+    } finally { 
+        setIsExporting(false); 
+        setPdfExportStats(null);
+    }
   };
 
   // FUNÇÃO PARA EXPORTAR PARA EXCEL (XLSX)
@@ -781,7 +855,7 @@ export default function App() {
             {/* EXPORT CONTAINER HIDDEN */}
             <ExportContainer 
                 viewMode={viewMode}
-                reportStats={reportStats}
+                reportStats={pdfExportStats || reportStats}
                 sceneScreenshot={sceneScreenshot}
                 secondaryImage={secondaryImage}
                 mapImage={mapImage}
