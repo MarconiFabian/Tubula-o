@@ -288,7 +288,8 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
                         const pct = reportStats.pipingTotalLength > 0 ? ((reportStats.pipeLengths?.[status] / reportStats.pipingTotalLength) * 100).toFixed(1) : "0.0";
                         return (
                         <div key={status} className="flex flex-col items-center flex-1 h-full justify-end">
-                            <span className="font-bold text-[10px] mb-1" style={{ color: '#ffffff' }}>{pct}%</span>
+                            <span className="font-bold text-[10px]" style={{ color: '#ffffff' }}>{pct}%</span>
+                            <span className="font-bold text-[8px] mb-1" style={{ color: '#94a3b8' }}>{reportStats.pipeLengths?.[status]?.toFixed(1)}m</span>
                             <div className="w-full rounded-t-sm opacity-80 relative flex items-center justify-center" style={{ height: `${Math.max(h, 5)}%`, backgroundColor: STATUS_COLORS[status] }}>
                                 {parseFloat(pct) > 5 && <span className="absolute text-[8px] font-bold text-slate-900/50">{pct}%</span>}
                             </div>
@@ -307,7 +308,8 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
                         const c = INSULATION_COLORS[status] === 'transparent' ? '#475569' : INSULATION_COLORS[status];
                         return (
                         <div key={status} className="flex flex-col items-center flex-1 h-full justify-end">
-                            <span className="font-bold text-[10px] mb-1" style={{ color: '#ffffff' }}>{pct}%</span>
+                            <span className="font-bold text-[10px]" style={{ color: '#ffffff' }}>{pct}%</span>
+                            <span className="font-bold text-[8px] mb-1" style={{ color: '#94a3b8' }}>{reportStats.insulationLengths?.[status]?.toFixed(1)}m</span>
                             <div className="w-full rounded-t-sm opacity-80 relative flex items-center justify-center" style={{ height: `${Math.max(h, 5)}%`, backgroundColor: c }}>
                                 {parseFloat(pct) > 5 && <span className="absolute text-[8px] font-bold text-slate-900/50">{pct}%</span>}
                             </div>
@@ -473,7 +475,7 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
                                         <div key={status} className="flex flex-col gap-1">
                                             <div className="flex justify-between text-xs font-bold uppercase">
                                                 <span style={{ color: '#94a3b8' }}>{STATUS_LABELS[status]}</span>
-                                                <span style={{ color: '#ffffff' }}>{percentage.toFixed(1)}%</span>
+                                                <span style={{ color: '#ffffff' }}>{length.toFixed(2)}m ({percentage.toFixed(1)}%)</span>
                                             </div>
                                             <div className="w-full h-3 rounded-full overflow-hidden" style={{ backgroundColor: '#1e293b' }}>
                                                 <div style={{ width: `${percentage}%`, height: '100%', backgroundColor: STATUS_COLORS[status] }}></div>
@@ -495,7 +497,7 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
                                         <div key={status} className="flex flex-col gap-1">
                                             <div className="flex justify-between text-xs font-bold uppercase">
                                                 <span style={{ color: '#94a3b8' }}>{INSULATION_LABELS[status]}</span>
-                                                <span style={{ color: '#ffffff' }}>{percentage.toFixed(1)}%</span>
+                                                <span style={{ color: '#ffffff' }}>{length.toFixed(2)}m ({percentage.toFixed(1)}%)</span>
                                             </div>
                                             <div className="w-full h-3 rounded-full overflow-hidden" style={{ backgroundColor: '#1e293b' }}>
                                                 <div style={{ width: `${percentage}%`, height: '100%', backgroundColor: INSULATION_COLORS[status] }}></div>

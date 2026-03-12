@@ -466,10 +466,30 @@ const Dashboard: React.FC<DashboardProps> = ({
                         <div className="flex flex-col">
                             <span className="text-slate-500 text-[10px] font-mono uppercase tracking-widest mb-1">Executado</span>
                             <span className="text-xl font-bold text-green-400 font-mono">{stats.pipingExecutedLength.toFixed(2)}<span className="text-[10px] text-slate-500 ml-1">m</span></span>
+                            <div className="mt-2 space-y-1">
+                                <div className="flex justify-between text-[8px] font-mono text-slate-400">
+                                    <span>Soldado:</span>
+                                    <span className="text-white">{stats.pipeLengths['WELDED']?.toFixed(2) || '0.00'}m</span>
+                                </div>
+                                <div className="flex justify-between text-[8px] font-mono text-slate-400">
+                                    <span>Testado:</span>
+                                    <span className="text-white">{stats.pipeLengths['HYDROTEST']?.toFixed(2) || '0.00'}m</span>
+                                </div>
+                            </div>
                         </div>
                         <div className="flex flex-col">
                             <span className="text-slate-500 text-[10px] font-mono uppercase tracking-widest mb-1">A Executar</span>
                             <span className="text-xl font-bold text-yellow-400 font-mono">{stats.pipingRemainingLength.toFixed(2)}<span className="text-[10px] text-slate-500 ml-1">m</span></span>
+                            <div className="mt-2 space-y-1">
+                                <div className="flex justify-between text-[8px] font-mono text-slate-400">
+                                    <span>P/ Soldar:</span>
+                                    <span className="text-white">{(stats.pipingTotalLength - (stats.pipeLengths['WELDED'] || 0) - (stats.pipeLengths['HYDROTEST'] || 0) - (stats.pipeLengths['MOUNTED'] || 0)).toFixed(2)}m</span>
+                                </div>
+                                <div className="flex justify-between text-[8px] font-mono text-slate-400">
+                                    <span>P/ Testar:</span>
+                                    <span className="text-white">{(stats.pipingTotalLength - (stats.pipeLengths['HYDROTEST'] || 0) - (stats.pipeLengths['MOUNTED'] || 0)).toFixed(2)}m</span>
+                                </div>
+                            </div>
                         </div>
                     </div>
                     <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden mt-2">
@@ -493,10 +513,22 @@ const Dashboard: React.FC<DashboardProps> = ({
                         <div className="flex flex-col">
                             <span className="text-slate-500 text-[10px] font-mono uppercase tracking-widest mb-1">Executado</span>
                             <span className="text-xl font-bold text-green-400 font-mono">{stats.insulationExecutedLength.toFixed(2)}<span className="text-[10px] text-slate-500 ml-1">m</span></span>
+                            <div className="mt-2 space-y-1">
+                                <div className="flex justify-between text-[8px] font-mono text-slate-400">
+                                    <span>Concluído:</span>
+                                    <span className="text-white">{stats.insulationLengths['FINISHED']?.toFixed(2) || '0.00'}m</span>
+                                </div>
+                            </div>
                         </div>
                         <div className="flex flex-col">
                             <span className="text-slate-500 text-[10px] font-mono uppercase tracking-widest mb-1">A Executar</span>
                             <span className="text-xl font-bold text-yellow-400 font-mono">{stats.insulationRemainingLength.toFixed(2)}<span className="text-[10px] text-slate-500 ml-1">m</span></span>
+                            <div className="mt-2 space-y-1">
+                                <div className="flex justify-between text-[8px] font-mono text-slate-400">
+                                    <span>P/ Concluir:</span>
+                                    <span className="text-white">{(stats.insulationTotalLength - (stats.insulationLengths['FINISHED'] || 0)).toFixed(2)}m</span>
+                                </div>
+                            </div>
                         </div>
                     </div>
                     <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden mt-2">
@@ -921,7 +953,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                                       <div key={status} className="space-y-1">
                                           <div className="flex justify-between text-[9px] font-mono uppercase">
                                               <span className="text-slate-400">{STATUS_LABELS[status]}</span>
-                                              <span className="text-white">{percentage.toFixed(1)}%</span>
+                                              <span className="text-white">{length.toFixed(2)}m ({percentage.toFixed(1)}%)</span>
                                           </div>
                                           <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
                                               <div className="h-full transition-all duration-1000" style={{ width: `${percentage}%`, backgroundColor: STATUS_COLORS[status] }}></div>
@@ -938,7 +970,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                                       <div key={status} className="space-y-1">
                                           <div className="flex justify-between text-[9px] font-mono uppercase">
                                               <span className="text-slate-400">{INSULATION_LABELS[status]}</span>
-                                              <span className="text-white">{percentage.toFixed(1)}%</span>
+                                              <span className="text-white">{length.toFixed(2)}m ({percentage.toFixed(1)}%)</span>
                                           </div>
                                           <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
                                               <div className="h-full transition-all duration-1000" style={{ width: `${percentage}%`, backgroundColor: INSULATION_COLORS[status] }}></div>
