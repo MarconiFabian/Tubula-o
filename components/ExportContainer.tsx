@@ -168,10 +168,30 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
                     <div className="flex flex-col">
                         <span className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">Executado</span>
                         <span className="text-3xl font-bold text-green-400 font-mono">{reportStats.pipingExecutedLength?.toFixed(2) || '0.00'}<span className="text-sm text-slate-500 ml-1">m</span></span>
+                        <div className="mt-2 space-y-1">
+                            <div className="flex justify-between text-[10px] font-mono text-slate-400">
+                                <span>Soldado:</span>
+                                <span className="text-white">{((reportStats.pipeLengths?.['WELDED'] || 0) + (reportStats.pipeLengths?.['HYDROTEST'] || 0)).toFixed(2)}m</span>
+                            </div>
+                            <div className="flex justify-between text-[10px] font-mono text-slate-400">
+                                <span>Testado:</span>
+                                <span className="text-white">{(reportStats.pipeLengths?.['HYDROTEST'] || 0).toFixed(2)}m</span>
+                            </div>
+                        </div>
                     </div>
                     <div className="flex flex-col">
                         <span className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">A Executar</span>
                         <span className="text-3xl font-bold text-yellow-400 font-mono">{reportStats.pipingRemainingLength?.toFixed(2) || '0.00'}<span className="text-sm text-slate-500 ml-1">m</span></span>
+                        <div className="mt-2 space-y-1">
+                            <div className="flex justify-between text-[10px] font-mono text-slate-400">
+                                <span>P/ Soldar:</span>
+                                <span className="text-white">{((reportStats.pipeLengths?.['PENDING'] || 0) + (reportStats.pipeLengths?.['MOUNTED'] || 0)).toFixed(2)}m</span>
+                            </div>
+                            <div className="flex justify-between text-[10px] font-mono text-slate-400">
+                                <span>P/ Testar:</span>
+                                <span className="text-white">{(reportStats.pipingTotalLength - (reportStats.pipeLengths?.['HYDROTEST'] || 0)).toFixed(2)}m</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden mt-2">
@@ -195,10 +215,22 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
                     <div className="flex flex-col">
                         <span className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">Executado</span>
                         <span className="text-3xl font-bold text-green-400 font-mono">{reportStats.insulationExecutedLength?.toFixed(2) || '0.00'}<span className="text-sm text-slate-500 ml-1">m</span></span>
+                        <div className="mt-2 space-y-1">
+                            <div className="flex justify-between text-[10px] font-mono text-slate-400">
+                                <span>Concluído:</span>
+                                <span className="text-white">{reportStats.insulationLengths?.['FINISHED']?.toFixed(2) || '0.00'}m</span>
+                            </div>
+                        </div>
                     </div>
                     <div className="flex flex-col">
                         <span className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">A Executar</span>
                         <span className="text-3xl font-bold text-yellow-400 font-mono">{reportStats.insulationRemainingLength?.toFixed(2) || '0.00'}<span className="text-sm text-slate-500 ml-1">m</span></span>
+                        <div className="mt-2 space-y-1">
+                            <div className="flex justify-between text-[10px] font-mono text-slate-400">
+                                <span>P/ Concluir:</span>
+                                <span className="text-white">{(reportStats.insulationTotalLength - (reportStats.insulationLengths?.['FINISHED'] || 0)).toFixed(2)}m</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden mt-2">
@@ -358,10 +390,30 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
                     <div className="flex flex-col">
                         <span className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">Executado</span>
                         <span className="text-3xl font-bold text-green-400 font-mono">{reportStats.pipingExecutedLength?.toFixed(2) || '0.00'}<span className="text-sm text-slate-500 ml-1">m</span></span>
+                        <div className="mt-2 space-y-1">
+                            <div className="flex justify-between text-[10px] font-mono text-slate-400">
+                                <span>Soldado:</span>
+                                <span className="text-white">{((reportStats.pipeLengths?.['WELDED'] || 0) + (reportStats.pipeLengths?.['HYDROTEST'] || 0)).toFixed(2)}m</span>
+                            </div>
+                            <div className="flex justify-between text-[10px] font-mono text-slate-400">
+                                <span>Testado:</span>
+                                <span className="text-white">{(reportStats.pipeLengths?.['HYDROTEST'] || 0).toFixed(2)}m</span>
+                            </div>
+                        </div>
                     </div>
                     <div className="flex flex-col">
                         <span className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">A Executar</span>
                         <span className="text-3xl font-bold text-yellow-400 font-mono">{reportStats.pipingRemainingLength?.toFixed(2) || '0.00'}<span className="text-sm text-slate-500 ml-1">m</span></span>
+                        <div className="mt-2 space-y-1">
+                            <div className="flex justify-between text-[10px] font-mono text-slate-400">
+                                <span>P/ Soldar:</span>
+                                <span className="text-white">{((reportStats.pipeLengths?.['PENDING'] || 0) + (reportStats.pipeLengths?.['MOUNTED'] || 0)).toFixed(2)}m</span>
+                            </div>
+                            <div className="flex justify-between text-[10px] font-mono text-slate-400">
+                                <span>P/ Testar:</span>
+                                <span className="text-white">{(reportStats.pipingTotalLength - (reportStats.pipeLengths?.['HYDROTEST'] || 0)).toFixed(2)}m</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden mt-2">
@@ -385,10 +437,22 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
                     <div className="flex flex-col">
                         <span className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">Executado</span>
                         <span className="text-3xl font-bold text-green-400 font-mono">{reportStats.insulationExecutedLength?.toFixed(2) || '0.00'}<span className="text-sm text-slate-500 ml-1">m</span></span>
+                        <div className="mt-2 space-y-1">
+                            <div className="flex justify-between text-[10px] font-mono text-slate-400">
+                                <span>Concluído:</span>
+                                <span className="text-white">{reportStats.insulationLengths?.['FINISHED']?.toFixed(2) || '0.00'}m</span>
+                            </div>
+                        </div>
                     </div>
                     <div className="flex flex-col">
                         <span className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">A Executar</span>
                         <span className="text-3xl font-bold text-yellow-400 font-mono">{reportStats.insulationRemainingLength?.toFixed(2) || '0.00'}<span className="text-sm text-slate-500 ml-1">m</span></span>
+                        <div className="mt-2 space-y-1">
+                            <div className="flex justify-between text-[10px] font-mono text-slate-400">
+                                <span>P/ Concluir:</span>
+                                <span className="text-white">{(reportStats.insulationTotalLength - (reportStats.insulationLengths?.['FINISHED'] || 0)).toFixed(2)}m</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden mt-2">

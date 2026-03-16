@@ -469,11 +469,11 @@ const Dashboard: React.FC<DashboardProps> = ({
                             <div className="mt-2 space-y-1">
                                 <div className="flex justify-between text-[8px] font-mono text-slate-400">
                                     <span>Soldado:</span>
-                                    <span className="text-white">{stats.pipeLengths['WELDED']?.toFixed(2) || '0.00'}m</span>
+                                    <span className="text-white">{((stats.pipeLengths['WELDED'] || 0) + (stats.pipeLengths['HYDROTEST'] || 0)).toFixed(2)}m</span>
                                 </div>
                                 <div className="flex justify-between text-[8px] font-mono text-slate-400">
                                     <span>Testado:</span>
-                                    <span className="text-white">{stats.pipeLengths['HYDROTEST']?.toFixed(2) || '0.00'}m</span>
+                                    <span className="text-white">{(stats.pipeLengths['HYDROTEST'] || 0).toFixed(2)}m</span>
                                 </div>
                             </div>
                         </div>
@@ -483,11 +483,11 @@ const Dashboard: React.FC<DashboardProps> = ({
                             <div className="mt-2 space-y-1">
                                 <div className="flex justify-between text-[8px] font-mono text-slate-400">
                                     <span>P/ Soldar:</span>
-                                    <span className="text-white">{(stats.pipingTotalLength - (stats.pipeLengths['WELDED'] || 0) - (stats.pipeLengths['HYDROTEST'] || 0) - (stats.pipeLengths['MOUNTED'] || 0)).toFixed(2)}m</span>
+                                    <span className="text-white">{((stats.pipeLengths['PENDING'] || 0) + (stats.pipeLengths['MOUNTED'] || 0)).toFixed(2)}m</span>
                                 </div>
                                 <div className="flex justify-between text-[8px] font-mono text-slate-400">
                                     <span>P/ Testar:</span>
-                                    <span className="text-white">{(stats.pipingTotalLength - (stats.pipeLengths['HYDROTEST'] || 0) - (stats.pipeLengths['MOUNTED'] || 0)).toFixed(2)}m</span>
+                                    <span className="text-white">{(stats.pipingTotalLength - (stats.pipeLengths['HYDROTEST'] || 0)).toFixed(2)}m</span>
                                 </div>
                             </div>
                         </div>
