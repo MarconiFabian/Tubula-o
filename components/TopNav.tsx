@@ -20,6 +20,8 @@ interface TopNavProps {
   handleExportExcel: () => void;
   handleExportPDF: () => void;
   isExporting: boolean;
+  currentProjectName?: string | null;
+  handleNewProject: () => void;
 }
 
 export const TopNav: React.FC<TopNavProps> = ({
@@ -31,7 +33,8 @@ export const TopNav: React.FC<TopNavProps> = ({
   viewMode, setViewMode,
   setIsDrawing,
   showDimensions, setShowDimensions,
-  handleExportDXF, handleExportExcel, handleExportPDF, isExporting
+  handleExportDXF, handleExportExcel, handleExportPDF, isExporting,
+  currentProjectName, handleNewProject
 }) => {
   return (
     <header className="h-16 bg-slate-900 border-b border-slate-800 px-4 flex items-center justify-between z-50 shadow-lg">
@@ -46,6 +49,13 @@ export const TopNav: React.FC<TopNavProps> = ({
           </div>
         </div>
         
+        <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-slate-900/50 border border-slate-700/50 rounded-lg ml-2">
+          <Database size={14} className={currentProjectName ? "text-blue-400" : "text-slate-500"} />
+          <span className={`text-sm font-bold truncate max-w-[200px] ${currentProjectName ? "text-blue-100" : "text-slate-500 italic"}`}>
+            {currentProjectName || "Projeto Não Salvo"}
+          </span>
+        </div>
+
         <div className="flex items-center gap-1.5 bg-slate-950/50 p-1 rounded-xl border border-slate-800/50">
           <div className="flex flex-col px-2">
             <label className="text-[8px] font-black text-slate-600 uppercase flex items-center gap-1 tracking-tighter">
@@ -103,6 +113,13 @@ export const TopNav: React.FC<TopNavProps> = ({
         
         <div className="h-6 w-px bg-slate-800 mx-1"></div>
         
+        <button 
+          onClick={handleNewProject} 
+          className="bg-slate-950 hover:bg-slate-800 text-emerald-400 border border-slate-800 px-3 py-1.5 rounded-xl font-bold text-[10px] flex items-center gap-2 whitespace-nowrap transition-all uppercase tracking-widest"
+        >
+          <FileCode size={14} /> Novo Projeto
+        </button>
+
         <button 
           onClick={() => setIsDBModalOpen(true)} 
           className="bg-slate-950 hover:bg-slate-800 text-blue-400 border border-slate-800 px-3 py-1.5 rounded-xl font-bold text-[10px] flex items-center gap-2 whitespace-nowrap transition-all uppercase tracking-widest"

@@ -14,19 +14,23 @@ interface DatabaseModalProps {
   isOpen: boolean;
   onClose: () => void;
   projects: any[];
-  onSave: (name: string) => void;
+  onSave: (name: string, overwriteId?: string) => void;
   onLoad: (project: any) => void;
   onDelete: (id: string) => void;
   selectedProjectIds: string[];
   onToggleProjectSelection: (id: string) => void;
+  currentProjectId?: string | null;
+  currentProjectName?: string | null;
 }
 
 export const DatabaseModal: React.FC<DatabaseModalProps> = ({ 
     isOpen, onClose, projects, onSave, onLoad, onDelete,
-    selectedProjectIds, onToggleProjectSelection
+    selectedProjectIds, onToggleProjectSelection,
+    currentProjectId, currentProjectName
 }) => {
     const [newProjectName, setNewProjectName] = useState('');
     const [mode, setMode] = useState<'LIST' | 'SAVE'>('LIST');
+    const [confirmAction, setConfirmAction] = useState<{type: 'LOAD' | 'DELETE' | 'OVERWRITE', project: any} | null>(null);
 
     if (!isOpen) return null;
 
@@ -36,8 +40,39 @@ export const DatabaseModal: React.FC<DatabaseModalProps> = ({
 
     const isCloudEnabled = isSupabaseConfigured();
 
+    const handleConfirm = () => {
+        if (!confirmAction) return;
+        if (confirmAction.type === 'LOAD') {
+            onLoad(confirmAction.project);
+        } else if (confirmAction.type === 'DELETE') {
+            onDelete(confirmAction.project.id);
+        } else if (confirmAction.type === 'OVERWRITE') {
+            onSave(confirmAction.project.name, confirmAction.project.id);
+            setMode('LIST');
+        }
+        setConfirmAction(null);
+    };
+
     return (
         <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+            {confirmAction && (
+                <div className="fixed inset-0 z-[110] bg-black/60 flex items-center justify-center p-4">
+                    <div className="bg-slate-800 border border-slate-700 p-6 rounded-xl shadow-2xl max-w-md w-full">
+                        <h3 className="text-xl font-bold text-white mb-2">Confirmação</h3>
+                        <p className="text-slate-300 mb-6">
+                            {confirmAction.type === 'LOAD' && 'Carregar este projeto substituirá o atual. Continuar?'}
+                            {confirmAction.type === 'DELETE' && 'Tem certeza que deseja excluir este projeto?'}
+                            {confirmAction.type === 'OVERWRITE' && `Deseja salvar o projeto atual por cima de "${confirmAction.project.name}"? Isso apagará os dados anteriores deste projeto.`}
+                        </p>
+                        <div className="flex justify-end gap-3">
+                            <button onClick={() => setConfirmAction(null)} className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors">Cancelar</button>
+                            <button onClick={handleConfirm} className={`px-4 py-2 rounded-lg font-bold transition-colors ${confirmAction.type === 'DELETE' ? 'bg-red-600 hover:bg-red-500 text-white' : 'bg-blue-600 hover:bg-blue-500 text-white'}`}>
+                                Confirmar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
             <div className="bg-slate-900 border border-slate-700 w-full max-w-2xl rounded-2xl shadow-2xl flex flex-col max-h-[80vh]">
                 
                 {/* Header */}
@@ -96,24 +131,46 @@ export const DatabaseModal: React.FC<DatabaseModalProps> = ({
                     </div>
 
                     {mode === 'SAVE' && (
-                        <div className="bg-slate-800/50 p-6 rounded-xl border border-slate-700 animate-in fade-in slide-in-from-top-4">
-                            <label className="block text-sm font-bold text-slate-400 mb-2 uppercase">Nome do Projeto</label>
-                            <div className="flex gap-2">
-                                <input 
-                                    type="text" 
-                                    value={newProjectName}
-                                    onChange={(e) => setNewProjectName(e.target.value)}
-                                    placeholder="Ex: Ampliação Área 51 - Rev.02"
-                                    className="flex-1 bg-slate-950 border border-slate-700 rounded-lg px-4 py-3 text-white focus:ring-2 focus:ring-blue-500 outline-none"
-                                    autoFocus
-                                />
-                                <button 
-                                    disabled={!newProjectName.trim()}
-                                    onClick={() => { onSave(newProjectName); setNewProjectName(''); setMode('LIST'); }}
-                                    className="bg-green-600 hover:bg-green-500 disabled:opacity-50 disabled:cursor-not-allowed text-white px-6 rounded-lg font-bold flex items-center gap-2"
-                                >
-                                    <Save size={18} /> Salvar
-                                </button>
+                        <div className="space-y-6 animate-in fade-in slide-in-from-top-4">
+                            {currentProjectId && currentProjectName && (
+                                <div className="bg-blue-900/20 p-6 rounded-xl border border-blue-500/30">
+                                    <h3 className="text-blue-400 font-bold mb-2 flex items-center gap-2">
+                                        <Save size={18} /> Atualizar Projeto Atual
+                                    </h3>
+                                    <p className="text-slate-300 text-sm mb-4">
+                                        Você está editando o projeto <strong className="text-white">"{currentProjectName}"</strong>. Deseja salvar as alterações neste mesmo projeto?
+                                    </p>
+                                    <button 
+                                        onClick={() => { onSave(currentProjectName, currentProjectId); setMode('LIST'); }}
+                                        className="w-full bg-blue-600 hover:bg-blue-500 text-white py-3 rounded-lg font-bold flex justify-center items-center gap-2 transition-colors"
+                                    >
+                                        <Save size={18} /> Salvar Alterações em "{currentProjectName}"
+                                    </button>
+                                </div>
+                            )}
+
+                            <div className="bg-slate-800/50 p-6 rounded-xl border border-slate-700">
+                                <h3 className="text-slate-300 font-bold mb-4 flex items-center gap-2">
+                                    <FolderOpen size={18} /> Salvar como Novo Projeto
+                                </h3>
+                                <label className="block text-sm font-bold text-slate-400 mb-2 uppercase">Nome do Novo Projeto</label>
+                                <div className="flex gap-2">
+                                    <input 
+                                        type="text" 
+                                        value={newProjectName}
+                                        onChange={(e) => setNewProjectName(e.target.value)}
+                                        placeholder="Ex: Ampliação Área 51 - Rev.02"
+                                        className="flex-1 bg-slate-950 border border-slate-700 rounded-lg px-4 py-3 text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                                        autoFocus={!currentProjectId}
+                                    />
+                                    <button 
+                                        disabled={!newProjectName.trim()}
+                                        onClick={() => { onSave(newProjectName); setNewProjectName(''); setMode('LIST'); }}
+                                        className="bg-green-600 hover:bg-green-500 disabled:opacity-50 disabled:cursor-not-allowed text-white px-6 rounded-lg font-bold flex items-center gap-2"
+                                    >
+                                        <Save size={18} /> Salvar Novo
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     )}
@@ -160,13 +217,20 @@ export const DatabaseModal: React.FC<DatabaseModalProps> = ({
                                             </div>
                                             <div className="flex gap-2">
                                                 <button 
-                                                    onClick={() => { if(confirm('Carregar este projeto substituirá o atual. Continuar?')) onLoad(proj); }}
+                                                    onClick={() => setConfirmAction({ type: 'OVERWRITE', project: proj })}
+                                                    className="px-3 py-2 bg-amber-600/20 hover:bg-amber-600 text-amber-500 hover:text-white rounded-lg font-bold text-sm transition-colors flex items-center gap-1"
+                                                    title="Salvar projeto atual por cima deste"
+                                                >
+                                                    <Save size={16} />
+                                                </button>
+                                                <button 
+                                                    onClick={() => setConfirmAction({ type: 'LOAD', project: proj })}
                                                     className="px-4 py-2 bg-blue-600/20 hover:bg-blue-600 text-blue-400 hover:text-white rounded-lg font-bold text-sm transition-colors"
                                                 >
                                                     Abrir
                                                 </button>
                                                 <button 
-                                                    onClick={() => { if(confirm('Tem certeza que deseja excluir este projeto?')) onDelete(proj.id); }}
+                                                    onClick={() => setConfirmAction({ type: 'DELETE', project: proj })}
                                                     className="p-2 bg-red-600/10 hover:bg-red-600 text-red-500 hover:text-white rounded-lg transition-colors"
                                                 >
                                                     <Trash2 size={18} />

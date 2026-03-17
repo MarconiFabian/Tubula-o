@@ -36,7 +36,11 @@ function useProjectHistory(initialPipes: PipeSegment[]) {
         const resolvedPipes = typeof newPipes === 'function' ? newPipes(currentState.pipes) : newPipes;
         pushState({ ...currentState, pipes: resolvedPipes });
     };
-    return { pipes: currentState.pipes, setPipes, undo, redo, canUndo: currentIndex > 0, canRedo: currentIndex < history.length - 1 };
+    const resetHistory = (initialPipes: PipeSegment[]) => {
+        setHistory([{ pipes: initialPipes }]);
+        setCurrentIndex(0);
+    };
+    return { pipes: currentState.pipes, setPipes, undo, redo, canUndo: currentIndex > 0, canRedo: currentIndex < history.length - 1, resetHistory };
 }
 
 export default function App() {
@@ -48,7 +52,7 @@ export default function App() {
         return saved ? JSON.parse(saved) : INITIAL_PIPES;
     } catch { return INITIAL_PIPES; }
   }, []);
-  const { pipes, setPipes, undo, redo, canUndo, canRedo } = useProjectHistory(initialPipes);
+  const { pipes, setPipes, undo, redo, canUndo, canRedo, resetHistory } = useProjectHistory(initialPipes);
   const [annotations, setAnnotations] = useState<Annotation[]>(() => {
     try {
         const saved = localStorage.getItem('iso-manager-annotations');
@@ -83,6 +87,22 @@ export default function App() {
   const [isDBModalOpen, setIsDBModalOpen] = useState(false);
   const [savedProjects, setSavedProjects] = useState<any[]>([]);
   const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>([]);
+  const [currentProjectId, setCurrentProjectId] = useState<string | null>(() => {
+    return localStorage.getItem('iso-manager-current-project-id');
+  });
+  const [currentProjectName, setCurrentProjectName] = useState<string | null>(() => {
+    return localStorage.getItem('iso-manager-current-project-name');
+  });
+
+  useEffect(() => {
+    if (currentProjectId) localStorage.setItem('iso-manager-current-project-id', currentProjectId);
+    else localStorage.removeItem('iso-manager-current-project-id');
+  }, [currentProjectId]);
+
+  useEffect(() => {
+    if (currentProjectName) localStorage.setItem('iso-manager-current-project-name', currentProjectName);
+    else localStorage.removeItem('iso-manager-current-project-name');
+  }, [currentProjectName]);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
     return localStorage.getItem('iso-manager-auth') === 'true';
   });
@@ -266,10 +286,12 @@ export default function App() {
       }
   }, [isDBModalOpen, refreshProjects]);
 
-  const handleDBAction_Save = async (name: string) => {
+  const handleDBAction_Save = async (name: string, overwriteId?: string) => {
       try {
+          const isOverwrite = !!overwriteId;
+          const projectId = overwriteId || `PROJ-${Date.now()}`;
           const projectData = {
-              id: `PROJ-${Date.now()}`,
+              id: projectId,
               name,
               updatedAt: new Date(),
               pipes,
@@ -282,10 +304,12 @@ export default function App() {
           };
           await saveProjectToDB(projectData);
           await refreshProjects();
-          alert('Projeto salvo com sucesso!');
+          setCurrentProjectId(projectId);
+          setCurrentProjectName(name);
+          showToast(isOverwrite ? 'Projeto atualizado com sucesso!' : 'Projeto salvo com sucesso!', 'success');
       } catch (error) {
           console.error("Erro ao salvar projeto:", error);
-          alert("Erro ao salvar projeto.");
+          showToast("Erro ao salvar projeto.", 'error');
       }
   };
 
@@ -297,10 +321,13 @@ export default function App() {
           setProjectClient(project.client || '');
           setSecondaryImage(project.secondaryImage || null);
           setMapImage(project.mapImage || null);
+          setCurrentProjectId(project.id);
+          setCurrentProjectName(project.name);
           setIsDBModalOpen(false);
+          showToast("Projeto carregado com sucesso!", 'success');
       } catch (error) {
           console.error("Erro ao carregar projeto:", error);
-          alert("Erro ao carregar projeto.");
+          showToast("Erro ao carregar projeto.", 'error');
       }
   };
 
@@ -308,10 +335,39 @@ export default function App() {
       try {
           await deleteProjectFromDB(id);
           await refreshProjects();
+          showToast("Projeto excluído com sucesso!", 'success');
       } catch (error) {
           console.error("Erro ao excluir projeto:", error);
-          alert("Erro ao excluir projeto.");
+          showToast("Erro ao excluir projeto.", 'error');
       }
+  };
+
+  const [confirmNewProject, setConfirmNewProject] = useState(false);
+  const [toast, setToast] = useState<{message: string, type: 'success' | 'error'} | null>(null);
+
+  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+      setToast({ message, type });
+      setTimeout(() => setToast(null), 3000);
+  };
+
+  const handleNewProject = () => {
+      setConfirmNewProject(true);
+  };
+
+  const executeNewProject = () => {
+      setPipes(INITIAL_PIPES);
+      setAnnotations([]);
+      setProjectLocation('ÁREA / SETOR 01');
+      setProjectClient('VALE');
+      setSecondaryImage(null);
+      setMapImage(null);
+      setCurrentProjectId(null);
+      setCurrentProjectName(null);
+      setSelectedIds([]);
+      setClipboard(null);
+      setPastePreview(null);
+      resetHistory(INITIAL_PIPES);
+      setConfirmNewProject(false);
   };
 
   // Global Key listeners for actions like Delete, Copy, Paste
@@ -734,7 +790,7 @@ export default function App() {
         pdf.save(`relatorio-${isPlanning ? 'cronograma' : 'rastreabilidade'}.pdf`);
     } catch (err) { 
         console.error("Erro ao gerar PDF:", err);
-        alert("Erro ao gerar PDF: " + (err instanceof Error ? err.message : String(err))); 
+        showToast("Erro ao gerar PDF: " + (err instanceof Error ? err.message : String(err)), 'error'); 
     } finally { 
         setIsExporting(false); 
         setPdfExportStats(null);
@@ -801,8 +857,9 @@ export default function App() {
         XLSX.utils.book_append_sheet(workbook, bomSheet, "Lista de Materiais");
 
         XLSX.writeFile(workbook, `projeto-isometrico-${projectLocation.replace(/\s+/g, '-') || 'sem-nome'}.xlsx`);
+        showToast("Excel exportado com sucesso!", 'success');
     } catch (err) {
-        alert("Erro ao exportar Excel.");
+        showToast("Erro ao exportar Excel.", 'error');
         console.error(err);
     }
   };
@@ -819,6 +876,27 @@ export default function App() {
 
   return (
     <div className="h-screen w-screen bg-slate-950 text-slate-100 flex flex-col overflow-hidden font-sans">
+        {toast && (
+            <div className={`fixed top-20 right-4 z-[120] px-6 py-3 rounded-xl shadow-2xl font-bold text-white animate-in fade-in slide-in-from-top-4 ${toast.type === 'success' ? 'bg-emerald-600' : 'bg-red-600'}`}>
+                {toast.message}
+            </div>
+        )}
+        {confirmNewProject && (
+            <div className="fixed inset-0 z-[110] bg-black/60 flex items-center justify-center p-4">
+                <div className="bg-slate-800 border border-slate-700 p-6 rounded-xl shadow-2xl max-w-md w-full">
+                    <h3 className="text-xl font-bold text-white mb-2">Novo Projeto</h3>
+                    <p className="text-slate-300 mb-6">
+                        Deseja iniciar um novo projeto? Alterações não salvas serão perdidas.
+                    </p>
+                    <div className="flex justify-end gap-3">
+                        <button onClick={() => setConfirmNewProject(false)} className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors">Cancelar</button>
+                        <button onClick={executeNewProject} className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-bold transition-colors">
+                            Confirmar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        )}
         <DatabaseModal 
             isOpen={isDBModalOpen} 
             onClose={() => setIsDBModalOpen(false)} 
@@ -828,6 +906,8 @@ export default function App() {
             onDelete={handleDBAction_Delete}
             selectedProjectIds={selectedProjectIds}
             onToggleProjectSelection={handleToggleProjectSelection}
+            currentProjectId={currentProjectId}
+            currentProjectName={currentProjectName}
         />
         
         <TopNav 
@@ -849,6 +929,8 @@ export default function App() {
             handleExportExcel={handleExportExcel}
             handleExportPDF={handleExportPDF}
             isExporting={isExporting}
+            currentProjectName={currentProjectName}
+            handleNewProject={handleNewProject}
         />
 
         <main className="flex-1 relative overflow-hidden flex">
