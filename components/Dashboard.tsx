@@ -305,7 +305,9 @@ const Dashboard: React.FC<DashboardProps> = ({
 
             // Planned (Sigmoid Curve) - Adjusted to start from initial progress
             // We use a slightly less aggressive sigmoid for better realism
-            const x = (i / plotDays) * 10 - 5; // Range -5 to 5
+            // If plotDays is 0, we avoid division by zero
+            const progressRatio = plotDays > 0 ? (i / plotDays) : 1;
+            const x = progressRatio * 10 - 5; // Range -5 to 5
             const sigmoid = 1 / (1 + Math.exp(-x));
             
             // Normalize sigmoid to start at 0 and end at 1 within the plot window
@@ -359,10 +361,12 @@ const Dashboard: React.FC<DashboardProps> = ({
     };
 
     currentPipes.forEach(p => {
+        // Count supports from the 'supports' field (legacy or direct)
         if (p.supports) {
-            componentStats.supports.total += p.supports.total;
-            componentStats.supports.installed += p.supports.installed;
+            componentStats.supports.total += (p.supports.total || 0);
+            componentStats.supports.installed += (p.supports.installed || 0);
         }
+        // Count accessories (modern way)
         if (p.accessories) {
             p.accessories.forEach(a => {
                 const isInstalled = a.status === AccessoryStatus.MOUNTED;

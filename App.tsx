@@ -233,9 +233,33 @@ export default function App() {
       };
 
       pipes.forEach(p => {
+          const length = p.length || 0;
+          totalLength += length;
+          
+          const pipingF = PIPING_REMAINING_FACTOR[p.status] || 0;
+          const insulationF = INSULATION_REMAINING_FACTOR[p.insulationStatus || 'NONE'] || 0;
+          
+          pipingTotalLength += length;
+          pipingRemainingLength += length * pipingF;
+          
+          if (p.insulationStatus && p.insulationStatus !== 'NONE') {
+              insulationTotalLength += length;
+              insulationRemainingLength += length * insulationF;
+          }
+
+          if (p.status) {
+              pipeCounts[p.status] = (pipeCounts[p.status] || 0) + 1;
+              pipeLengths[p.status] = (pipeLengths[p.status] || 0) + length;
+          }
+          
+          if (p.insulationStatus && p.insulationStatus !== 'NONE') {
+              insulationCounts[p.insulationStatus] = (insulationCounts[p.insulationStatus] || 0) + 1;
+              insulationLengths[p.insulationStatus] = (insulationLengths[p.insulationStatus] || 0) + length;
+          }
+
           if (p.supports) {
-              componentStats.supports.total += p.supports.total;
-              componentStats.supports.installed += p.supports.installed;
+              componentStats.supports.total += (p.supports.total || 0);
+              componentStats.supports.installed += (p.supports.installed || 0);
           }
           if (p.accessories) {
               p.accessories.forEach(a => {
