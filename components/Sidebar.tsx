@@ -23,6 +23,7 @@ interface SidebarProps {
   onSetPlacementMode?: (mode: AccessoryType | null) => void;
   onBatchAddSupports?: (spacing: number, status: AccessoryStatus) => void;
   onClearAccessories?: () => void;
+  onClearAllAccessories?: () => void;
 }
 
 const DEFAULT_FACTORS: PlanningFactors = { 
@@ -41,7 +42,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     selectedPipes, onUpdateSingle, onUpdateBatch, onDelete, onClose, 
     mode = 'TRACKING', startDate = new Date().toISOString().split('T')[0],
     prodSettings, onUpdateProdSettings, onCopy, deadlineDate, onUpdateDeadline,
-    placementMode, onSetPlacementMode, onBatchAddSupports, onClearAccessories
+    placementMode, onSetPlacementMode, onBatchAddSupports, onClearAccessories, onClearAllAccessories
 }) => {
   const [showMetricsConfig, setShowMetricsConfig] = useState(false);
   const [showReport, setShowReport] = useState(false);

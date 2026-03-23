@@ -10,7 +10,7 @@ import { DatabaseModal } from './components/DatabaseModal';
 import { saveProjectToDB, getAllProjects, deleteProjectFromDB } from './utils/db';
 import { INITIAL_PIPES, STATUS_LABELS, STATUS_COLORS, INSULATION_LABELS, PIPE_DIAMETERS, AVAILABLE_DIAMETERS, ALL_STATUSES, ALL_INSULATION_STATUSES, INSULATION_COLORS, BASE_PRODUCTIVITY, DIFFICULTY_WEIGHTS, PIPING_REMAINING_FACTOR, INSULATION_REMAINING_FACTOR, HOURS_PER_DAY, DEFAULT_PROD_SETTINGS } from './constants';
 import { PipeSegment, PipeStatus, Annotation, AnnotationType, Accessory, AccessoryType, AccessoryStatus, ProductivitySettings, DailyProduction, ProjectCalendar } from './types';
-import { LayoutDashboard, Cuboid, PenTool, XCircle, FileDown, Save, FolderOpen, FilePlus, Loader2, MapPin, Database, Undo, Redo, Wrench, Grid as GridIcon, CircleDot, MousePointer2, Ruler, Calendar, Lock, LogOut, ChevronRight, Copy, ClipboardPaste, Activity, Package, AlertCircle, Image as ImageIcon, Shield, Building2, Timer, FileCode, X, HelpCircle, FileSpreadsheet } from 'lucide-react';
+import { LayoutDashboard, Cuboid, PenTool, XCircle, FileDown, Save, FolderOpen, FilePlus, Loader2, MapPin, Database, Undo, Redo, Wrench, Grid as GridIcon, CircleDot, MousePointer2, Ruler, Calendar, Lock, LogOut, ChevronRight, Copy, ClipboardPaste, Activity, Package, AlertCircle, Image as ImageIcon, Shield, Building2, Timer, FileCode, X, HelpCircle, FileSpreadsheet, Trash2 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
 import * as XLSX from 'xlsx';
@@ -222,8 +222,14 @@ function AppContent() {
   }, [selectedIds, setPipes]);
 
   const handleClearAccessories = useCallback(() => {
-    setPipes(prev => prev.map(p => selectedIds.includes(p.id) ? { ...p, accessories: [] } : p));
+    setPipes(prev => prev.map(p => selectedIds.includes(p.id) ? { ...p, accessories: [], supports: { total: 0, installed: 0 } } : p));
   }, [selectedIds, setPipes]);
+
+  const handleClearAllAccessories = useCallback(() => {
+    if (window.confirm('Tem certeza que deseja apagar TODOS os suportes e acessórios de todos os tubos do projeto?')) {
+      setPipes(prev => prev.map(p => ({ ...p, accessories: [], supports: { total: 0, installed: 0 } })));
+    }
+  }, [setPipes]);
   const [isDBModalOpen, setIsDBModalOpen] = useState(false);
   const [savedProjects, setSavedProjects] = useState<any[]>([]);
   const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>([]);
@@ -1158,6 +1164,10 @@ function AppContent() {
                                     <Activity size={14} className={dynamicZoom ? 'animate-pulse' : ''} />
                                     ZOOM DINÂMICO {dynamicZoom ? 'ON' : 'OFF'}
                                 </button>
+                                <button onClick={handleClearAllAccessories} className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold border transition-all bg-red-900/20 border-red-500/50 text-red-400 hover:bg-red-900/40" title="Apagar todos os suportes do projeto">
+                                    <Trash2 size={14} />
+                                    LIMPAR SUPORTES
+                                </button>
                                 {clipboard && clipboard.length > 0 && (<div className="flex bg-slate-800 rounded-lg p-1 border border-slate-700 items-center px-3 gap-2"><div className="text-[10px] text-slate-400 font-bold uppercase flex items-center gap-1"><ClipboardPaste size={12}/> Copiado ({clipboard.length})</div><button onClick={handlePasteStart} className="text-xs bg-blue-600 text-white px-2 py-1 rounded font-bold hover:bg-blue-500">Colar</button></div>)}</>)}
                                 {isDrawing && (<div className="flex bg-slate-800 rounded-lg p-1.5 border border-slate-700 items-center gap-3 animate-in fade-in slide-in-from-left-2 duration-300"><div className="flex items-center gap-2 bg-slate-700 px-3 py-1.5 rounded-md border border-slate-600"><span className="text-[9px] font-bold text-slate-400 uppercase">Bitola:</span><select value={selectedDiameterLabel} onChange={(e) => { setSelectedDiameterLabel(e.target.value); setSelectedDiameter(PIPE_DIAMETERS[e.target.value]); }} className="bg-transparent text-white text-xs font-bold border-none focus:ring-0 p-0">{AVAILABLE_DIAMETERS.map(d => (<option key={d} value={d} className="bg-slate-800">{d}</option>))}</select></div><div className="h-6 w-px bg-slate-700"></div><div className="flex gap-1 mr-1">
                                     <button onClick={() => { setFixedLengthValue(6); setFixedLengthText('6'); }} className={`px-2 py-1 text-[10px] font-bold rounded border transition-colors ${fixedLengthValue === 6 ? 'bg-blue-600 border-blue-400 text-white' : 'bg-slate-700 border-slate-600 text-slate-300 hover:bg-slate-600'}`}>6m</button>
@@ -1222,6 +1232,7 @@ function AppContent() {
                             onSetPlacementMode={setPlacementMode}
                             onBatchAddSupports={handleBatchAddSupports}
                             onClearAccessories={handleClearAccessories}
+                            onClearAllAccessories={handleClearAllAccessories}
                         />
                 </div>
             )}
