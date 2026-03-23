@@ -9,9 +9,9 @@ import { Fittings, ConnectionNode } from './Fittings';
 import { AnnotationMarker, GhostMarker } from './AnnotationMarker';
 import { SceneHelpers } from './SceneHelpers';
 import { StatusLegend } from './StatusLegend';
-import { PipeSegment, PipeStatus, Annotation, AccessoryType, AnnotationType } from '../../types';
+import { PipeSegment, PipeStatus, Annotation, AccessoryType, AnnotationType, AccessoryStatus } from '../../types';
 import { STATUS_COLORS, STATUS_LABELS, ALL_STATUSES } from '../../constants';
-import { Loader2, UserCheck, Calendar, X, Info } from 'lucide-react';
+import { Loader2, UserCheck, Calendar, X, Info, Package } from 'lucide-react';
 
 interface SceneProps {
   pipes: PipeSegment[];
@@ -39,6 +39,8 @@ interface SceneProps {
   onSetSnapAngle?: (angle: number) => void;
   currentDiameter?: number;
   dynamicZoom?: boolean;
+  placementMode?: AccessoryType | null;
+  onAddAccessory?: (pipeId: string, type: AccessoryType, offset: number) => void;
 }
 
 const stringToColor = (str: string) => {
@@ -256,11 +258,130 @@ const KeyboardManager = ({ selectedIds, pipes, onUpdatePipe, onUndo, onRedo }:
     return null;
 };
 
+const SupportVisual = ({ pos, dir, actualUp, pipeDiameter, status }: { pos: THREE.Vector3, dir: THREE.Vector3, actualUp: THREE.Vector3, pipeDiameter: number, status: AccessoryStatus }) => {
+    const isMounted = status === AccessoryStatus.MOUNTED;
+    const isVertical = Math.abs(dir.y) > 0.8;
+    
+    if (isVertical) {
+        // Suporte para tubos verticais (Guia/Abraçadeira de parede)
+        return (
+            <group position={pos}>
+                {/* Abraçadeira (U-Bolt style) */}
+                <mesh rotation={[Math.PI/2, 0, 0]}>
+                    <torusGeometry args={[pipeDiameter + 0.05, 0.02, 8, 24]} />
+                    <meshStandardMaterial color={isMounted ? "#cbd5e1" : "#334155"} />
+                </mesh>
+                {/* Braço de fixação horizontal */}
+                <mesh position={[0.25, 0, 0]} rotation={[0, 0, Math.PI/2]}>
+                    <boxGeometry args={[0.04, 0.5, 0.08]} />
+                    <meshStandardMaterial 
+                        color={isMounted ? "#cbd5e1" : "#334155"} 
+                        emissive={isMounted ? "#3b82f6" : "#1e293b"} 
+                        emissiveIntensity={isMounted ? 1.2 : 0.2}
+                    />
+                </mesh>
+                {/* Placa de base na parede */}
+                <mesh position={[0.5, 0, 0]}>
+                    <boxGeometry args={[0.02, 0.3, 0.3]} />
+                    <meshStandardMaterial color={isMounted ? "#475569" : "#1e293b"} />
+                </mesh>
+            </group>
+        );
+    } else {
+        // Suporte para tubos horizontais (Pedestal/Berço)
+        const offset = actualUp.clone().multiplyScalar(-(pipeDiameter + 0.2));
+        
+        // Alinhamento do berço com a direção do tubo
+        // O berço deve ser perpendicular à direção do tubo se for um suporte de apoio simples,
+        // mas aqui vamos alinhar o grupo com o 'actualUp'
+        const quaternion = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), actualUp);
+
+        return (
+            <group position={pos.clone().add(offset)} quaternion={quaternion}>
+                {/* Base do suporte */}
+                <mesh position={[0, -0.15, 0]}>
+                    <boxGeometry args={[0.4, 0.1, 0.4]} />
+                    <meshStandardMaterial color={isMounted ? "#475569" : "#1e293b"} />
+                </mesh>
+                {/* Haste vertical */}
+                <mesh>
+                    <boxGeometry args={[0.08, 0.4, 0.08]} />
+                    <meshStandardMaterial 
+                        color={isMounted ? "#cbd5e1" : "#334155"} 
+                        emissive={isMounted ? "#3b82f6" : "#1e293b"} 
+                        emissiveIntensity={isMounted ? 1.2 : 0.2}
+                    />
+                </mesh>
+                {/* Berço (horizontal) */}
+                <mesh position={[0, 0.2, 0]}>
+                    <boxGeometry args={[pipeDiameter * 2.8, 0.08, 0.2]} />
+                    <meshStandardMaterial color={isMounted ? "#94a3b8" : "#334155"} />
+                </mesh>
+            </group>
+        );
+    }
+};
+
+const ComponentMarkers = ({ pipe }: { pipe: PipeSegment }) => {
+    const start = new THREE.Vector3(pipe.start.x, pipe.start.y, pipe.start.z);
+    const end = new THREE.Vector3(pipe.end.x, pipe.end.y, pipe.end.z);
+    const dir = new THREE.Vector3().subVectors(end, start).normalize();
+    const length = start.distanceTo(end);
+    const up = new THREE.Vector3(0, 1, 0);
+    const right = new THREE.Vector3().crossVectors(dir, up).normalize();
+    if (right.lengthSq() < 0.001) right.set(1, 0, 0);
+    const actualUp = new THREE.Vector3().crossVectors(right, dir).normalize();
+
+    const markers: React.ReactNode[] = [];
+
+    // Renderizar Suportes (Estruturas metálicas abaixo do tubo)
+    if (pipe.supports && pipe.supports.total > 0) {
+        for (let i = 0; i < pipe.supports.total; i++) {
+            const t = (i + 1) / (pipe.supports.total + 1);
+            const pos = new THREE.Vector3().lerpVectors(start, end, t);
+            const isMounted = i < pipe.supports.installed;
+            markers.push(
+                <SupportVisual 
+                    key={`support-${pipe.id}-${i}`} 
+                    pos={pos} 
+                    dir={dir} 
+                    actualUp={actualUp} 
+                    pipeDiameter={pipe.diameter} 
+                    status={isMounted ? AccessoryStatus.MOUNTED : AccessoryStatus.PENDING} 
+                />
+            );
+        }
+    }
+
+    // Renderizar Acessórios Manuais
+    if (pipe.accessories && pipe.accessories.length > 0) {
+        pipe.accessories.forEach((acc) => {
+            const pos = new THREE.Vector3().lerpVectors(start, end, acc.offset);
+            
+            if (acc.type === 'SUPPORT') {
+                markers.push(
+                    <SupportVisual 
+                        key={`acc-${acc.id}`} 
+                        pos={pos} 
+                        dir={dir} 
+                        actualUp={actualUp} 
+                        pipeDiameter={pipe.diameter} 
+                        status={acc.status} 
+                    />
+                );
+            }
+        });
+    }
+
+    return <group>{markers}</group>;
+};
+
 const SceneContent: React.FC<SceneProps & { lockedAxis: 'x'|'y'|'z'|null, selectionBox: any, onSetSelectionBox: any, is45Mode: boolean, snapAngle: number, currentDiameter?: number, showDimensions?: boolean, dynamicZoom?: boolean }> = ({ 
   pipes, annotations = [], selectedIds, onSelectPipe, onSetSelection, isDrawing, onAddPipe, onUpdatePipe, onMovePipes, onCancelDraw, lockedAxis, fixedLength,
   onAddAnnotation, onUpdateAnnotation, onDeleteAnnotation, onUndo, onRedo,
   colorMode = 'STATUS', selectionBox, onSetSelectionBox,
-  pastePreview, onPasteMove, onPasteConfirm, is45Mode, snapAngle, currentDiameter, showDimensions, dynamicZoom
+  pastePreview, onPasteMove, onPasteConfirm, is45Mode, snapAngle, currentDiameter, showDimensions, dynamicZoom,
+  placementMode, onAddAccessory
 }) => {
     const { camera, gl, size } = useThree();
     const [isDragging, setIsDragging] = useState(false);
@@ -332,7 +453,7 @@ const SceneContent: React.FC<SceneProps & { lockedAxis: 'x'|'y'|'z'|null, select
         const map: Record<string, ConnectionNode> = {};
         const pipeTrims: Record<string, { start: number, end: number }> = {};
         if (!Array.isArray(pipes)) return { connections: map, trims: pipeTrims };
-        const getKey = (v: {x:number, y:number, z:number}) => `${v.x.toFixed(3)},${v.y.toFixed(3)},${v.z.toFixed(3)}`;
+        const getKey = (v: {x:number, y:number, z:number}) => `${(v.x || 0).toFixed(3)},${(v.y || 0).toFixed(3)},${(v.z || 0).toFixed(3)}`;
         pipes.forEach(pipe => {
             if (!pipe.start || !pipe.end) return;
             const startKey = getKey(pipe.start);
@@ -406,6 +527,25 @@ const SceneContent: React.FC<SceneProps & { lockedAxis: 'x'|'y'|'z'|null, select
         if (pastePreview && onPasteConfirm) {
              onPasteConfirm();
              return;
+        }
+
+        if (placementMode && onAddAccessory) {
+            // Calcular o offset baseado no ponto de clique
+            const start = new THREE.Vector3(pipe.start.x, pipe.start.y, pipe.start.z);
+            const end = new THREE.Vector3(pipe.end.x, pipe.end.y, pipe.end.z);
+            const clickPt = e.point;
+            
+            // Projeção do ponto no segmento
+            const line = new THREE.Line3(start, end);
+            const closestPt = new THREE.Vector3();
+            line.closestPointToPoint(clickPt, true, closestPt);
+            
+            const distStart = start.distanceTo(closestPt);
+            const totalDist = start.distanceTo(end);
+            const offset = totalDist > 0 ? distStart / totalDist : 0;
+            
+            onAddAccessory(pipe.id, placementMode, offset);
+            return;
         }
 
         if (isQPressed) {
@@ -534,6 +674,9 @@ const SceneContent: React.FC<SceneProps & { lockedAxis: 'x'|'y'|'z'|null, select
                         >
                              <PipeMesh data={pipe} isSelected={isSelected} onSelect={() => {}} trimStart={trim.start} trimEnd={trim.end} customColor={colorOverride} />
                              
+                             {/* Renderizar marcadores de componentes (válvulas, suportes, etc) */}
+                             <ComponentMarkers pipe={pipe} />
+                             
                              {showDimension && (
                                 <Billboard position={[(pipe.start.x + pipe.end.x)/2, (pipe.start.y + pipe.end.y)/2 + 0.3, (pipe.start.z + pipe.end.z)/2]}>
                                     <Text
@@ -545,7 +688,7 @@ const SceneContent: React.FC<SceneProps & { lockedAxis: 'x'|'y'|'z'|null, select
                                         outlineWidth={0.02}
                                         outlineColor="#000"
                                     >
-                                        {pipe.length.toFixed(2)}m
+                                        {(pipe.length || 0).toFixed(2)}m
                                     </Text>
                                 </Billboard>
                              )}
@@ -576,9 +719,46 @@ const SceneContent: React.FC<SceneProps & { lockedAxis: 'x'|'y'|'z'|null, select
                     </div>
                 </Html>
             )}
+
+            {placementMode && !isDrawing && (
+                <Html position={[0,0,0]} style={{pointerEvents:'none'}}>
+                    <div className="fixed top-20 left-1/2 transform -translate-x-1/2 bg-blue-600 text-white px-4 py-2 rounded-full font-bold shadow-xl animate-pulse flex items-center gap-2 pointer-events-none">
+                        <span>🔧</span> MODO DE POSICIONAMENTO: {placementMode}
+                    </div>
+                </Html>
+            )}
         </>
     );
 }
+
+const ComponentLegend = () => (
+    <div className="absolute bottom-20 left-4 bg-slate-900/80 backdrop-blur-md border border-slate-700 p-3 rounded-xl shadow-2xl z-10 pointer-events-none">
+        <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-2">
+            <Package size={12} /> Legenda de Itens
+        </h4>
+        <div className="space-y-1.5">
+            <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-[#f59e0b] shadow-[0_0_8px_rgba(245,158,11,0.5)]"></div>
+                <span className="text-[9px] font-bold text-slate-300 uppercase">Válvulas</span>
+            </div>
+            <div className="flex items-center gap-2">
+                <div className="w-2 h-2 bg-[#cbd5e1] shadow-[0_0_8px_rgba(59,130,246,0.8)] border border-blue-400"></div>
+                <span className="text-[9px] font-bold text-slate-300 uppercase">Suportes</span>
+            </div>
+            <div className="flex items-center gap-2">
+                <div className="w-2 h-0.5 bg-[#06b6d4] shadow-[0_0_8px_rgba(6,182,212,0.5)]"></div>
+                <span className="text-[9px] font-bold text-slate-300 uppercase">Instrumentos</span>
+            </div>
+            <div className="flex items-center gap-2">
+                <div className="w-1.5 h-1.5 bg-[#a855f7]"></div>
+                <span className="text-[9px] font-bold text-slate-300 uppercase">Outros</span>
+            </div>
+            <div className="mt-2 pt-2 border-t border-slate-800">
+                <span className="text-[8px] text-slate-500 font-medium italic">Escuro = Não Instalado</span>
+            </div>
+        </div>
+    </div>
+);
 
 const Scene: React.FC<SceneProps & { fixedLength?: number, onUndo?: ()=>void, onRedo?: ()=>void, colorMode?: 'STATUS'|'SPOOL', onMovePipes?: (d:any)=>void, onSetSelection?: (ids:string[])=>void, pastePreview?: PipeSegment[] | null, onPasteMove?: any,  onPasteConfirm?: any, 
   snapAngle?: number, 
@@ -716,6 +896,7 @@ const Scene: React.FC<SceneProps & { fixedLength?: number, onUndo?: ()=>void, on
       </div>
       <div className="flex-1 relative">
           <StatusLegend />
+          <ComponentLegend />
           <Canvas camera={{ position: [8, 8, 8], fov: 50, near: 0.05, far: 5000 }} shadows gl={{ preserveDrawingBuffer: true, antialias: true }} onPointerMissed={(e) => {
               // Se clicar no vazio SEM arrastar (box w=0) e SEM colar, limpa seleção
               if (!props.isDrawing && !selectionBox.isSelecting && !props.pastePreview && e.type === 'click') {

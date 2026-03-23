@@ -28,6 +28,10 @@ export const BASE_PRODUCTIVITY = {
 export const DEFAULT_PROD_SETTINGS: ProductivitySettings = {
   pipingBase: BASE_PRODUCTIVITY.PIPING,
   insulationBase: BASE_PRODUCTIVITY.INSULATION,
+  supportBase: 2.5, // 2.5 HH por suporte
+  valveBase: 8.0,   // 8.0 HH por válvula
+  instrumentBase: 4.0, // 4.0 HH por instrumento
+  otherBase: 2.0,   // 2.0 HH por outros
   weights: {
     crane: 0.75,
     blockage: 0.65,
@@ -64,6 +68,7 @@ export const DIFFICULTY_WEIGHTS = {
 
 export const INSULATION_COLORS: Record<string, string> = {
   'NONE': 'transparent',
+  'NOT_REQUIRED': 'transparent',
   'PENDING': '#f87171',    
   'INSTALLING': '#fbbf24', 
   'FINISHED': '#e2e8f0'    
@@ -71,6 +76,7 @@ export const INSULATION_COLORS: Record<string, string> = {
 
 export const INSULATION_LABELS: Record<string, string> = {
   'NONE': 'Sem Isolamento',
+  'NOT_REQUIRED': 'Não Requer Isol.',
   'PENDING': 'Isol. Pendente',
   'INSTALLING': 'Isol. Montando',
   'FINISHED': 'Isol. Finalizado'
@@ -86,7 +92,7 @@ export const PIPE_DIAMETERS: Record<string, number> = {
 };
 
 export const ALL_STATUSES = ['PENDING', 'MOUNTED', 'WELDED', 'HYDROTEST'];
-export const ALL_INSULATION_STATUSES = ['NONE', 'PENDING', 'INSTALLING', 'FINISHED'];
+export const ALL_INSULATION_STATUSES = ['NONE', 'NOT_REQUIRED', 'PENDING', 'INSTALLING', 'FINISHED'];
 export const AVAILABLE_DIAMETERS = ['10"', '8"', '6"', '4"', '1"', '3/4"'];
 
 // --- FATORES DE SALDO REMANESCENTE ---
@@ -98,7 +104,8 @@ export const PIPING_REMAINING_FACTOR: Record<string, number> = {
 };
 
 export const INSULATION_REMAINING_FACTOR: Record<string, number> = {
-    'NONE': 0.0,      // Não requer ou já concluído
+    'NONE': 1.0,      // Sem status definido = 100% a fazer
+    'NOT_REQUIRED': 0.0, // Não requer = 0% a fazer
     'PENDING': 1.0,   // 100% a fazer
     'INSTALLING': 0.5, // 50% a fazer
     'FINISHED': 0.0    // 0% a fazer

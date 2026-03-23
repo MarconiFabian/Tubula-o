@@ -9,12 +9,13 @@ import { Login } from './components/Login';
 import { DatabaseModal } from './components/DatabaseModal';
 import { saveProjectToDB, getAllProjects, deleteProjectFromDB } from './utils/db';
 import { INITIAL_PIPES, STATUS_LABELS, STATUS_COLORS, INSULATION_LABELS, PIPE_DIAMETERS, AVAILABLE_DIAMETERS, ALL_STATUSES, ALL_INSULATION_STATUSES, INSULATION_COLORS, BASE_PRODUCTIVITY, DIFFICULTY_WEIGHTS, PIPING_REMAINING_FACTOR, INSULATION_REMAINING_FACTOR, HOURS_PER_DAY, DEFAULT_PROD_SETTINGS } from './constants';
-import { PipeSegment, PipeStatus, Annotation, AnnotationType, Accessory, AccessoryType, ProductivitySettings } from './types';
+import { PipeSegment, PipeStatus, Annotation, AnnotationType, Accessory, AccessoryType, AccessoryStatus, ProductivitySettings, DailyProduction, ProjectCalendar } from './types';
 import { LayoutDashboard, Cuboid, PenTool, XCircle, FileDown, Save, FolderOpen, FilePlus, Loader2, MapPin, Database, Undo, Redo, Wrench, Grid as GridIcon, CircleDot, MousePointer2, Ruler, Calendar, Lock, LogOut, ChevronRight, Copy, ClipboardPaste, Activity, Package, AlertCircle, Image as ImageIcon, Shield, Building2, Timer, FileCode, X, HelpCircle, FileSpreadsheet } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
 import * as XLSX from 'xlsx';
-import { getWorkingEndDate, getWorkingDaysBetween } from './utils/planning';
+import { getWorkingEndDate, getWorkingDaysBetween, calculateTotalHH } from './utils/planning';
+import DailyProductionModal from './components/DailyProductionModal';
 
 // Auxiliar global para cálculo de término em dias úteis (REMOVIDO - USANDO UTILS)
 
@@ -84,6 +85,56 @@ export default function App() {
   const [colorMode, setColorMode] = useState<'STATUS' | 'SPOOL'>('STATUS');
   const [secondaryImage, setSecondaryImage] = useState<string | null>(null);
   const [mapImage, setMapImage] = useState<string | null>(null);
+  const [placementMode, setPlacementMode] = useState<AccessoryType | null>(null);
+
+  const handleAddAccessory = useCallback((pipeId: string, type: AccessoryType, offset: number) => {
+    setPipes(prev => prev.map(p => {
+      if (p.id === pipeId) {
+        const newAcc: Accessory = {
+          id: Math.random().toString(36).substr(2, 9),
+          type,
+          offset,
+          status: AccessoryStatus.PENDING
+        };
+        return {
+          ...p,
+          accessories: [...(p.accessories || []), newAcc]
+        };
+      }
+      return p;
+    }));
+    setPlacementMode(null);
+  }, [setPipes]);
+
+  const handleBatchAddSupports = useCallback((spacing: number, status: AccessoryStatus = AccessoryStatus.PENDING) => {
+    if (spacing <= 0) return;
+    setPipes(prev => prev.map(p => {
+      if (!selectedIds.includes(p.id)) return p;
+      const length = p.length;
+      if (length <= 0) return p;
+      
+      const count = Math.floor(length / spacing);
+      const newAccessories: Accessory[] = [];
+      for (let i = 1; i <= count; i++) {
+        const offset = (i * spacing) / length;
+        if (offset > 1) break;
+        newAccessories.push({
+          id: `ACC-${Math.random().toString(36).substr(2, 9)}`,
+          type: 'SUPPORT',
+          offset,
+          status: status
+        });
+      }
+      return {
+        ...p,
+        accessories: [...(p.accessories || []), ...newAccessories]
+      };
+    }));
+  }, [selectedIds, setPipes]);
+
+  const handleClearAccessories = useCallback(() => {
+    setPipes(prev => prev.map(p => selectedIds.includes(p.id) ? { ...p, accessories: [] } : p));
+  }, [selectedIds, setPipes]);
   const [isDBModalOpen, setIsDBModalOpen] = useState(false);
   const [savedProjects, setSavedProjects] = useState<any[]>([]);
   const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>([]);
@@ -93,6 +144,17 @@ export default function App() {
   const [currentProjectName, setCurrentProjectName] = useState<string | null>(() => {
     return localStorage.getItem('iso-manager-current-project-name');
   });
+  const [dailyProduction, setDailyProduction] = useState<DailyProduction[]>([]);
+    const [projectCalendar, setProjectCalendar] = useState<ProjectCalendar>({
+    startDate: new Date().toISOString().split('T')[0],
+    endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    startTime: '07:30',
+    endTime: '17:30',
+    workDays: ['1', '2', '3', '4', '5'],
+    teamCount: 1,
+    exceptions: []
+  });
+  const [isDailyProductionModalOpen, setIsDailyProductionModalOpen] = useState(false);
 
   useEffect(() => {
     if (currentProjectId) localStorage.setItem('iso-manager-current-project-id', currentProjectId);
@@ -147,80 +209,13 @@ export default function App() {
       ALL_STATUSES.forEach(s => { pipeCounts[s] = 0; pipeLengths[s] = 0; });
       ALL_INSULATION_STATUSES.forEach(s => { insulationCounts[s] = 0; insulationLengths[s] = 0; });
 
-      pipes.forEach(p => {
-          totalLength += p.length;
-          
-          pipingTotalLength += p.length;
-          pipingRemainingLength += p.length * (PIPING_REMAINING_FACTOR[p.status] ?? 1);
-          
-          if (p.status) {
-              pipeLengths[p.status] = (pipeLengths[p.status] || 0) + p.length;
-          }
-          
-          if (p.insulationStatus && p.insulationStatus !== 'NONE') {
-              insulationTotalLength += p.length;
-              insulationRemainingLength += p.length * (INSULATION_REMAINING_FACTOR[p.insulationStatus] ?? 1);
-          }
-          
-          const insStatus = p.insulationStatus || 'NONE';
-          insulationLengths[insStatus] = (insulationLengths[insStatus] || 0) + p.length;
-
-          // BOM
-          const diam = AVAILABLE_DIAMETERS.find(d => PIPE_DIAMETERS[d] === p.diameter) || 'Unknown';
-          bom[diam] = (bom[diam] || 0) + p.length;
-
-          // Counts
-          pipeCounts[p.status] = (pipeCounts[p.status] || 0) + 1;
-          insulationCounts[p.insulationStatus || 'NONE'] = (insulationCounts[p.insulationStatus || 'NONE'] || 0) + 1;
-
-          // HH Calculation (Remaining)
-          const pipingF = PIPING_REMAINING_FACTOR[p.status] || 0;
-          const insF = INSULATION_REMAINING_FACTOR[p.insulationStatus || 'NONE'] || 0;
-          
-          let pEffort = p.length * prodSettings.pipingBase * pipingF;
-          let iEffort = p.length * prodSettings.insulationBase * insF;
-
-          if (p.planningFactors) {
-              let mult = 1.0;
-              if (p.planningFactors.hasCrane) mult += prodSettings.weights.crane;
-              if (p.planningFactors.hasBlockage) mult += prodSettings.weights.blockage;
-              if (p.planningFactors.isNightShift) mult += prodSettings.weights.nightShift;
-              if (p.planningFactors.isCriticalArea) mult += prodSettings.weights.criticalArea;
-              if (p.planningFactors.accessType === 'SCAFFOLD_FLOOR') mult += prodSettings.weights.scaffoldFloor;
-              if (p.planningFactors.accessType === 'SCAFFOLD_HANGING') mult += prodSettings.weights.scaffoldHanging;
-              if (p.planningFactors.accessType === 'PTA') mult += prodSettings.weights.pta;
-              
-              // Novos Fatores Globais
-              if (p.planningFactors.weatherExposed) mult += prodSettings.globalConfig.weatherFactor;
-              if (!p.planningFactors.materialAvailable) mult += prodSettings.globalConfig.materialDelayFactor;
-
-              pEffort *= mult;
-              iEffort *= mult;
-              
-              // Fator de Retrabalho e Buffer de Segurança
-              pEffort *= (1 + prodSettings.globalConfig.reworkFactor);
-              iEffort *= (1 + prodSettings.globalConfig.reworkFactor);
-
-              if (pipingF > 0) pEffort += (p.planningFactors.delayHours || 0);
-          }
-
-          totalPipingHH += pEffort;
-          totalInsulationHH += iEffort;
-      });
-
-      // Add annotation effort (scaffolding, cranes, etc.)
-      let annotationHH = 0;
-      const annotationBreakdown: Record<string, number> = {};
+      const { totalPipingHH: pPipeHH, totalInsulationHH: pInsulHH, annotationHH, totalHH } = calculateTotalHH(pipes, annotations, prodSettings);
       
-      annotations.forEach(a => {
-          if (a.estimatedHours) {
-              annotationHH += a.estimatedHours;
-              const type = a.type || 'COMMENT';
-              annotationBreakdown[type] = (annotationBreakdown[type] || 0) + a.estimatedHours;
-          }
-      });
-
-      const totalHH = (totalPipingHH + totalInsulationHH + annotationHH) * (1 + prodSettings.globalConfig.safetyBuffer);
+      const annotationBreakdown = annotations.reduce((acc, ann) => {
+          const type = ann.type || AnnotationType.COMMENT;
+          acc[type] = (acc[type] || 0) + 1;
+          return acc;
+      }, {} as Record<string, number>);
       
       // Cálculo de capacidade total baseada em todas as equipes alocadas
       const globalTeams = pipes.length > 0 ? Math.max(1, Math.round(pipes.reduce((acc, p) => acc + (p.planningFactors?.teamCount || 1), 0) / pipes.length)) : 1;
@@ -230,10 +225,42 @@ export default function App() {
 
       const projectedEnd = getWorkingEndDate(new Date(activityDate + 'T12:00:00'), daysNeeded, prodSettings.globalConfig.workOnWeekends).toLocaleDateString('pt-BR');
 
+      const componentStats = {
+          supports: { total: 0, installed: 0 },
+          valves: { total: 0, installed: 0 },
+          instruments: { total: 0, installed: 0 },
+          others: { total: 0, installed: 0 }
+      };
+
+      pipes.forEach(p => {
+          if (p.supports) {
+              componentStats.supports.total += p.supports.total;
+              componentStats.supports.installed += p.supports.installed;
+          }
+          if (p.accessories) {
+              p.accessories.forEach(a => {
+                  const isInstalled = a.status === AccessoryStatus.MOUNTED;
+                  if (a.type === 'SUPPORT') {
+                      componentStats.supports.total += 1;
+                      if (isInstalled) componentStats.supports.installed += 1;
+                  } else if (a.type === 'VALVE') {
+                      componentStats.valves.total += 1;
+                      if (isInstalled) componentStats.valves.installed += 1;
+                  } else if (a.type === 'INSTRUMENT') {
+                      componentStats.instruments.total += 1;
+                      if (isInstalled) componentStats.instruments.installed += 1;
+                  } else if (a.type === 'OTHER') {
+                      componentStats.others.total += 1;
+                      if (isInstalled) componentStats.others.installed += 1;
+                  }
+              });
+          }
+      });
+
       return {
           totalLength,
-          totalPipingHH,
-          totalInsulationHH,
+          totalPipingHH: pPipeHH,
+          totalInsulationHH: pInsulHH,
           annotationHH,
           totalHH,
           daysNeeded,
@@ -251,7 +278,8 @@ export default function App() {
           pipingExecutedLength: pipingTotalLength - pipingRemainingLength,
           insulationTotalLength,
           insulationRemainingLength,
-          insulationExecutedLength: insulationTotalLength - insulationRemainingLength
+          insulationExecutedLength: insulationTotalLength - insulationRemainingLength,
+          componentStats
       };
   }, [pipes, annotations, prodSettings, activityDate]);
 
@@ -300,7 +328,8 @@ export default function App() {
               client: projectClient,
               secondaryImage,
               mapImage,
-              userId: currentUser || undefined
+              userId: currentUser || undefined,
+              dailyProduction
           };
           await saveProjectToDB(projectData);
           await refreshProjects();
@@ -321,6 +350,7 @@ export default function App() {
           setProjectClient(project.client || '');
           setSecondaryImage(project.secondaryImage || null);
           setMapImage(project.mapImage || null);
+          setDailyProduction(project.dailyProduction || []);
           setCurrentProjectId(project.id);
           setCurrentProjectName(project.name);
           setIsDBModalOpen(false);
@@ -363,6 +393,7 @@ export default function App() {
       setMapImage(null);
       setCurrentProjectId(null);
       setCurrentProjectName(null);
+      setDailyProduction([]);
       setSelectedIds([]);
       setClipboard(null);
       setPastePreview(null);
@@ -431,8 +462,8 @@ export default function App() {
     pipesToExport.forEach(p => {
         // 1. Criar a LINHA (Eixo do tubo)
         dxf += "0\nLINE\n8\nTubulacao\n"; 
-        dxf += `10\n${p.start.x.toFixed(4)}\n20\n${p.start.y.toFixed(4)}\n30\n${p.start.z.toFixed(4)}\n`;
-        dxf += `11\n${p.end.x.toFixed(4)}\n21\n${p.end.y.toFixed(4)}\n31\n${p.end.z.toFixed(4)}\n`;
+        dxf += `10\n${(p.start.x || 0).toFixed(4)}\n20\n${(p.start.y || 0).toFixed(4)}\n30\n${(p.start.z || 0).toFixed(4)}\n`;
+        dxf += `11\n${(p.end.x || 0).toFixed(4)}\n21\n${(p.end.y || 0).toFixed(4)}\n31\n${(p.end.z || 0).toFixed(4)}\n`;
 
         // 2. Adicionar o COMPRIMENTO como texto no ponto médio do tubo
         const midX = (p.start.x + p.end.x) / 2;
@@ -440,15 +471,15 @@ export default function App() {
         const midZ = (p.start.z + p.end.z) / 2;
         
         dxf += "0\nTEXT\n8\nInformacoes\n";
-        dxf += `10\n${midX.toFixed(4)}\n20\n${(midY + 0.2).toFixed(4)}\n30\n${midZ.toFixed(4)}\n`; // Offset leve em Y
+        dxf += `10\n${(midX || 0).toFixed(4)}\n20\n${((midY || 0) + 0.2).toFixed(4)}\n30\n${(midZ || 0).toFixed(4)}\n`; // Offset leve em Y
         dxf += `40\n0.15\n`; // Altura do texto
-        dxf += `1\n${p.length.toFixed(2)}m\n`;
+        dxf += `1\n${(p.length || 0).toFixed(2)}m\n`;
     });
 
     // 3. Adicionar as ANOTAÇÕES do projeto
     annotationsToExport.forEach(ann => {
         dxf += "0\nTEXT\n8\nAnotacoes\n";
-        dxf += `10\n${ann.position.x.toFixed(4)}\n20\n${ann.position.y.toFixed(4)}\n30\n${ann.position.z.toFixed(4)}\n`;
+        dxf += `10\n${(ann.position.x || 0).toFixed(4)}\n20\n${(ann.position.y || 0).toFixed(4)}\n30\n${(ann.position.z || 0).toFixed(4)}\n`;
         dxf += `40\n0.25\n`; // Texto de anotação um pouco maior
         dxf += `62\n2\n`; // Cor amarela (código 2)
         dxf += `1\n${ann.text || 'Nota'}\n`;
@@ -489,6 +520,13 @@ export default function App() {
             ALL_STATUSES.forEach(s => pipeLengths[s] = 0);
             ALL_INSULATION_STATUSES.forEach(s => insulationLengths[s] = 0);
 
+            const componentStats = {
+                supports: { total: 0, installed: 0 },
+                valves: { total: 0, installed: 0 },
+                instruments: { total: 0, installed: 0 },
+                others: { total: 0, installed: 0 }
+            };
+
             pipesToExport.forEach(p => {
                 const pipingF = PIPING_REMAINING_FACTOR[p.status] || 0;
                 const insF = INSULATION_REMAINING_FACTOR[p.insulationStatus || 'NONE'] || 0;
@@ -507,8 +545,24 @@ export default function App() {
                 const insStatus = p.insulationStatus || 'NONE';
                 insulationLengths[insStatus] = (insulationLengths[insStatus] || 0) + p.length;
                 
+                if (p.supports) {
+                    componentStats.supports.total += p.supports.total;
+                    componentStats.supports.installed += p.supports.installed;
+                }
+
                 let pEffort = p.length * prodSettings.pipingBase * pipingF;
                 let iEffort = p.length * prodSettings.insulationBase * insF;
+
+                // Adicionar esforço de acessórios (apenas se for piping)
+                const supportCount = (p.supports?.total || 0) + (p.accessories?.filter(a => a.type === 'SUPPORT').length || 0);
+                const valveCount = p.accessories?.filter(a => a.type === 'VALVE').length || 0;
+                const instrumentCount = p.accessories?.filter(a => a.type === 'INSTRUMENT').length || 0;
+                const otherCount = p.accessories?.filter(a => a.type === 'OTHER').length || 0;
+
+                pEffort += supportCount * prodSettings.supportBase * pipingF;
+                pEffort += valveCount * (prodSettings.valveBase || 8) * pipingF;
+                pEffort += instrumentCount * (prodSettings.instrumentBase || 4) * pipingF;
+                pEffort += otherCount * (prodSettings.otherBase || 2) * pipingF;
 
                 if (p.planningFactors) {
                     let mult = 1.0;
@@ -584,7 +638,8 @@ export default function App() {
                 pipingExecutedLength: pipingTotalLength - pipingRemainingLength,
                 insulationTotalLength,
                 insulationRemainingLength,
-                insulationExecutedLength: insulationTotalLength - insulationRemainingLength
+                insulationExecutedLength: insulationTotalLength - insulationRemainingLength,
+                componentStats
             };
         }
 
@@ -684,9 +739,9 @@ export default function App() {
         
         if (exportStats.totalHH > 0) {
             pdf.setFontSize(10); pdf.setTextColor(50); pdf.setFont(undefined, 'bold');
-            pdf.text(`SALDO PIPING: ${exportStats.totalPipingHH.toFixed(1)} h | SALDO ISOLAMENTO: ${exportStats.totalInsulationHH.toFixed(1)} h`, margin, currentY);
+            pdf.text(`SALDO PIPING: ${(exportStats.totalPipingHH || 0).toFixed(1)} h | SALDO ISOLAMENTO: ${(exportStats.totalInsulationHH || 0).toFixed(1)} h`, margin, currentY);
             currentY += 5;
-            pdf.text(`TOTAL GERAL: ${exportStats.totalHH.toFixed(1)} Horas (Saldo) | Previsão de Término: ${exportStats.projectedEnd}`, margin, currentY);
+            pdf.text(`TOTAL GERAL: ${(exportStats.totalHH || 0).toFixed(1)} Horas (Saldo) | Previsão de Término: ${exportStats.projectedEnd}`, margin, currentY);
             pdf.setFont(undefined, 'normal'); currentY += 10;
         }
 
@@ -743,7 +798,7 @@ export default function App() {
             pdf.text(pipe.id, col1, currentY); 
             pdf.text(pipe.spoolId || '-', col2, currentY); 
             pdf.text(pipe.name.substring(0, 22), col3, currentY); 
-            pdf.text(pipe.length.toFixed(2), col4, currentY);
+            pdf.text((pipe.length || 0).toFixed(2), col4, currentY);
             
             // Badge de Status
             pdf.setFillColor(r, g, b); 
@@ -757,7 +812,7 @@ export default function App() {
             pdf.text(insLabel, col6, currentY); 
             
             if (isPlanning) { 
-                pdf.text(hh.toFixed(2) + " h", col7, currentY); 
+                pdf.text(((hh || 0).toFixed(2)) + " h", col7, currentY); 
             } else { 
                 const esf = pipe.planningFactors?.accessType === 'NONE' ? 'NÍVEL 0' : (pipe.planningFactors?.accessType || 'NÍVEL 0'); 
                 pdf.text(esf, col7, currentY); 
@@ -778,12 +833,12 @@ export default function App() {
         const bom: Record<string, number> = {};
         pipesToExport.forEach(p => {
             const entry = Object.entries(PIPE_DIAMETERS).find(([_, v]) => Math.abs(v - p.diameter) < 0.001);
-            const label = entry ? entry[0] : `${(p.diameter * 39.37).toFixed(1)}"`;
-            bom[label] = (bom[label] || 0) + p.length;
+            const label = entry ? entry[0] : `${(((p.diameter || 0) * 39.37).toFixed(1))}"`;
+            bom[label] = (bom[label] || 0) + (p.length || 0);
         });
         
         Object.entries(bom).forEach(([label, length]) => {
-            pdf.text(`• Tubo Aço Carbono ${label}: ${length.toFixed(2)} metros`, margin + 5, currentY);
+            pdf.text(`• Tubo Aço Carbono ${label}: ${(length || 0).toFixed(2)} metros`, margin + 5, currentY);
             currentY += 5;
         });
 
@@ -833,6 +888,7 @@ export default function App() {
                 'Comprimento (m)': p.length.toFixed(2),
                 'Status Montagem': STATUS_LABELS[p.status],
                 'Isolamento': INSULATION_LABELS[p.insulationStatus || 'NONE'],
+                'Suportes (Inst/Total)': `${p.supports?.installed || 0}/${p.supports?.total || 0}`,
                 'Saldo HH': hh.toFixed(2),
                 'Acesso': p.planningFactors?.accessType || 'NÍVEL 0',
                 'Equipes': p.planningFactors?.teamCount || 1
@@ -855,6 +911,47 @@ export default function App() {
         });
         const bomSheet = XLSX.utils.json_to_sheet(bomData);
         XLSX.utils.book_append_sheet(workbook, bomSheet, "Lista de Materiais");
+
+        // Adicionar Resumo de Componentes
+        const compSummary = {
+            supports: { total: 0, installed: 0 },
+            valves: { total: 0, installed: 0 },
+            instruments: { total: 0, installed: 0 },
+            others: { total: 0, installed: 0 }
+        };
+        pipesToExport.forEach(p => {
+            if (p.supports) { 
+                compSummary.supports.total += p.supports.total; 
+                compSummary.supports.installed += p.supports.installed; 
+            }
+            if (p.accessories) {
+                p.accessories.forEach(a => {
+                    const isInstalled = a.status === AccessoryStatus.MOUNTED;
+                    if (a.type === 'SUPPORT') {
+                        compSummary.supports.total += 1;
+                        if (isInstalled) compSummary.supports.installed += 1;
+                    } else if (a.type === 'VALVE') {
+                        compSummary.valves.total += 1;
+                        if (isInstalled) compSummary.valves.installed += 1;
+                    } else if (a.type === 'INSTRUMENT') {
+                        compSummary.instruments.total += 1;
+                        if (isInstalled) compSummary.instruments.installed += 1;
+                    } else if (a.type === 'OTHER') {
+                        compSummary.others.total += 1;
+                        if (isInstalled) compSummary.others.installed += 1;
+                    }
+                });
+            }
+        });
+
+        const compData = [
+            { 'Componente': 'Suportes', 'Total': compSummary.supports.total, 'Instalado': compSummary.supports.installed, 'Progresso': compSummary.supports.total > 0 ? `${((compSummary.supports.installed / compSummary.supports.total) * 100).toFixed(1)}%` : '0%' },
+            { 'Componente': 'Válvulas', 'Total': compSummary.valves.total, 'Instalado': compSummary.valves.installed, 'Progresso': compSummary.valves.total > 0 ? `${((compSummary.valves.installed / compSummary.valves.total) * 100).toFixed(1)}%` : '0%' },
+            { 'Componente': 'Instrumentos', 'Total': compSummary.instruments.total, 'Instalado': compSummary.instruments.installed, 'Progresso': compSummary.instruments.total > 0 ? `${((compSummary.instruments.installed / compSummary.instruments.total) * 100).toFixed(1)}%` : '0%' },
+            { 'Componente': 'Outros', 'Total': compSummary.others.total, 'Instalado': compSummary.others.installed, 'Progresso': compSummary.others.total > 0 ? `${((compSummary.others.installed / compSummary.others.total) * 100).toFixed(1)}%` : '0%' }
+        ].filter(c => c.Total > 0);
+        const compSheet = XLSX.utils.json_to_sheet(compData);
+        XLSX.utils.book_append_sheet(workbook, compSheet, "Resumo de Componentes");
 
         XLSX.writeFile(workbook, `projeto-isometrico-${projectLocation.replace(/\s+/g, '-') || 'sem-nome'}.xlsx`);
         showToast("Excel exportado com sucesso!", 'success');
@@ -931,8 +1028,30 @@ export default function App() {
             isExporting={isExporting}
             currentProjectName={currentProjectName}
             handleNewProject={handleNewProject}
+            onOpenDailyProduction={() => setIsDailyProductionModalOpen(true)}
         />
 
+        <DailyProductionModal 
+            isOpen={isDailyProductionModalOpen}
+            onClose={() => setIsDailyProductionModalOpen(false)}
+            currentPipes={pipes}
+            dailyProduction={dailyProduction}
+            projectCalendar={projectCalendar}
+            prodSettings={prodSettings}
+            annotations={annotations}
+            onSave={(data, calendar) => {
+                setDailyProduction(data);
+                setProjectCalendar(calendar);
+                setIsDailyProductionModalOpen(false);
+                setToast({ message: 'Produção diária calculada e salva!', type: 'success' });
+                // Auto-save to DB if project exists
+                if (currentProjectId && currentProjectName) {
+                    handleDBAction_Save(currentProjectName, currentProjectId);
+                }
+            }}
+            projectStartDate={activityDate}
+        />
+        
         <main className="flex-1 relative overflow-hidden flex">
             {/* EXPORT CONTAINER HIDDEN */}
             <ExportContainer 
@@ -973,15 +1092,60 @@ export default function App() {
                             {viewMode === 'planning' && selectedIds.length === 0 && (
                                 <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 animate-in slide-in-from-top-4 fade-in"><div className="bg-purple-900/90 text-white border border-purple-500 px-6 py-3 rounded-full shadow-2xl flex items-center gap-3 backdrop-blur-md"><Timer className="animate-pulse text-purple-300" size={24} /><div><p className="font-bold text-sm">Modo Planejamento Ativo (Saldo)</p><p className="text-[10px] text-purple-200">Cronograma baseado no trabalho remanescente.</p></div></div></div>
                             )}
-                            <Scene pipes={pipes} annotations={annotations} selectedIds={selectedIds} onSelectPipe={handleSelectPipe} onSetSelection={handleSetSelection} isDrawing={isDrawing} onAddPipe={handleAddPipe} onUpdatePipe={handleUpdateSinglePipe} onMovePipes={handleMovePipes} onCancelDraw={() => setIsDrawing(false)} fixedLength={fixedLengthValue} onAddAnnotation={handleAddAnnotation} onUpdateAnnotation={handleUpdateAnnotation} onDeleteAnnotation={handleDeleteAnnotation} onUndo={undo} onRedo={redo} colorMode={colorMode} pastePreview={pastePreview} onPasteMove={handlePasteMove} onPasteConfirm={handlePasteConfirm} snapAngle={snapAngle} onSetSnapAngle={setSnapAngle} currentDiameter={selectedDiameter} showDimensions={showDimensions} dynamicZoom={dynamicZoom} />
+                            <Scene 
+                                pipes={pipes} 
+                                annotations={annotations} 
+                                selectedIds={selectedIds} 
+                                onSelectPipe={handleSelectPipe} 
+                                onSetSelection={handleSetSelection} 
+                                isDrawing={isDrawing} 
+                                onAddPipe={handleAddPipe} 
+                                onUpdatePipe={handleUpdateSinglePipe} 
+                                onMovePipes={handleMovePipes} 
+                                onCancelDraw={() => setIsDrawing(false)} 
+                                fixedLength={fixedLengthValue} 
+                                onAddAnnotation={handleAddAnnotation} 
+                                onUpdateAnnotation={handleUpdateAnnotation} 
+                                onDeleteAnnotation={handleDeleteAnnotation} 
+                                onUndo={undo} 
+                                onRedo={redo} 
+                                colorMode={colorMode} 
+                                pastePreview={pastePreview} 
+                                onPasteMove={handlePasteMove} 
+                                onPasteConfirm={handlePasteConfirm} 
+                                snapAngle={snapAngle} 
+                                onSetSnapAngle={setSnapAngle} 
+                                currentDiameter={selectedDiameter} 
+                                showDimensions={showDimensions} 
+                                dynamicZoom={dynamicZoom} 
+                                placementMode={placementMode}
+                                onAddAccessory={handleAddAccessory}
+                            />
                         </div>
                     </div>
                 </div>
-                {viewMode === 'dashboard' && (<div className="absolute inset-0 z-50 bg-slate-950/95 backdrop-blur-sm overflow-y-auto p-4 animate-in fade-in"><div className="max-w-[1600px] mx-auto h-full"><Dashboard pipes={pipes} annotations={annotations} onExportPDF={handleExportPDF} isExporting={isExporting} secondaryImage={secondaryImage} onUploadSecondary={setSecondaryImage} mapImage={mapImage} onUploadMap={setMapImage} sceneScreenshot={sceneScreenshot} onSelectPipe={handleSelectPipe} selectedIds={selectedIds} onSetSelection={handleSetSelection} prodSettings={prodSettings} startDate={activityDate} deadlineDate={deadlineDate} savedProjects={savedProjects} selectedProjectIds={selectedProjectIds} onSetSelectedProjectIds={setSelectedProjectIds} /></div></div>)}
+                {viewMode === 'dashboard' && (<div className="absolute inset-0 z-50 bg-slate-950/95 backdrop-blur-sm overflow-y-auto p-4 animate-in fade-in"><div className="max-w-[1600px] mx-auto h-full"><Dashboard pipes={pipes} annotations={annotations} onExportPDF={handleExportPDF} isExporting={isExporting} secondaryImage={secondaryImage} onUploadSecondary={setSecondaryImage} mapImage={mapImage} onUploadMap={setMapImage} sceneScreenshot={sceneScreenshot} onSelectPipe={handleSelectPipe} selectedIds={selectedIds} onSetSelection={handleSetSelection} prodSettings={prodSettings} startDate={activityDate} deadlineDate={deadlineDate} savedProjects={savedProjects} selectedProjectIds={selectedProjectIds} onSetSelectedProjectIds={setSelectedProjectIds} dailyProduction={dailyProduction} onUpdateDailyProduction={setDailyProduction} onOpenDailyProduction={() => setIsDailyProductionModalOpen(true)} /></div></div>)}
             </div>
             {selectedPipes.length > 0 && !isDrawing && !pastePreview && (
                 <div className="w-96 relative z-20 shadow-2xl border-l border-slate-700">
-                    <Sidebar selectedPipes={selectedPipes} onUpdateSingle={handleUpdateSinglePipe} onUpdateBatch={handleBatchUpdate} onDelete={handleDeleteSelected} onClose={() => setSelectedIds([])} mode={viewMode === 'planning' ? 'PLANNING' : 'TRACKING'} startDate={activityDate} prodSettings={prodSettings} onUpdateProdSettings={setProdSettings} onCopy={handleCopy} deadlineDate={deadlineDate} onUpdateDeadline={setDeadlineDate} />
+                        <Sidebar 
+                            selectedPipes={selectedPipes} 
+                            onUpdateSingle={handleUpdateSinglePipe} 
+                            onUpdateBatch={handleBatchUpdate} 
+                            onDelete={handleDeleteSelected} 
+                            onClose={() => setSelectedIds([])} 
+                            mode={viewMode === 'planning' ? 'PLANNING' : 'TRACKING'} 
+                            startDate={activityDate} 
+                            prodSettings={prodSettings} 
+                            onUpdateProdSettings={setProdSettings} 
+                            onCopy={handleCopy} 
+                            deadlineDate={deadlineDate} 
+                            onUpdateDeadline={setDeadlineDate} 
+                            placementMode={placementMode}
+                            onSetPlacementMode={setPlacementMode}
+                            onBatchAddSupports={handleBatchAddSupports}
+                            onClearAccessories={handleClearAccessories}
+                        />
                 </div>
             )}
         </main>

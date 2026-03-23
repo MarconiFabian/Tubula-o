@@ -1,6 +1,6 @@
 
 import { openDB, DBSchema } from 'idb';
-import { PipeSegment, Annotation } from '../types';
+import { PipeSegment, Annotation, DailyProduction } from '../types';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
 export interface ProjectData {
@@ -14,6 +14,7 @@ export interface ProjectData {
   secondaryImage: string | null;
   mapImage: string | null;
   userId?: string; // Adicionado para controle de usuário
+  dailyProduction?: DailyProduction[];
 }
 
 interface IsometricoDB extends DBSchema {

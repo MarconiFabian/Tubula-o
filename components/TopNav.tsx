@@ -22,6 +22,7 @@ interface TopNavProps {
   isExporting: boolean;
   currentProjectName?: string | null;
   handleNewProject: () => void;
+  onOpenDailyProduction: () => void;
 }
 
 export const TopNav: React.FC<TopNavProps> = ({
@@ -34,7 +35,8 @@ export const TopNav: React.FC<TopNavProps> = ({
   setIsDrawing,
   showDimensions, setShowDimensions,
   handleExportDXF, handleExportExcel, handleExportPDF, isExporting,
-  currentProjectName, handleNewProject
+  currentProjectName, handleNewProject,
+  onOpenDailyProduction
 }) => {
   return (
     <header className="h-16 bg-slate-900 border-b border-slate-800 px-4 flex items-center justify-between z-50 shadow-lg">
@@ -145,6 +147,12 @@ export const TopNav: React.FC<TopNavProps> = ({
             className={`px-3 py-1.5 text-[10px] font-black rounded-lg transition-all uppercase tracking-tighter flex items-center gap-1.5 ${viewMode === 'dashboard' ? 'bg-slate-800 text-white' : 'text-slate-500 hover:text-slate-300'}`}
           >
             <LayoutDashboard size={14}/> Dashboard
+          </button>
+          <button 
+            onClick={onOpenDailyProduction} 
+            className="px-3 py-1.5 text-[10px] font-black rounded-lg transition-all uppercase tracking-tighter flex items-center gap-1.5 text-slate-500 hover:text-slate-300"
+          >
+            <Calendar size={14}/> Cálculo Diário
           </button>
         </div>
 

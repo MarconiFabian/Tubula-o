@@ -299,3 +299,43 @@ body {
   background-image: radial-gradient(circle at 1px 1px, rgba(255,255,255,0.05) 1px, transparent 0);
   background-size: 24px 24px;
 }
+
+@layer utilities {
+  .glass {
+    @apply bg-slate-900/50 backdrop-blur-md border border-slate-800/50;
+  }
+  .glass-hover {
+    @apply hover:bg-slate-800/60 transition-all duration-300;
+  }
+  .text-shadow-glow {
+    text-shadow: 0 0 8px rgba(59, 130, 246, 0.5);
+  }
+  .animate-glow {
+    animation: glow 2s ease-in-out infinite alternate;
+  }
+}
+
+@keyframes glow {
+  from { box-shadow: 0 0 5px rgba(59, 130, 246, 0.2); }
+  to { box-shadow: 0 0 20px rgba(59, 130, 246, 0.5); }
+}
+
+/* Recharts Customization */
+.recharts-cartesian-grid-horizontal line,
+.recharts-cartesian-grid-vertical line {
+  stroke: #1e293b;
+}
+
+.recharts-text {
+  fill: #64748b !important;
+  font-family: 'JetBrains Mono', monospace !important;
+  font-size: 10px !important;
+}
+
+.recharts-legend-item-text {
+  color: #94a3b8 !important;
+  font-size: 10px !important;
+  text-transform: uppercase !important;
+  font-weight: bold !important;
+  letter-spacing: 0.05em !important;
+}

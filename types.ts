@@ -41,6 +41,10 @@ export interface ProductivityWeights {
 export interface ProductivitySettings {
   pipingBase: number;
   insulationBase: number;
+  supportBase: number; // HH per support
+  valveBase: number;   // HH per valve
+  instrumentBase: number; // HH per instrument
+  otherBase: number;   // HH per other component
   weights: ProductivityWeights;
   globalConfig: {
     weatherFactor: number; // Multiplicador para chuva/vento
@@ -70,6 +74,11 @@ export interface WelderInfo {
   visualInspection: boolean;
 }
 
+export interface ComponentStatus {
+  total: number;
+  installed: number;
+}
+
 export interface PipeSegment {
   id: string;
   name: string;
@@ -85,17 +94,23 @@ export interface PipeSegment {
   length: number; 
   insulationStatus?: InsulationStatus;
   planningFactors?: PlanningFactors;
+  supports?: ComponentStatus;
+  accessories?: Accessory[];
 }
 
-export type AccessoryType = 'VALVE' | 'FLANGE' | 'SUPPORT';
+export type AccessoryType = 'SUPPORT' | 'VALVE' | 'INSTRUMENT' | 'OTHER';
+
+export enum AccessoryStatus {
+  PENDING = 'PENDING',
+  MOUNTED = 'MOUNTED'
+}
 
 export interface Accessory {
   id: string;
   type: AccessoryType;
-  position: Coordinates;
-  rotation?: Coordinates;
-  parentPipeId: string;
-  color?: string;
+  offset: number; // 0 to 1 along the pipe
+  status: AccessoryStatus;
+  name?: string;
 }
 
 export enum AnnotationType {
@@ -111,6 +126,33 @@ export interface Annotation {
   text: string;
   type?: AnnotationType;
   estimatedHours?: number;
+}
+
+export interface DailyProduction {
+  date: string;
+  pipeMeters: number;
+  insulationMeters: number;
+  pipingProgress?: number;
+  insulationProgress?: number;
+  totalProgress?: number;
+  plannedPipingProgress?: number;
+  plannedInsulationProgress?: number;
+  plannedTotalProgress?: number;
+}
+
+export interface CalendarException {
+  date: string;
+  type: 'WORK' | 'NON_WORK' | 'HOLIDAY';
+}
+
+export interface ProjectCalendar {
+  startDate: string;
+  endDate: string;
+  startTime: string;
+  endTime: string;
+  workDays: string[]; // ['1', '2', '3', '4', '5']
+  teamCount: number;
+  exceptions: CalendarException[];
 }
 
 export interface ProjectStats {

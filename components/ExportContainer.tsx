@@ -23,6 +23,19 @@ interface ExportContainerProps {
 export const ExportContainer: React.FC<ExportContainerProps> = ({
   viewMode, reportStats, sceneScreenshot, secondaryImage, mapImage, projectClient, projectLocation, activityDate, pipes, prodSettings, startDate, annotations = [], deadlineDate
 }) => {
+  const progress = useMemo(() => {
+      const pipingTotalLength = pipes.reduce((acc, p) => acc + (p.length || 0), 0);
+      const completedWeight = pipes.reduce((acc, p) => {
+          const isCompleted = ['WELDED', 'HYDROTEST', 'FINISHED'].includes(p.status);
+          if (isCompleted) {
+              const weight = (p.status === 'WELDED' ? 0.8 : p.status === 'HYDROTEST' ? 1.0 : 0.3) * (p.length || 0);
+              return acc + weight;
+          }
+          return acc;
+      }, 0);
+      return pipingTotalLength > 0 ? (completedWeight / pipingTotalLength) * 100 : 0;
+  }, [pipes]);
+
   const sCurveData = useMemo(() => {
     const data: any[] = [];
     if (pipes.length === 0) return data;
@@ -45,6 +58,8 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
     const start = new Date(startStr + 'T12:00:00');
     
     const plotDays = Math.max(days, reportStats.daysNeeded || 0);
+    const today = new Date(todayStr + 'T12:00:00');
+    const daysSinceStart = Math.max(1, Math.floor((today.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
 
     for (let i = 0; i <= plotDays; i++) {
         const d = new Date(start);
@@ -62,7 +77,12 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
 
         const x = (i / days) * 12 - 6;
         const sigmoid = 1 / (1 + Math.exp(-x));
-        const planned = sigmoid * totalLengthValue;
+        const planned = sigmoid * 100; // Percentage
+
+        let autoProgress = null;
+        if (dateStr <= todayStr) {
+            autoProgress = parseFloat((Math.min(i / daysSinceStart, 1) * progress).toFixed(2));
+        }
 
         let milestone = null;
         if (i === Math.round(plotDays * 0.25)) milestone = "25%";
@@ -74,10 +94,11 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
 
         data.push({
             date: dateStr.split('-').slice(1).join('/'),
-            actual: !isFuture ? parseFloat(((cumulativeActual / totalLengthValue) * 100).toFixed(2)) : null,
-            planned: parseFloat(((planned / totalLengthValue) * 100).toFixed(2)),
-            actualMeters: parseFloat(cumulativeActual.toFixed(2)),
-            plannedMeters: parseFloat(planned.toFixed(2)),
+            actual: !isFuture && totalLengthValue && totalLengthValue > 0 ? parseFloat(((cumulativeActual || 0) / totalLengthValue * 100).toFixed(2)) : null,
+            planned: parseFloat(planned.toFixed(2)),
+            autoProgress: autoProgress,
+            actualMeters: parseFloat((cumulativeActual || 0).toFixed(2)),
+            plannedMeters: parseFloat(((planned / 100) * totalLengthValue).toFixed(2)),
             milestone,
             isLastActual: dateStr === todayStr
         });
@@ -115,30 +136,30 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
             <div className="p-6 rounded-2xl flex flex-col items-center" style={{ backgroundColor: 'rgba(30, 41, 59, 0.4)', border: '1px solid #334155' }}>
             <Ruler style={{ color: '#60a5fa', marginBottom: '8px' }} size={32} />
             <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#64748b' }}>Total Metros</span>
-            <div className="text-4xl font-bold" style={{ color: '#ffffff' }}>{reportStats.totalLength.toFixed(2)}m</div>
+            <div className="text-4xl font-bold" style={{ color: '#ffffff' }}>{(reportStats.totalLength || 0).toFixed(2)}m</div>
             </div>
             <div className="p-6 rounded-2xl flex flex-col items-center" style={{ backgroundColor: 'rgba(30, 41, 59, 0.4)', border: '1px solid #334155' }}>
             <Wrench style={{ color: '#93c5fd', marginBottom: '8px' }} size={32} />
             <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#64748b' }}>Saldo Piping</span>
-            <div className="text-4xl font-bold" style={{ color: '#ffffff' }}>{reportStats.totalPipingHH.toFixed(1)}h</div>
+            <div className="text-4xl font-bold" style={{ color: '#ffffff' }}>{(reportStats.totalPipingHH || 0).toFixed(1)}h</div>
             </div>
             <div className="p-6 rounded-2xl flex flex-col items-center" style={{ backgroundColor: 'rgba(30, 41, 59, 0.4)', border: '1px solid #334155' }}>
             <Shield style={{ color: '#c084fc', marginBottom: '8px' }} size={32} />
             <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#64748b' }}>Saldo Isolamento</span>
-            <div className="text-4xl font-bold" style={{ color: '#ffffff' }}>{reportStats.totalInsulationHH.toFixed(1)}h</div>
+            <div className="text-4xl font-bold" style={{ color: '#ffffff' }}>{(reportStats.totalInsulationHH || 0).toFixed(1)}h</div>
             </div>
             <div className="p-6 rounded-2xl flex flex-col items-center" style={{ backgroundColor: 'rgba(30, 41, 59, 0.4)', border: '1px solid #334155' }}>
             <Timer style={{ color: '#d8b4fe', marginBottom: '8px' }} size={32} />
             <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#64748b' }}>Total Saldo</span>
-            <div className="text-4xl font-bold" style={{ color: '#ffffff' }}>{reportStats.totalHH.toFixed(1)}h</div>
+            <div className="text-4xl font-bold" style={{ color: '#ffffff' }}>{(reportStats.totalHH || 0).toFixed(1)}h</div>
             {reportStats.annotationHH > 0 && (
-                <div className="text-[10px] font-bold mt-1" style={{ color: '#94a3b8' }}>Inclui {reportStats.annotationHH.toFixed(1)}h Apoio</div>
+                <div className="text-[10px] font-bold mt-1" style={{ color: '#94a3b8' }}>Inclui {(reportStats.annotationHH || 0).toFixed(1)}h Apoio</div>
             )}
             </div>
             <div className="p-6 rounded-2xl flex flex-col items-center" style={{ backgroundColor: 'rgba(30, 41, 59, 0.4)', border: '1px solid #334155' }}>
             <Calendar style={{ color: '#4ade80', marginBottom: '8px' }} size={32} />
-            <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#64748b' }}>Término Projetado</span>
-            <div className="text-3xl font-bold mt-1" style={{ color: '#4ade80' }}>{reportStats.totalHH > 0 ? reportStats.projectedEnd : 'CONCLUÍDO'}</div>
+            <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#64748b' }}>Progresso Total</span>
+            <div className="text-3xl font-bold mt-1" style={{ color: '#4ade80' }}>{progress.toFixed(1)}%</div>
             {deadlineDate && (
                 <div className="text-[10px] font-bold mt-2 uppercase px-2 py-1 rounded" style={{ 
                     color: reportStats.deadlineStats?.isFeasible ? '#4ade80' : '#f87171',
@@ -239,6 +260,47 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
             </div>
         </div>
 
+        <div className="p-6 rounded-2xl flex flex-col gap-4" style={{ backgroundColor: 'rgba(30, 41, 59, 0.4)', border: '1px solid #334155' }}>
+            <div className="flex justify-between items-center border-b border-slate-700 pb-4">
+                <h3 className="text-xl font-bold uppercase tracking-wider flex items-center gap-2" style={{ color: '#f59e0b' }}>
+                    <div className="w-3 h-3 rounded-full bg-amber-500"></div>
+                    Acessórios e Componentes
+                </h3>
+                <div className="flex gap-6">
+                    <span className="text-amber-400 font-bold text-lg">Suportes: {reportStats.componentStats.supports.installed}/{reportStats.componentStats.supports.total}</span>
+                    {reportStats.componentStats.valves.total > 0 && <span className="text-amber-400 font-bold text-lg">Válvulas: {reportStats.componentStats.valves.installed}/{reportStats.componentStats.valves.total}</span>}
+                    {reportStats.componentStats.instruments.total > 0 && <span className="text-amber-400 font-bold text-lg">Instr.: {reportStats.componentStats.instruments.installed}/{reportStats.componentStats.instruments.total}</span>}
+                </div>
+            </div>
+            <div className="grid grid-cols-1 gap-8">
+                {[
+                    { id: 'supports', label: 'Suportes', color: '#f97316' },
+                    { id: 'valves', label: 'Válvulas', color: '#ef4444' },
+                    { id: 'instruments', label: 'Instrumentos', color: '#3b82f6' },
+                    { id: 'others', label: 'Outros', color: '#10b981' }
+                ].filter(comp => reportStats.componentStats[comp.id].total > 0).map(comp => {
+                    const data = reportStats.componentStats[comp.id];
+                    const pct = data.total > 0 ? (data.installed / data.total) * 100 : 0;
+                    return (
+                        <div key={comp.id} className="flex flex-col gap-3">
+                            <div className="flex justify-between items-center">
+                                <span className="text-xs text-slate-400 uppercase font-bold tracking-wider">{comp.label}</span>
+                                <span className="text-sm font-mono text-white font-bold">{pct.toFixed(0)}%</span>
+                            </div>
+                            <div className="flex items-end gap-2">
+                                <span className="text-3xl font-bold text-white font-mono">{data.installed}</span>
+                                <span className="text-sm text-slate-500 mb-1">/ {data.total}</span>
+                                <span className="text-xs text-amber-500 font-bold ml-auto mb-1">FALTA: {data.total - data.installed}</span>
+                            </div>
+                            <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+                                <div className="h-full transition-all duration-1000" style={{ width: `${pct}%`, backgroundColor: comp.color }}></div>
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
+
         <div className="grid grid-cols-2 gap-8 flex-1">
             <div className="flex flex-col gap-2">
             <h3 className="text-xl font-bold uppercase tracking-wider flex items-center gap-2" style={{ color: '#cbd5e1' }}>
@@ -291,7 +353,7 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
                     {Object.entries(reportStats.bom).map(([label, length]) => (
                         <tr key={label}>
                         <td className="p-4 font-medium" style={{ color: '#ffffff' }}>Tubo Aço Carbono <span style={{ color: '#60a5fa' }} className="font-bold">{label}</span></td>
-                        <td className="p-4 text-right font-mono" style={{ color: '#ffffff' }}>{(length as number).toFixed(2)}</td>
+                        <td className="p-4 text-right font-mono" style={{ color: '#ffffff' }}>{((length as number) || 0).toFixed(2)}</td>
                         <td className="p-4 text-center" style={{ color: '#64748b' }}>Metros</td>
                         </tr>
                     ))}
@@ -321,7 +383,7 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
                         return (
                         <div key={status} className="flex flex-col items-center flex-1 h-full justify-end">
                             <span className="font-bold text-[10px]" style={{ color: '#ffffff' }}>{pct}%</span>
-                            <span className="font-bold text-[8px] mb-1" style={{ color: '#94a3b8' }}>{reportStats.pipeLengths?.[status]?.toFixed(1)}m</span>
+                            <span className="font-bold text-[8px] mb-1" style={{ color: '#94a3b8' }}>{(reportStats.pipeLengths?.[status] || 0).toFixed(1)}m</span>
                             <div className="w-full rounded-t-sm opacity-80 relative flex items-center justify-center" style={{ height: `${Math.max(h, 5)}%`, backgroundColor: STATUS_COLORS[status] }}>
                                 {parseFloat(pct) > 5 && <span className="absolute text-[8px] font-bold text-slate-900/50">{pct}%</span>}
                             </div>
@@ -341,7 +403,7 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
                         return (
                         <div key={status} className="flex flex-col items-center flex-1 h-full justify-end">
                             <span className="font-bold text-[10px]" style={{ color: '#ffffff' }}>{pct}%</span>
-                            <span className="font-bold text-[8px] mb-1" style={{ color: '#94a3b8' }}>{reportStats.insulationLengths?.[status]?.toFixed(1)}m</span>
+                            <span className="font-bold text-[8px] mb-1" style={{ color: '#94a3b8' }}>{(reportStats.insulationLengths?.[status] || 0).toFixed(1)}m</span>
                             <div className="w-full rounded-t-sm opacity-80 relative flex items-center justify-center" style={{ height: `${Math.max(h, 5)}%`, backgroundColor: c }}>
                                 {parseFloat(pct) > 5 && <span className="absolute text-[8px] font-bold text-slate-900/50">{pct}%</span>}
                             </div>
@@ -479,11 +541,16 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
                                         <stop offset="5%" stopColor="#22c55e" stopOpacity={0.2}/>
                                         <stop offset="95%" stopColor="#22c55e" stopOpacity={0}/>
                                     </linearGradient>
+                                    <linearGradient id="colorAutoExp" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.2}/>
+                                        <stop offset="95%" stopColor="#f59e0b" stopOpacity={0}/>
+                                    </linearGradient>
                                 </defs>
                                 <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
                                 <XAxis dataKey="date" stroke="#475569" fontSize={14} tickLine={false} axisLine={false} />
                                 <YAxis stroke="#475569" fontSize={14} tickLine={false} axisLine={false} tickFormatter={(value) => `${value}%`} domain={[0, 100]} />
-                                <Area type="monotone" dataKey="planned" stroke="#3b82f6" strokeWidth={4} fillOpacity={1} fill="url(#colorPlannedExp)" dot={false} />
+                                <Area type="monotone" dataKey="planned" stroke="#3b82f6" strokeWidth={4} fillOpacity={1} fill="url(#colorPlannedExp)" dot={false} strokeDasharray="5 5" />
+                                <Area type="monotone" dataKey="autoProgress" stroke="#f59e0b" strokeWidth={4} fillOpacity={1} fill="url(#colorAutoExp)" dot={{ r: 4, fill: '#f59e0b' }} />
                                 <Area type="monotone" dataKey="actual" stroke="#22c55e" strokeWidth={4} fillOpacity={1} fill="url(#colorActualExp)" dot={{ r: 6, fill: '#22c55e' }} />
                                 {sCurveData.filter(d => d.milestone).map((d, idx) => (
                                     <ReferenceDot 
@@ -513,12 +580,16 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
                     </div>
                     <div className="flex justify-center gap-12 mt-4">
                         <div className="flex items-center gap-3">
-                            <div className="w-6 h-6 bg-blue-500 rounded-full"></div>
-                            <span className="text-xl font-bold uppercase tracking-wider text-slate-400">Planejado (Baseline)</span>
+                            <div className="w-6 h-6 bg-blue-500 rounded-full" style={{ border: '2px dashed #fff' }}></div>
+                            <span className="text-xl font-bold uppercase tracking-wider" style={{ color: '#3b82f6' }}>Previsto (Azul)</span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                            <div className="w-6 h-6 bg-amber-500 rounded-full"></div>
+                            <span className="text-xl font-bold uppercase tracking-wider" style={{ color: '#f59e0b' }}>Automático</span>
                         </div>
                         <div className="flex items-center gap-3">
                             <div className="w-6 h-6 bg-green-500 rounded-full"></div>
-                            <span className="text-xl font-bold uppercase tracking-wider text-slate-400">Realizado (Campo)</span>
+                            <span className="text-xl font-bold uppercase tracking-wider" style={{ color: '#22c55e' }}>Realizado</span>
                         </div>
                     </div>
                 </div>
@@ -648,8 +719,8 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
                     </h3>
                     <div className="flex flex-col gap-8 mt-4">
                         <div className="flex justify-between items-center border-b border-slate-800 pb-4">
-                            <span className="text-xl font-bold text-slate-400 uppercase">Eficiência Atual</span>
-                            <span className="text-4xl font-bold text-green-400 font-mono">{(reportStats.totalLength > 0 ? (1 - (reportStats.totalHH / (reportStats.totalLength * 2)) ) * 100 : 0).toFixed(1)}%</span>
+                            <span className="text-xl font-bold text-slate-400 uppercase">Progresso Global</span>
+                            <span className="text-4xl font-bold text-green-400 font-mono">{(reportStats.progress || 0).toFixed(1)}%</span>
                         </div>
                         <div className="flex justify-between items-center border-b border-slate-800 pb-4">
                             <span className="text-xl font-bold text-slate-400 uppercase">H/H por Metro</span>

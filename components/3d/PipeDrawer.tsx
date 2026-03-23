@@ -361,7 +361,7 @@ export const PipeDrawer: React.FC<PipeDrawerProps> = ({ isDrawing, onAddPipe, on
                         </div>
                     )}
 
-                    <div className="text-slate-500 text-[10px] font-bold">X:{endPoint.x.toFixed(2)} Y:{endPoint.y.toFixed(2)} Z:{endPoint.z.toFixed(2)}</div>
+                    <div className="text-slate-500 text-[10px] font-bold">X:{(endPoint.x || 0).toFixed(2)} Y:{(endPoint.y || 0).toFixed(2)} Z:{(endPoint.z || 0).toFixed(2)}</div>
                     
                     {startPoint && (
                         <>
@@ -369,13 +369,13 @@ export const PipeDrawer: React.FC<PipeDrawerProps> = ({ isDrawing, onAddPipe, on
                          <div className="flex justify-between items-center">
                             <span className="text-slate-400 text-[10px] font-bold uppercase tracking-tighter">Segmento:</span>
                             <span className={`text-2xl font-black ${fixedLength > 0 ? 'text-blue-400' : 'text-white'}`}>
-                                {currentSegmentLength.toFixed(2)}<span className="text-xs ml-0.5">m</span>
+                                {(currentSegmentLength || 0).toFixed(2)}<span className="text-xs ml-0.5">m</span>
                                 {fixedLength > 0 && <span className="text-xs ml-1">🔒</span>}
                             </span>
                          </div>
                          <div className="flex justify-between items-center text-[10px] text-slate-500 font-bold">
                             <span>Total Projeto:</span>
-                            <span className="text-slate-300">{projectTotalWithCurrent.toFixed(2)}m</span>
+                            <span className="text-slate-300">{(projectTotalWithCurrent || 0).toFixed(2)}m</span>
                          </div>
                         </>
                     )}

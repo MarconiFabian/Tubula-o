@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { PipeSegment, PipeStatus, InsulationStatus, PlanningFactors, ProductivitySettings } from '../types';
+import { PipeSegment, PipeStatus, InsulationStatus, PlanningFactors, ProductivitySettings, AccessoryType, AccessoryStatus } from '../types';
 import { STATUS_LABELS, STATUS_COLORS, ALL_STATUSES, INSULATION_LABELS, INSULATION_COLORS, ALL_INSULATION_STATUSES, PIPING_REMAINING_FACTOR, INSULATION_REMAINING_FACTOR, HOURS_PER_DAY } from '../constants';
-import { X, CheckCircle, AlertCircle, FileText, Trash2, Shield, Wrench, Layers, MapPin, Timer, Truck, Construction, Users, ArrowUpCircle, Calendar, Moon, ShieldAlert, Clock, Activity, Settings2, Sliders, Info, Percent, ZapOff, HardHat, Copy, BarChart3, Flag, Package, Zap, CheckSquare, Check } from 'lucide-react';
+import { X, CheckCircle, AlertCircle, FileText, Trash2, Shield, Wrench, Layers, MapPin, Timer, Truck, Construction, Users, ArrowUpCircle, Calendar, Moon, ShieldAlert, Clock, Activity, Settings2, Sliders, Info, Percent, ZapOff, HardHat, Copy, BarChart3, Flag, Package, Zap, CheckSquare, Check, CircleDot, MousePointer2 } from 'lucide-react';
 import PlanningReportModal from './PlanningReportModal';
 import { getWorkingEndDate } from '../utils/planning';
 
@@ -19,6 +19,10 @@ interface SidebarProps {
   onCopy?: () => void;
   deadlineDate?: string | null;
   onUpdateDeadline?: (date: string | null) => void;
+  placementMode?: AccessoryType | null;
+  onSetPlacementMode?: (mode: AccessoryType | null) => void;
+  onBatchAddSupports?: (spacing: number, status: AccessoryStatus) => void;
+  onClearAccessories?: () => void;
 }
 
 const DEFAULT_FACTORS: PlanningFactors = { 
@@ -36,11 +40,14 @@ const DEFAULT_FACTORS: PlanningFactors = {
 const Sidebar: React.FC<SidebarProps> = ({ 
     selectedPipes, onUpdateSingle, onUpdateBatch, onDelete, onClose, 
     mode = 'TRACKING', startDate = new Date().toISOString().split('T')[0],
-    prodSettings, onUpdateProdSettings, onCopy, deadlineDate, onUpdateDeadline
+    prodSettings, onUpdateProdSettings, onCopy, deadlineDate, onUpdateDeadline,
+    placementMode, onSetPlacementMode, onBatchAddSupports, onClearAccessories
 }) => {
   const [showMetricsConfig, setShowMetricsConfig] = useState(false);
   const [showReport, setShowReport] = useState(false);
   const [localTeamCount, setLocalTeamCount] = useState<string>('1');
+  const [batchSpacing, setBatchSpacing] = useState<string>('3');
+  const [batchInitialStatus, setBatchInitialStatus] = useState<AccessoryStatus>(AccessoryStatus.PENDING);
 
   const isBatch = selectedPipes.length > 1;
   const activeFactors = selectedPipes[0]?.planningFactors || DEFAULT_FACTORS;
@@ -237,7 +244,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                     <div className="grid grid-cols-2 gap-4 bg-slate-900/50 p-4 rounded-xl border border-slate-800">
                         <div className="flex flex-col">
                             <span className="text-[9px] text-slate-500 font-bold uppercase tracking-widest mb-1">Saldo de Horas (Total)</span>
-                            <span className="text-xl font-black text-white">{totals.totalHH.toFixed(1)}<span className="text-[10px] ml-1 text-slate-500">H/H</span></span>
+                            <span className="text-xl font-black text-white">{(totals.totalHH || 0).toFixed(1)}<span className="text-[10px] ml-1 text-slate-500">H/H</span></span>
                         </div>
                         <div className="flex flex-col items-end">
                             <span className="text-[9px] text-slate-500 font-bold uppercase tracking-widest mb-1">Equipes</span>
@@ -246,7 +253,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                         <div className="col-span-2 pt-2 mt-2 border-t border-slate-800 flex justify-between items-center">
                             <span className="text-[9px] text-purple-400 font-black uppercase tracking-widest">Duração Estimada:</span>
                             <span className="text-xl font-black text-purple-400 animate-in fade-in zoom-in duration-500" key={totals.weightedHours}>
-                                {totals.weightedHours.toFixed(1)}<span className="text-[10px] ml-1">HORAS</span>
+                                {(totals.weightedHours || 0).toFixed(1)}<span className="text-[10px] ml-1">HORAS</span>
                             </span>
                         </div>
                     </div>
@@ -314,9 +321,9 @@ const Sidebar: React.FC<SidebarProps> = ({
                     <div className="grid grid-cols-2 gap-2">
                         {[
                             { id: 'NONE', label: 'Nível 0 (Solo)', icon: <CheckCircle size={12}/> },
-                            { id: 'SCAFFOLD_FLOOR', label: `Andaime (+${(prodSettings.weights.scaffoldFloor * 100).toFixed(0)}%)`, icon: <Layers size={12}/> },
-                            { id: 'SCAFFOLD_HANGING', label: `Balanço (+${(prodSettings.weights.scaffoldHanging * 100).toFixed(0)}%)`, icon: <ArrowUpCircle size={12}/> },
-                            { id: 'PTA', label: `PTA (+${(prodSettings.weights.pta * 100).toFixed(0)}%)`, icon: <Truck size={12}/> }
+                            { id: 'SCAFFOLD_FLOOR', label: `Andaime (+${((prodSettings?.weights?.scaffoldFloor || 0) * 100).toFixed(0)}%)`, icon: <Layers size={12}/> },
+                            { id: 'SCAFFOLD_HANGING', label: `Balanço (+${((prodSettings?.weights?.scaffoldHanging || 0) * 100).toFixed(0)}%)`, icon: <ArrowUpCircle size={12}/> },
+                            { id: 'PTA', label: `PTA (+${((prodSettings?.weights?.pta || 0) * 100).toFixed(0)}%)`, icon: <Truck size={12}/> }
                         ].map(opt => (
                             <button key={opt.id} onClick={() => handleUpdateFactors({ accessType: opt.id as any })} className={`flex items-center gap-2 p-4 rounded-xl border text-[10px] font-black transition-all uppercase tracking-tight ${activeFactors.accessType === opt.id ? 'bg-purple-600 border-purple-400 text-white shadow-lg' : 'bg-slate-800/50 border-slate-800 text-slate-500 hover:bg-slate-800'}`}>
                                 {opt.icon} {opt.label}
@@ -342,7 +349,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                                     <div className={displayActive ? factor.color : 'text-slate-600'}>{factor.icon}</div>
                                     <div className="flex-1">
                                         <p className="text-[11px] font-black uppercase tracking-tight">{factor.label}</p>
-                                        <p className="text-[9px] opacity-70 font-bold">{factor.invert ? (displayActive ? 'Falta Material (+50%)' : 'Material OK') : `Esforço +${ (factor.weight * 100).toFixed(0) }%`}</p>
+                                        <p className="text-[9px] opacity-70 font-bold">{factor.invert ? (displayActive ? 'Falta Material (+50%)' : 'Material OK') : `Esforço +${ ((factor.weight || 0) * 100).toFixed(0) }%`}</p>
                                     </div>
                                     {displayActive && <div className="w-5 h-5 bg-purple-500 rounded-full flex items-center justify-center shadow-lg"><CheckCircle size={12} className="text-white"/></div>}
                                 </button>
@@ -381,12 +388,68 @@ const Sidebar: React.FC<SidebarProps> = ({
                     <div className="grid grid-cols-2 gap-2 border-t border-blue-500/20 pt-3 mt-1">
                         <div>
                             <span className="text-[9px] uppercase font-bold opacity-70 block mb-1">Comp. Total</span>
-                            <div className="text-xl font-mono font-bold text-white leading-none">{totalLength.toFixed(2)}<span className="text-xs ml-0.5 text-blue-400">m</span></div>
+                            <div className="text-xl font-mono font-bold text-white leading-none">{(totalLength || 0).toFixed(2)}<span className="text-xs ml-0.5 text-blue-400">m</span></div>
                         </div>
                         <div>
                             <span className="text-[9px] uppercase font-bold opacity-70 block mb-1">Área Sup.</span>
-                            <div className="text-xl font-mono font-bold text-white leading-none">{totalArea.toFixed(2)}<span className="text-xs ml-0.5 text-blue-400">m²</span></div>
+                            <div className="text-xl font-mono font-bold text-white leading-none">{(totalArea || 0).toFixed(2)}<span className="text-xs ml-0.5 text-blue-400">m²</span></div>
                         </div>
+                    </div>
+                </div>
+
+                {/* Batch Support Tools - MOVED UP */}
+                <div className="bg-blue-600/10 p-4 rounded-xl border border-blue-500/30 space-y-4 shadow-lg shadow-blue-900/10">
+                    <label className="text-[10px] font-black text-blue-400 uppercase mb-1 block flex items-center gap-2 tracking-widest">
+                        <Layers size={14}/> Suportes em Lote
+                    </label>
+                    <div className="space-y-3">
+                        <div className="flex items-center justify-between bg-slate-950/50 p-2 rounded border border-slate-800">
+                            <span className="text-[9px] text-slate-500 uppercase font-bold">Status Inicial:</span>
+                            <div className="flex gap-1">
+                                <button 
+                                    onClick={() => setBatchInitialStatus(AccessoryStatus.PENDING)}
+                                    className={`px-2 py-1 rounded text-[8px] font-black uppercase transition-all ${batchInitialStatus === AccessoryStatus.PENDING ? 'bg-slate-700 text-white border border-slate-500' : 'bg-slate-900 text-slate-500 border border-transparent'}`}
+                                >
+                                    Pendente
+                                </button>
+                                <button 
+                                    onClick={() => setBatchInitialStatus(AccessoryStatus.MOUNTED)}
+                                    className={`px-2 py-1 rounded text-[8px] font-black uppercase transition-all ${batchInitialStatus === AccessoryStatus.MOUNTED ? 'bg-emerald-600 text-white border border-emerald-400' : 'bg-slate-900 text-slate-500 border border-transparent'}`}
+                                >
+                                    Montado
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="space-y-1">
+                            <label className="text-[9px] text-slate-500 uppercase font-bold">Distância entre suportes (m)</label>
+                            <div className="flex gap-2">
+                                <input 
+                                    type="number" 
+                                    value={batchSpacing} 
+                                    onChange={(e) => setBatchSpacing(e.target.value)}
+                                    className="flex-1 bg-slate-950 border border-slate-700 rounded p-2 text-xs text-white outline-none focus:border-blue-500 font-mono"
+                                    placeholder="Ex: 3"
+                                    min="0.1"
+                                    step="0.1"
+                                />
+                                <button 
+                                    onClick={() => onBatchAddSupports?.(parseFloat(batchSpacing) || 3, batchInitialStatus)}
+                                    className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded font-black text-[10px] uppercase transition-all flex items-center gap-2 shadow-lg shadow-blue-600/20"
+                                >
+                                    <Wrench size={12}/> Aplicar
+                                </button>
+                            </div>
+                        </div>
+                        {parseFloat(batchSpacing) > 0 && (
+                            <div className="bg-blue-500/10 border border-blue-500/20 rounded p-2 flex items-center justify-between">
+                                <span className="text-[9px] text-blue-300 uppercase font-bold">Total Estimado:</span>
+                                <span className="text-xs font-black text-white">
+                                    {selectedPipes.reduce((acc, p) => acc + Math.floor((p.length || 0) / (parseFloat(batchSpacing) || 3)), 0)} un
+                                </span>
+                            </div>
+                        )}
+                        <p className="text-[8px] text-slate-500 italic">O sistema calculará a quantidade automaticamente para cada tubo.</p>
                     </div>
                 </div>
 
@@ -415,6 +478,15 @@ const Sidebar: React.FC<SidebarProps> = ({
 
                 <div><label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2 block">Definir Status</label><div className="grid grid-cols-2 gap-2">{ALL_STATUSES.map(s => (<button key={s} onClick={() => onUpdateBatch({ status: s as PipeStatus })} className="p-2 rounded font-bold text-[10px] text-white transition-all uppercase" style={{ backgroundColor: STATUS_COLORS[s] }}>{STATUS_LABELS[s]}</button>))}</div></div>
                 <div><label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2 block">Proteção Térmica</label><div className="grid grid-cols-1 gap-2">{ALL_INSULATION_STATUSES.map(i => (<button key={i} onClick={() => onUpdateBatch({ insulationStatus: i as InsulationStatus })} className="flex items-center gap-3 p-2 rounded-lg bg-slate-800 border border-slate-700 text-xs font-bold text-slate-400 hover:text-white transition-all"><div className="w-3 h-3 rounded-full" style={{ backgroundColor: INSULATION_COLORS[i] === 'transparent' ? '#475569' : INSULATION_COLORS[i] }} /> {INSULATION_LABELS[i]}</button>))}</div></div>
+
+                <div className="pt-4 border-t border-slate-800">
+                    <button 
+                        onClick={onClearAccessories}
+                        className="w-full bg-red-600/10 hover:bg-red-600/20 text-red-400 py-3 rounded-xl text-[10px] font-black uppercase transition-all flex items-center justify-center gap-2 border border-red-500/20"
+                    >
+                        <Trash2 size={14}/> Limpar Todos os Acessórios
+                    </button>
+                </div>
             </div>
             <div className="p-4 bg-slate-950 border-t border-slate-700 grid grid-cols-2 gap-2">
                 {onCopy && <button onClick={onCopy} className="bg-blue-600 hover:bg-blue-500 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-colors uppercase text-xs tracking-widest"><Copy size={16} /> Copiar</button>}
@@ -446,7 +518,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             </div>
             <div className="grid grid-cols-2 gap-4">
                 <div><label className="text-[10px] font-bold text-slate-500 uppercase">ID Linha</label><div className="text-blue-400 font-mono text-xs">{singlePipe.id}</div></div>
-                <div><label className="text-[10px] font-bold text-slate-500 uppercase">Comp.</label><div className="text-white font-bold text-xs">{singlePipe.length.toFixed(2)}m</div></div>
+                <div><label className="text-[10px] font-bold text-slate-500 uppercase">Comp.</label><div className="text-white font-bold text-xs">{(singlePipe.length || 0).toFixed(2)}m</div></div>
                 
                 {/* Spool ID Input */}
                 <div className="col-span-2">
@@ -462,10 +534,197 @@ const Sidebar: React.FC<SidebarProps> = ({
 
                 <div className="col-span-2 border-t border-slate-800 pt-2 flex justify-between items-center">
                     <label className="text-[10px] font-bold text-slate-500 uppercase">Área Superfície</label>
-                    <div className="text-white font-mono text-xs font-bold">{(Math.PI * singlePipe.diameter * singlePipe.length).toFixed(2)}m²</div>
+                    <div className="text-white font-mono text-xs font-bold">{(Math.PI * (singlePipe.diameter || 0) * (singlePipe.length || 0)).toFixed(2)}m²</div>
                 </div>
             </div>
             <div><label className="text-[10px] font-bold text-slate-500 uppercase">Status Montagem</label><div className="grid grid-cols-2 gap-2">{ALL_STATUSES.map(s => (<button key={s} onClick={() => onUpdateSingle({ ...singlePipe, status: s as PipeStatus })} className={`p-2 rounded font-bold text-[9px] border transition-all ${singlePipe.status === s ? 'ring-2 ring-white scale-105 opacity-100' : 'opacity-40'}`} style={{ backgroundColor: STATUS_COLORS[s], color: '#fff' }}>{STATUS_LABELS[s]}</button>))}</div></div>
+
+            {/* Component Tracking Section */}
+            <div className="bg-slate-950/40 p-4 rounded-xl border border-slate-800 space-y-4">
+                <label className="text-[10px] font-bold text-slate-500 uppercase mb-1 block flex items-center gap-2">
+                    <Package size={14}/> Itens de Montagem (Acessórios)
+                </label>
+                
+                {[
+                    { id: 'supports', label: 'Suportes', icon: <Wrench size={12}/> }
+                ].map(comp => {
+                    const status = (singlePipe as any)[comp.id] || { total: 0, installed: 0 };
+                    return (
+                        <div key={comp.id} className="space-y-2 pb-3 border-b border-slate-800/50 last:border-0 last:pb-0">
+                            <div className="flex justify-between items-center">
+                                <span className="text-[10px] font-bold text-slate-400 flex items-center gap-2">
+                                    {comp.icon} {comp.label}
+                                </span>
+                                <span className="text-[10px] font-mono text-blue-400 font-bold">
+                                    {status.installed} / {status.total}
+                                </span>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2">
+                                <div className="flex flex-col gap-1">
+                                    <span className="text-[8px] text-slate-600 uppercase font-bold">Total</span>
+                                    <input 
+                                        type="number" 
+                                        min="0"
+                                        value={status.total}
+                                        onChange={(e) => onUpdateSingle({ 
+                                            ...singlePipe, 
+                                            [comp.id]: { ...status, total: parseInt(e.target.value) || 0 } 
+                                        })}
+                                        className="bg-slate-900 border border-slate-800 rounded px-2 py-1 text-xs text-white outline-none focus:border-blue-500"
+                                    />
+                                </div>
+                                <div className="flex flex-col gap-1">
+                                    <span className="text-[8px] text-slate-600 uppercase font-bold">Instalado</span>
+                                    <input 
+                                        type="number" 
+                                        min="0"
+                                        max={status.total}
+                                        value={status.installed}
+                                        onChange={(e) => onUpdateSingle({ 
+                                            ...singlePipe, 
+                                            [comp.id]: { ...status, installed: parseInt(e.target.value) || 0 } 
+                                        })}
+                                        className="bg-slate-900 border border-slate-800 rounded px-2 py-1 text-xs text-white outline-none focus:border-blue-500"
+                                    />
+                                </div>
+                            </div>
+                            {/* Progress Bar */}
+                            <div className="h-1 bg-slate-800 rounded-full overflow-hidden">
+                                <div 
+                                    className="h-full bg-blue-500 transition-all duration-500" 
+                                    style={{ width: `${status.total > 0 ? Math.min(100, (status.installed / status.total) * 100) : 0}%` }}
+                                />
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+
+            {/* Manual Accessory Management */}
+            {!isBatch ? (
+                <div className="bg-slate-950/40 p-4 rounded-xl border border-slate-800 space-y-4">
+                    <label className="text-[10px] font-bold text-slate-500 uppercase mb-1 block flex items-center gap-2">
+                        <MousePointer2 size={14}/> Posicionamento Manual
+                    </label>
+                    <div className="grid grid-cols-1 gap-2">
+                        {[
+                            { id: 'SUPPORT', label: 'Suporte', icon: <Wrench size={12}/> }
+                        ].map(type => (
+                            <button 
+                                key={type.id}
+                                onClick={() => onSetPlacementMode?.(placementMode === type.id ? null : type.id as any)}
+                                className={`flex items-center gap-2 p-2 rounded-lg border text-[9px] font-bold transition-all uppercase ${placementMode === type.id ? 'bg-blue-600 border-blue-400 text-white' : 'bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700'}`}
+                            >
+                                {type.icon} {type.label}
+                            </button>
+                        ))}
+                    </div>
+                    
+                    {singlePipe.accessories && singlePipe.accessories.length > 0 && (
+                        <div className="space-y-3 mt-4 pt-4 border-t border-slate-800">
+                            <div className="flex items-center justify-between">
+                                <span className="text-[10px] text-slate-400 font-black uppercase tracking-widest">Itens Posicionados</span>
+                                <button 
+                                    onClick={() => onUpdateSingle({
+                                        ...singlePipe,
+                                        accessories: singlePipe.accessories?.map(a => ({ ...a, status: AccessoryStatus.MOUNTED }))
+                                    })}
+                                    className="text-[9px] text-blue-400 hover:text-blue-300 font-bold uppercase flex items-center gap-1 transition-colors"
+                                >
+                                    <CheckSquare size={10} /> Marcar Todos
+                                </button>
+                            </div>
+                            <div className="max-h-60 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
+                                {singlePipe.accessories.map(acc => (
+                                    <div key={acc.id} className={`flex items-center justify-between p-2.5 rounded-xl border transition-all ${acc.status === AccessoryStatus.MOUNTED ? 'bg-emerald-900/20 border-emerald-500/30' : 'bg-slate-950/40 border-slate-800'}`}>
+                                        <div className="flex items-center gap-3">
+                                            <div className={`w-2 h-2 rounded-full shadow-sm ${acc.status === AccessoryStatus.MOUNTED ? 'bg-emerald-500 shadow-emerald-500/50' : 'bg-slate-600'}`}></div>
+                                            <div className="flex flex-col">
+                                                <span className={`text-[10px] font-black uppercase tracking-tight ${acc.status === AccessoryStatus.MOUNTED ? 'text-emerald-400' : 'text-slate-300'}`}>{acc.type}</span>
+                                                <span className="text-[8px] text-slate-500 font-bold">POSIÇÃO: {(acc.offset * 100).toFixed(0)}%</span>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <button 
+                                                onClick={() => onUpdateSingle({
+                                                    ...singlePipe,
+                                                    accessories: singlePipe.accessories?.map(a => a.id === acc.id ? { ...a, status: a.status === AccessoryStatus.MOUNTED ? AccessoryStatus.PENDING : AccessoryStatus.MOUNTED } : a)
+                                                })}
+                                                title={acc.status === AccessoryStatus.MOUNTED ? "Marcar como Pendente" : "Marcar como Montado"}
+                                                className={`p-1.5 rounded-lg transition-all ${acc.status === AccessoryStatus.MOUNTED ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-900/20' : 'bg-slate-800 text-slate-500 hover:bg-slate-700'}`}
+                                            >
+                                                <Check size={14} />
+                                            </button>
+                                            <button 
+                                                onClick={() => onUpdateSingle({
+                                                    ...singlePipe,
+                                                    accessories: singlePipe.accessories?.filter(a => a.id !== acc.id)
+                                                })}
+                                                className="p-1.5 rounded-lg bg-slate-800 text-slate-500 hover:bg-red-900/40 hover:text-red-400 transition-all"
+                                            >
+                                                <Trash2 size={14} />
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            ) : (
+                <div className="bg-slate-950/40 p-4 rounded-xl border border-blue-500/20 space-y-4">
+                    <label className="text-[10px] font-bold text-blue-400 uppercase mb-1 block flex items-center gap-2">
+                        <Layers size={14}/> Ferramentas em Lote (Suportes)
+                    </label>
+                    <div className="space-y-3">
+                        <div className="flex items-center justify-between bg-slate-900/50 p-2 rounded border border-slate-800">
+                            <span className="text-[9px] text-slate-500 uppercase font-bold">Status Inicial:</span>
+                            <div className="flex gap-1">
+                                <button 
+                                    onClick={() => setBatchInitialStatus(AccessoryStatus.PENDING)}
+                                    className={`px-2 py-1 rounded text-[8px] font-black uppercase transition-all ${batchInitialStatus === AccessoryStatus.PENDING ? 'bg-slate-700 text-white border border-slate-500' : 'bg-slate-950 text-slate-500 border border-transparent'}`}
+                                >
+                                    Pendente
+                                </button>
+                                <button 
+                                    onClick={() => setBatchInitialStatus(AccessoryStatus.MOUNTED)}
+                                    className={`px-2 py-1 rounded text-[8px] font-black uppercase transition-all ${batchInitialStatus === AccessoryStatus.MOUNTED ? 'bg-emerald-600 text-white border border-emerald-400' : 'bg-slate-950 text-slate-500 border border-transparent'}`}
+                                >
+                                    Montado
+                                </button>
+                            </div>
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-[9px] text-slate-500 uppercase font-bold">Espaçamento entre Suportes (m)</label>
+                            <div className="flex gap-2">
+                                <input 
+                                    type="number" 
+                                    value={batchSpacing} 
+                                    onChange={(e) => setBatchSpacing(e.target.value)}
+                                    className="flex-1 bg-slate-900 border border-slate-700 rounded p-2 text-xs text-white outline-none focus:border-blue-500"
+                                    placeholder="Ex: 3"
+                                    min="0.1"
+                                    step="0.1"
+                                />
+                                <button 
+                                    onClick={() => onBatchAddSupports?.(parseFloat(batchSpacing) || 3, batchInitialStatus)}
+                                    className="bg-blue-600 hover:bg-blue-500 text-white px-3 py-2 rounded text-[10px] font-bold uppercase transition-colors flex items-center gap-2"
+                                >
+                                    <Wrench size={12}/> Aplicar
+                                </button>
+                            </div>
+                        </div>
+                        <div className="pt-2 border-t border-slate-800">
+                            <button 
+                                onClick={onClearAccessories}
+                                className="w-full bg-red-600/10 hover:bg-red-600/20 text-red-400 py-2 rounded text-[9px] font-bold uppercase transition-colors flex items-center justify-center gap-2 border border-red-500/20"
+                            >
+                                <Trash2 size={12}/> Limpar Todos os Acessórios
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {(singlePipe.status === 'WELDED' || singlePipe.status === 'HYDROTEST') && (
                 <div className="bg-slate-950/60 p-4 rounded-xl border border-green-500/20 space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">

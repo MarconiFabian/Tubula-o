@@ -1,10 +1,12 @@
 
 import React, { useMemo, useRef, useState } from 'react';
-import { PipeSegment, ProductivitySettings, Annotation } from '../types';
+import { PipeSegment, ProductivitySettings, Annotation, DailyProduction, AccessoryStatus } from '../types';
 import { ProjectData } from '../utils/db';
 import { STATUS_COLORS, STATUS_LABELS, ALL_STATUSES, INSULATION_COLORS, INSULATION_LABELS, ALL_INSULATION_STATUSES, PIPING_REMAINING_FACTOR, INSULATION_REMAINING_FACTOR, HOURS_PER_DAY } from '../constants';
-import { Activity, FileDown, Upload, Image as ImageIcon, Map as MapIcon, Layers, Shield, Ruler, Package, AlertCircle, Search, Filter, ClipboardList, UserCog, Calendar, CheckSquare, TrendingUp, Timer, Users, Target, BarChart3, Database, ChevronDown, Check, Zap } from 'lucide-react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area, ReferenceDot, BarChart, Bar, Cell } from 'recharts';
+import { Activity, FileDown, Upload, Image as ImageIcon, Map as MapIcon, Layers, Shield, Ruler, Package, AlertCircle, Search, Filter, ClipboardList, UserCog, Calendar, CheckSquare, TrendingUp, Timer, Users, Target, BarChart3, Database, ChevronDown, Check, Zap, Calculator } from 'lucide-react';
+import SmartInsights from './SmartInsights';
+import ProjectTimeline from './ProjectTimeline';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area, ReferenceDot, BarChart, Bar, Cell, ComposedChart } from 'recharts';
 import { getWorkingEndDate, getWorkingDaysBetween } from '../utils/planning';
 
 interface DashboardProps {
@@ -27,6 +29,9 @@ interface DashboardProps {
   savedProjects?: ProjectData[];
   selectedProjectIds?: string[];
   onSetSelectedProjectIds?: (ids: string[]) => void;
+  dailyProduction?: DailyProduction[];
+  onUpdateDailyProduction?: (dp: DailyProduction[]) => void;
+  onOpenDailyProduction?: () => void;
 }
 
 type TabType = 'overview' | 'tracking' | 'planning';
@@ -50,7 +55,10 @@ const Dashboard: React.FC<DashboardProps> = ({
     deadlineDate,
     savedProjects = [],
     selectedProjectIds = [],
-    onSetSelectedProjectIds
+    onSetSelectedProjectIds,
+    dailyProduction = [],
+    onUpdateDailyProduction,
+    onOpenDailyProduction
 }) => {
     const [activeTab, setActiveTab] = useState<TabType>('overview');
     const [searchTerm, setSearchTerm] = useState('');
@@ -159,7 +167,21 @@ const Dashboard: React.FC<DashboardProps> = ({
         const pipingF = PIPING_REMAINING_FACTOR[p.status] || 0;
         const insulationF = INSULATION_REMAINING_FACTOR[p.insulationStatus || 'NONE'] || 0;
         
-        const baseEffort = (p.length * (prodSettings?.pipingBase || 1) * pipingF) + (p.length * (prodSettings?.insulationBase || 1) * insulationF);
+        const pipingBaseEffort = (p.length * (prodSettings?.pipingBase || 1) * pipingF);
+        const insulationBaseEffort = (p.length * (prodSettings?.insulationBase || 1) * insulationF);
+        
+        // Adicionar esforço de acessórios (apenas se for piping)
+        const supportCount = (p.supports?.total || 0) + (p.accessories?.filter(a => a.type === 'SUPPORT').length || 0);
+        const valveCount = p.accessories?.filter(a => a.type === 'VALVE').length || 0;
+        const instrumentCount = p.accessories?.filter(a => a.type === 'INSTRUMENT').length || 0;
+        const otherCount = p.accessories?.filter(a => a.type === 'OTHER').length || 0;
+
+        const supportEffort = supportCount * (prodSettings?.supportBase || 2.5) * pipingF;
+        const valveEffort = valveCount * (prodSettings?.valveBase || 8) * pipingF;
+        const instrumentEffort = instrumentCount * (prodSettings?.instrumentBase || 4) * pipingF;
+        const otherEffort = otherCount * (prodSettings?.otherBase || 2) * pipingF;
+        
+        const baseEffort = pipingBaseEffort + insulationBaseEffort + supportEffort + valveEffort + instrumentEffort + otherEffort;
         
         const factors = p.planningFactors || { teamCount: 1, hasCrane: false, hasBlockage: false, isNightShift: false, isCriticalArea: false, accessType: 'NONE', delayHours: 0, materialAvailable: true, weatherExposed: false };
         let mult = 1.0;
@@ -238,25 +260,27 @@ const Dashboard: React.FC<DashboardProps> = ({
         const todayStr = new Date().toISOString().split('T')[0];
         
         // Initial cumulative: everything before start date
-        let cumulativeActual = currentPipes
-            .filter(p => {
-                const d = p.welderInfo?.weldDate || todayStr;
-                return d < startStr;
-            })
-            .reduce((acc, p) => {
+        const initialCumulativeActual = (dailyProduction && dailyProduction.length > 0) 
+            ? dailyProduction.filter(dp => dp.date < startStr).reduce((acc, dp) => acc + dp.pipeMeters, 0)
+            : currentPipes.filter(p => (p.welderInfo?.weldDate || todayStr) < startStr).reduce((acc, p) => {
                 const pipingDone = 1 - (PIPING_REMAINING_FACTOR[p.status] ?? 1);
-                // We only count piping progress for the S-Curve meters to keep it simple, 
-                // or we could blend it. Let's use the piping progress factor.
                 return acc + (p.length * pipingDone);
             }, 0);
 
+        let cumulativeActual = initialCumulativeActual;
         const totalLengthValue = totalLength;
+        const initialProgressPct = totalLengthValue > 0 ? (initialCumulativeActual / totalLengthValue * 100) : 0;
 
         // Theoretical Planned Curve
         const days = deadlineStats ? deadlineStats.daysUntilDeadline : (daysNeeded || 30); 
         const start = new Date(startStr + 'T12:00:00');
+        const today = new Date(todayStr + 'T12:00:00');
         
         const plotDays = Math.max(days, daysNeeded || 0);
+
+        // Calculate Automatic Progression (Linear from start to today based on current total progress)
+        const totalProgressValue = progress; // Current total %
+        const daysSinceStart = Math.max(1, Math.floor((today.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
 
         for (let i = 0; i <= plotDays; i++) {
             const d = new Date(start);
@@ -264,19 +288,39 @@ const Dashboard: React.FC<DashboardProps> = ({
             const dateStr = d.toISOString().split('T')[0];
             
             // Actual production on this specific day
-            const dayProd = currentPipes.filter(p => {
-                const d = p.welderInfo?.weldDate || todayStr;
-                return d === dateStr;
-            }).reduce((acc, p) => {
-                const pipingDone = 1 - (PIPING_REMAINING_FACTOR[p.status] ?? 1);
-                return acc + (p.length * pipingDone);
-            }, 0);
+            let dayProd = 0;
+            if (dailyProduction && dailyProduction.length > 0) {
+                const dp = dailyProduction.find(d => d.date === dateStr);
+                dayProd = dp ? dp.pipeMeters : 0;
+            } else {
+                dayProd = currentPipes.filter(p => {
+                    const d = p.welderInfo?.weldDate || todayStr;
+                    return d === dateStr;
+                }).reduce((acc, p) => {
+                    const pipingDone = 1 - (PIPING_REMAINING_FACTOR[p.status] ?? 1);
+                    return acc + (p.length * pipingDone);
+                }, 0);
+            }
             cumulativeActual += dayProd;
 
-            // Planned (Sigmoid Curve)
-            const x = (i / days) * 12 - 6;
+            // Planned (Sigmoid Curve) - Adjusted to start from initial progress
+            // We use a slightly less aggressive sigmoid for better realism
+            const x = (i / plotDays) * 10 - 5; // Range -5 to 5
             const sigmoid = 1 / (1 + Math.exp(-x));
-            const planned = sigmoid * totalLengthValue;
+            
+            // Normalize sigmoid to start at 0 and end at 1 within the plot window
+            const s0 = 1 / (1 + Math.exp(5)); // sigmoid(-5)
+            const s1 = 1 / (1 + Math.exp(-5)); // sigmoid(5)
+            const normalizedSigmoid = (sigmoid - s0) / (s1 - s0);
+            
+            const planned = initialProgressPct + (normalizedSigmoid * (100 - initialProgressPct));
+
+            // Automatic Progression: Linear from initial progress to current total progress
+            let autoProgress = null;
+            if (dateStr <= todayStr) {
+                const linearFactor = Math.min(i / daysSinceStart, 1);
+                autoProgress = parseFloat((initialProgressPct + (linearFactor * (totalProgressValue - initialProgressPct))).toFixed(2));
+            }
 
             // Milestones
             let milestone = null;
@@ -288,19 +332,58 @@ const Dashboard: React.FC<DashboardProps> = ({
             // Only show actual if date is <= today
             const isFuture = dateStr > todayStr;
 
+            const dp = dailyProduction.find(d => d.date === dateStr);
+
             sCurveData.push({
                 date: dateStr.split('-').slice(1).join('/'),
-                actual: !isFuture ? parseFloat(((cumulativeActual / totalLengthValue) * 100).toFixed(2)) : null,
-                planned: parseFloat(((planned / totalLengthValue) * 100).toFixed(2)),
-                actualMeters: parseFloat(cumulativeActual.toFixed(2)),
-                plannedMeters: parseFloat(planned.toFixed(2)),
+                actual: !isFuture && totalLengthValue && totalLengthValue > 0 ? parseFloat(((cumulativeActual || 0) / totalLengthValue * 100).toFixed(2)) : null,
+                planned: parseFloat(planned.toFixed(2)),
+                autoProgress: autoProgress,
+                actualMeters: parseFloat((cumulativeActual || 0).toFixed(2)),
+                plannedMeters: parseFloat(((planned / 100) * totalLengthValue).toFixed(2)),
+                pipingProgress: dp?.pipingProgress ?? null,
+                insulationProgress: dp?.insulationProgress ?? null,
+                totalProgress: dp?.totalProgress ?? null,
+                plannedTotalProgress: parseFloat(planned.toFixed(2)),
                 milestone,
                 isLastActual: dateStr === todayStr
             });
         }
     }
 
-    return { totalLength, totalPipes, pipeCounts, pipeLengths, insulationCounts, insulationLengths, bom, progress, sortedDailyProd, sCurveData, totalHH: finalTotalHH, annotationHH, annotationBreakdown, totalTeams: avgTeams, projectedEnd, daysNeeded, deadlineStats, pipingTotalLength, pipingRemainingLength, pipingExecutedLength, insulationTotalLength, insulationRemainingLength, insulationExecutedLength };
+    const componentStats = {
+        supports: { total: 0, installed: 0 },
+        valves: { total: 0, installed: 0 },
+        instruments: { total: 0, installed: 0 },
+        others: { total: 0, installed: 0 }
+    };
+
+    currentPipes.forEach(p => {
+        if (p.supports) {
+            componentStats.supports.total += p.supports.total;
+            componentStats.supports.installed += p.supports.installed;
+        }
+        if (p.accessories) {
+            p.accessories.forEach(a => {
+                const isInstalled = a.status === AccessoryStatus.MOUNTED;
+                if (a.type === 'SUPPORT') {
+                    componentStats.supports.total += 1;
+                    if (isInstalled) componentStats.supports.installed += 1;
+                } else if (a.type === 'VALVE') {
+                    componentStats.valves.total += 1;
+                    if (isInstalled) componentStats.valves.installed += 1;
+                } else if (a.type === 'INSTRUMENT') {
+                    componentStats.instruments.total += 1;
+                    if (isInstalled) componentStats.instruments.installed += 1;
+                } else if (a.type === 'OTHER') {
+                    componentStats.others.total += 1;
+                    if (isInstalled) componentStats.others.installed += 1;
+                }
+            });
+        }
+    });
+
+    return { totalLength, totalPipes, pipeCounts, pipeLengths, insulationCounts, insulationLengths, bom, progress, sortedDailyProd, sCurveData, totalHH: finalTotalHH, annotationHH, annotationBreakdown, totalTeams: avgTeams, projectedEnd, daysNeeded, deadlineStats, pipingTotalLength, pipingRemainingLength, pipingExecutedLength, insulationTotalLength, insulationRemainingLength, insulationExecutedLength, componentStats };
   }, [pipes, annotations, startDate, prodSettings, deadlineDate, aggregatedData]);
 
   const filteredPipes = useMemo(() => {
@@ -414,6 +497,59 @@ const Dashboard: React.FC<DashboardProps> = ({
 
       {(activeTab === 'overview' || exportMode) && (
         <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-6">
+            {/* DESTAQUE DE EXECUÇÃO - MÉTRICAS CRÍTICAS */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="bg-slate-900 border-2 border-blue-500/30 p-6 rounded-2xl shadow-[0_0_20px_rgba(59,130,246,0.15)] flex flex-col gap-4 relative overflow-hidden">
+                    <div className="absolute -right-4 -top-4 opacity-10"><Ruler size={120} className="text-blue-500" /></div>
+                    <div className="flex items-center gap-3">
+                        <div className="w-3 h-3 rounded-full bg-blue-500 shadow-[0_0_12px_rgba(59,130,246,0.6)]"></div>
+                        <h2 className="text-lg font-black text-white uppercase tracking-widest font-mono">Tubulação (Metros)</h2>
+                    </div>
+                    <div className="grid grid-cols-3 gap-4 relative z-10">
+                        <div className="flex flex-col">
+                            <span className="text-slate-500 text-[10px] font-black uppercase tracking-tighter mb-1">Total Projeto</span>
+                            <span className="text-3xl font-black text-white font-mono tracking-tighter">{(stats.pipingTotalLength || 0).toFixed(1)}<span className="text-xs text-slate-500 ml-1">m</span></span>
+                        </div>
+                        <div className="flex flex-col">
+                            <span className="text-emerald-500 text-[10px] font-black uppercase tracking-tighter mb-1">Executado</span>
+                            <span className="text-3xl font-black text-emerald-400 font-mono tracking-tighter">{(stats.pipingExecutedLength || 0).toFixed(1)}<span className="text-xs text-slate-500 ml-1">m</span></span>
+                        </div>
+                        <div className="flex flex-col">
+                            <span className="text-amber-500 text-[10px] font-black uppercase tracking-tighter mb-1">Falta Executar</span>
+                            <span className="text-3xl font-black text-amber-400 font-mono tracking-tighter">{(stats.pipingRemainingLength || 0).toFixed(1)}<span className="text-xs text-slate-500 ml-1">m</span></span>
+                        </div>
+                    </div>
+                    <div className="w-full h-3 bg-slate-800 rounded-full overflow-hidden border border-slate-700">
+                        <div className="h-full bg-gradient-to-r from-blue-600 to-blue-400 shadow-[0_0_10px_rgba(59,130,246,0.4)]" style={{ width: `${stats.pipingTotalLength > 0 ? (stats.pipingExecutedLength / stats.pipingTotalLength) * 100 : 0}%` }}></div>
+                    </div>
+                </div>
+
+                <div className="bg-slate-900 border-2 border-amber-500/30 p-6 rounded-2xl shadow-[0_0_20px_rgba(245,158,11,0.15)] flex flex-col gap-4 relative overflow-hidden">
+                    <div className="absolute -right-4 -top-4 opacity-10"><Package size={120} className="text-amber-500" /></div>
+                    <div className="flex items-center gap-3">
+                        <div className="w-3 h-3 rounded-full bg-amber-500 shadow-[0_0_12px_rgba(245,158,11,0.6)]"></div>
+                        <h2 className="text-lg font-black text-white uppercase tracking-widest font-mono">Suportes (Unidades)</h2>
+                    </div>
+                    <div className="grid grid-cols-3 gap-4 relative z-10">
+                        <div className="flex flex-col">
+                            <span className="text-slate-500 text-[10px] font-black uppercase tracking-tighter mb-1">Total Projeto</span>
+                            <span className="text-3xl font-black text-white font-mono tracking-tighter">{stats.componentStats.supports.total}</span>
+                        </div>
+                        <div className="flex flex-col">
+                            <span className="text-emerald-500 text-[10px] font-black uppercase tracking-tighter mb-1">Montados</span>
+                            <span className="text-3xl font-black text-emerald-400 font-mono tracking-tighter">{stats.componentStats.supports.installed}</span>
+                        </div>
+                        <div className="flex flex-col">
+                            <span className="text-amber-500 text-[10px] font-black uppercase tracking-tighter mb-1">Falta Montar</span>
+                            <span className="text-3xl font-black text-amber-400 font-mono tracking-tighter">{stats.componentStats.supports.total - stats.componentStats.supports.installed}</span>
+                        </div>
+                    </div>
+                    <div className="w-full h-3 bg-slate-800 rounded-full overflow-hidden border border-slate-700">
+                        <div className="h-full bg-gradient-to-r from-amber-600 to-amber-400 shadow-[0_0_10px_rgba(245,158,11,0.4)]" style={{ width: `${stats.componentStats.supports.total > 0 ? (stats.componentStats.supports.installed / stats.componentStats.supports.total) * 100 : 0}%` }}></div>
+                    </div>
+                </div>
+            </div>
+
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 p-5 rounded-xl flex flex-col justify-between relative overflow-hidden group hover:border-blue-500/30 transition-colors">
                     <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity"><Ruler size={64} className="text-blue-500" /></div>
@@ -421,7 +557,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                         <div className="w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)]"></div>
                         <span className="text-slate-500 text-[10px] font-mono uppercase tracking-widest">Comprimento Total</span>
                     </div>
-                    <div className="text-3xl font-bold text-white font-mono tracking-tighter">{stats.totalLength.toFixed(2)}<span className="text-xs text-slate-500 ml-1">m</span></div>
+                    <div className="text-3xl font-bold text-white font-mono tracking-tighter">{(stats.totalLength || 0).toFixed(2)}<span className="text-xs text-slate-500 ml-1">m</span></div>
                 </div>
                 <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 p-5 rounded-xl flex flex-col justify-between relative overflow-hidden group hover:border-purple-500/30 transition-colors">
                     <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity"><Package size={64} className="text-purple-500" /></div>
@@ -437,7 +573,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                         <div className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)] animate-pulse"></div>
                         <span className="text-slate-500 text-[10px] font-mono uppercase tracking-widest">Eficiência</span>
                     </div>
-                    <div className="text-3xl font-bold text-green-400 font-mono tracking-tighter">{stats.progress.toFixed(1)}<span className="text-xs ml-1">%</span></div>
+                    <div className="text-3xl font-bold text-green-400 font-mono tracking-tighter">{(stats.progress || 0).toFixed(1)}<span className="text-xs ml-1">%</span></div>
                 </div>
                 <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 p-5 rounded-xl flex flex-col justify-between relative overflow-hidden group hover:border-red-500/30 transition-colors">
                     <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity"><AlertCircle size={64} className="text-red-500" /></div>
@@ -461,11 +597,11 @@ const Dashboard: React.FC<DashboardProps> = ({
                     <div className="grid grid-cols-3 gap-4">
                         <div className="flex flex-col">
                             <span className="text-slate-500 text-[10px] font-mono uppercase tracking-widest mb-1">Total</span>
-                            <span className="text-xl font-bold text-white font-mono">{stats.pipingTotalLength.toFixed(2)}<span className="text-[10px] text-slate-500 ml-1">m</span></span>
+                            <span className="text-xl font-bold text-white font-mono">{(stats.pipingTotalLength || 0).toFixed(2)}<span className="text-[10px] text-slate-500 ml-1">m</span></span>
                         </div>
                         <div className="flex flex-col">
                             <span className="text-slate-500 text-[10px] font-mono uppercase tracking-widest mb-1">Executado</span>
-                            <span className="text-xl font-bold text-green-400 font-mono">{stats.pipingExecutedLength.toFixed(2)}<span className="text-[10px] text-slate-500 ml-1">m</span></span>
+                            <span className="text-xl font-bold text-green-400 font-mono">{(stats.pipingExecutedLength || 0).toFixed(2)}<span className="text-[10px] text-slate-500 ml-1">m</span></span>
                             <div className="mt-2 space-y-1">
                                 <div className="flex justify-between text-[8px] font-mono text-slate-400">
                                     <span>Soldado:</span>
@@ -479,7 +615,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                         </div>
                         <div className="flex flex-col">
                             <span className="text-slate-500 text-[10px] font-mono uppercase tracking-widest mb-1">A Executar</span>
-                            <span className="text-xl font-bold text-yellow-400 font-mono">{stats.pipingRemainingLength.toFixed(2)}<span className="text-[10px] text-slate-500 ml-1">m</span></span>
+                            <span className="text-xl font-bold text-yellow-400 font-mono">{(stats.pipingRemainingLength || 0).toFixed(2)}<span className="text-[10px] text-slate-500 ml-1">m</span></span>
                             <div className="mt-2 space-y-1">
                                 <div className="flex justify-between text-[8px] font-mono text-slate-400">
                                     <span>P/ Soldar:</span>
@@ -508,11 +644,11 @@ const Dashboard: React.FC<DashboardProps> = ({
                     <div className="grid grid-cols-3 gap-4">
                         <div className="flex flex-col">
                             <span className="text-slate-500 text-[10px] font-mono uppercase tracking-widest mb-1">Total</span>
-                            <span className="text-xl font-bold text-white font-mono">{stats.insulationTotalLength.toFixed(2)}<span className="text-[10px] text-slate-500 ml-1">m</span></span>
+                            <span className="text-xl font-bold text-white font-mono">{(stats.insulationTotalLength || 0).toFixed(2)}<span className="text-[10px] text-slate-500 ml-1">m</span></span>
                         </div>
                         <div className="flex flex-col">
                             <span className="text-slate-500 text-[10px] font-mono uppercase tracking-widest mb-1">Executado</span>
-                            <span className="text-xl font-bold text-green-400 font-mono">{stats.insulationExecutedLength.toFixed(2)}<span className="text-[10px] text-slate-500 ml-1">m</span></span>
+                            <span className="text-xl font-bold text-green-400 font-mono">{(stats.insulationExecutedLength || 0).toFixed(2)}<span className="text-[10px] text-slate-500 ml-1">m</span></span>
                             <div className="mt-2 space-y-1">
                                 <div className="flex justify-between text-[8px] font-mono text-slate-400">
                                     <span>Concluído:</span>
@@ -522,7 +658,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                         </div>
                         <div className="flex flex-col">
                             <span className="text-slate-500 text-[10px] font-mono uppercase tracking-widest mb-1">A Executar</span>
-                            <span className="text-xl font-bold text-yellow-400 font-mono">{stats.insulationRemainingLength.toFixed(2)}<span className="text-[10px] text-slate-500 ml-1">m</span></span>
+                            <span className="text-xl font-bold text-yellow-400 font-mono">{(stats.insulationRemainingLength || 0).toFixed(2)}<span className="text-[10px] text-slate-500 ml-1">m</span></span>
                             <div className="mt-2 space-y-1">
                                 <div className="flex justify-between text-[8px] font-mono text-slate-400">
                                     <span>P/ Concluir:</span>
@@ -533,6 +669,47 @@ const Dashboard: React.FC<DashboardProps> = ({
                     </div>
                     <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden mt-2">
                         <div className="h-full bg-purple-500" style={{ width: `${stats.insulationTotalLength > 0 ? (stats.insulationExecutedLength / stats.insulationTotalLength) * 100 : 0}%` }}></div>
+                    </div>
+                </div>
+
+                <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 p-5 rounded-xl flex flex-col gap-4 relative overflow-hidden group hover:border-amber-500/30 transition-colors md:col-span-2">
+                    <div className="flex items-center justify-between mb-2 border-b border-slate-800 pb-3">
+                        <div className="flex items-center gap-2">
+                            <div className="w-2 h-2 rounded-full bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)]"></div>
+                            <span className="text-slate-400 text-xs font-mono uppercase tracking-widest font-bold">Acessórios e Componentes</span>
+                        </div>
+                        <div className="flex flex-wrap gap-4">
+                            <span className="text-amber-400 font-mono text-[10px] font-bold">Suportes: {stats.componentStats.supports.installed}/{stats.componentStats.supports.total}</span>
+                            {stats.componentStats.valves.total > 0 && <span className="text-amber-400 font-mono text-[10px] font-bold">Válvulas: {stats.componentStats.valves.installed}/{stats.componentStats.valves.total}</span>}
+                            {stats.componentStats.instruments.total > 0 && <span className="text-amber-400 font-mono text-[10px] font-bold">Instr.: {stats.componentStats.instruments.installed}/{stats.componentStats.instruments.total}</span>}
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-1 gap-6">
+                        {[
+                            { id: 'supports', label: 'Suportes', color: 'bg-orange-500' },
+                            { id: 'valves', label: 'Válvulas', color: 'bg-red-500' },
+                            { id: 'instruments', label: 'Instrumentos', color: 'bg-blue-500' },
+                            { id: 'others', label: 'Outros', color: 'bg-emerald-500' }
+                        ].filter(comp => (stats.componentStats as any)[comp.id].total > 0).map(comp => {
+                            const data = (stats.componentStats as any)[comp.id];
+                            const pct = data.total > 0 ? (data.installed / data.total) * 100 : 0;
+                            return (
+                                <div key={comp.id} className="flex flex-col gap-2">
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-[9px] text-slate-500 uppercase font-bold tracking-wider">{comp.label}</span>
+                                        <span className="text-[10px] font-mono text-white font-bold">{pct.toFixed(0)}%</span>
+                                    </div>
+                                    <div className="flex items-end gap-2">
+                                        <span className="text-xl font-bold text-white font-mono">{data.installed}</span>
+                                        <span className="text-[10px] text-slate-500 mb-1">/ {data.total}</span>
+                                        <span className="text-[9px] text-amber-500 font-bold ml-auto mb-1">FALTA: {data.total - data.installed}</span>
+                                    </div>
+                                    <div className="w-full h-1 bg-slate-800 rounded-full overflow-hidden">
+                                        <div className={`h-full ${comp.color} transition-all duration-1000`} style={{ width: `${pct}%` }}></div>
+                                    </div>
+                                </div>
+                            );
+                        })}
                     </div>
                 </div>
             </div>
@@ -650,7 +827,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                                         {Object.entries(stats.bom).map(([diameterInch, length]) => (
                                             <tr key={diameterInch} className="hover:bg-slate-800/20 transition-colors group">
                                                 <td className="p-3 text-slate-400 group-hover:text-slate-200 transition-colors">TUBO_DE_AÇO_CARBONO - <span className="text-blue-500 font-bold">{diameterInch}"</span></td>
-                                                <td className="p-3 text-right text-white font-bold">{(length as number).toFixed(3)}</td>
+                                                <td className="p-3 text-right text-white font-bold">{((length as number) || 0).toFixed(3)}</td>
                                                 <td className="p-3 text-right text-slate-600">METROS</td>
                                             </tr>
                                         ))}
@@ -665,7 +842,23 @@ const Dashboard: React.FC<DashboardProps> = ({
 
       {activeTab === 'planning' && !exportMode && (
           <div className="animate-in fade-in slide-in-from-right-4 duration-500 flex flex-col gap-6">
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
+                  <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 p-5 rounded-xl flex flex-col justify-between relative overflow-hidden group hover:border-emerald-500/30 transition-colors">
+                      <div className="absolute top-0 right-0 p-2 opacity-5 group-hover:opacity-20 transition-opacity">
+                          <Shield size={48} className="text-emerald-400" />
+                      </div>
+                      <div className="flex items-center gap-2 mb-1">
+                          <Shield className="text-emerald-400" size={14} />
+                          <span className="text-slate-500 text-[10px] font-mono uppercase tracking-widest">Saúde (SPI)</span>
+                      </div>
+                      <div className="text-3xl font-bold text-white font-mono tracking-tighter">
+                          {stats.progress > 0 ? (stats.progress / (stats.sCurveData.find(d => d.isLastActual)?.planned || 1) * 100).toFixed(0) : '100'}
+                          <span className="text-xs text-slate-500 ml-1">%</span>
+                      </div>
+                      <div className="text-[9px] text-slate-500 font-mono mt-1 uppercase tracking-widest">
+                          Schedule Index
+                      </div>
+                  </div>
                   <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 p-5 rounded-xl flex flex-col justify-between relative overflow-hidden group hover:border-blue-500/30 transition-colors">
                       <div className="flex items-center gap-2 mb-1">
                           <Timer className="text-purple-400" size={14} />
@@ -724,17 +917,35 @@ const Dashboard: React.FC<DashboardProps> = ({
                   </div>
                   <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 p-5 rounded-xl flex flex-col justify-between relative overflow-hidden">
                       <div className="flex items-center gap-2 mb-1">
-                          <Calendar className="text-yellow-400" size={14} />
-                          <span className="text-slate-500 text-[10px] font-mono uppercase tracking-widest">Previsão Término</span>
+                          <TrendingUp className="text-emerald-400" size={14} />
+                          <span className="text-slate-500 text-[10px] font-mono uppercase tracking-widest">Progresso Atual</span>
                       </div>
                       <div className="text-xl font-bold text-white font-mono tracking-tighter">
-                          {stats.projectedEnd}
+                          {stats.progress.toFixed(1)}%
                       </div>
                       <div className="text-[9px] text-slate-500 font-mono mt-1">
-                          {stats.daysNeeded} dias úteis
+                          Concluído
                       </div>
                   </div>
               </div>
+
+              {!exportMode && (
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+                  <div className="col-span-12 md:col-span-8">
+                    <SmartInsights 
+                      pipes={pipes}
+                      annotations={annotations || []}
+                      settings={prodSettings || ({} as any)}
+                      production={dailyProduction || []}
+                      progress={stats.progress}
+                      totalHH={stats.totalHH}
+                    />
+                  </div>
+                  <div className="col-span-12 md:col-span-4">
+                    <ProjectTimeline pipes={pipes} />
+                  </div>
+                </div>
+              )}
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 p-5 rounded-xl flex flex-col gap-4 relative overflow-hidden group hover:border-blue-500/30 transition-colors">
@@ -799,7 +1010,15 @@ const Dashboard: React.FC<DashboardProps> = ({
                               <h3 className="text-[10px] font-mono font-bold text-blue-400 uppercase tracking-widest flex items-center gap-2">
                                   <TrendingUp size={14}/> CURVA S DE PRODUÇÃO (METROS ACUMULADOS)
                               </h3>
-                              <div className="flex gap-4">
+                              <div className="flex gap-4 items-center">
+                                  {!exportMode && (
+                                      <button 
+                                          onClick={() => onOpenDailyProduction && onOpenDailyProduction()}
+                                          className="flex items-center gap-2 px-3 py-1.5 bg-blue-600/20 hover:bg-blue-600/40 border border-blue-500/30 rounded text-[9px] font-bold text-blue-400 uppercase tracking-widest transition-colors"
+                                      >
+                                          <Calculator size={12} /> Distribuir Produção
+                                      </button>
+                                  )}
                                   <div className="flex items-center gap-2">
                                       <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
                                       <span className="text-[8px] font-mono text-slate-500 uppercase">Planejado</span>
@@ -864,6 +1083,47 @@ const Dashboard: React.FC<DashboardProps> = ({
                               </ResponsiveContainer>
                           </div>
                       </div>
+
+                      {dailyProduction.length > 0 && (
+                        <div className="bg-slate-900 rounded-xl border border-slate-800 p-6 shadow-2xl">
+                            <div className="flex justify-between items-center mb-6">
+                                <h3 className="text-[10px] font-mono font-bold text-emerald-400 uppercase tracking-widest flex items-center gap-2">
+                                    <TrendingUp size={14}/> CURVA S DETALHADA (TUBULAÇÃO VS ISOLAMENTO)
+                                </h3>
+                                <div className="flex gap-4 items-center">
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-3 h-1 bg-blue-500"></div>
+                                        <span className="text-[8px] font-mono text-slate-500 uppercase">Previsto (Azul)</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-3 h-1 bg-amber-500"></div>
+                                        <span className="text-[8px] font-mono text-slate-500 uppercase">Automático</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-3 h-1 bg-emerald-500"></div>
+                                        <span className="text-[8px] font-mono text-slate-500 uppercase">Real</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="h-[300px] w-full">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <ComposedChart data={stats.sCurveData}>
+                                        <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+                                        <XAxis dataKey="date" stroke="#475569" fontSize={10} tickLine={false} axisLine={false} />
+                                        <YAxis stroke="#475569" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(value) => `${value}%`} domain={[0, 100]} />
+                                        <Tooltip 
+                                            contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', fontSize: '10px' }}
+                                            itemStyle={{ color: '#f1f5f9' }}
+                                        />
+                                        <Legend verticalAlign="top" height={36}/>
+                                        <Line type="monotone" dataKey="plannedTotalProgress" name="Previsto (%)" stroke="#3b82f6" strokeWidth={2} dot={false} strokeDasharray="5 5" />
+                                        <Line type="monotone" dataKey="autoProgress" name="Automático (%)" stroke="#f59e0b" strokeWidth={2} dot={{ r: 2 }} />
+                                        <Line type="monotone" dataKey="actual" name="Real (%)" stroke="#10b981" strokeWidth={3} dot={{ r: 4 }} />
+                                    </ComposedChart>
+                                </ResponsiveContainer>
+                            </div>
+                        </div>
+                      )}
 
                       <div className="bg-slate-900 rounded-xl border border-slate-800 p-6 shadow-2xl">
                           <div className="flex justify-between items-center mb-6">
@@ -1137,6 +1397,7 @@ const Dashboard: React.FC<DashboardProps> = ({
             </div>
          </div>
       )}
+
     </div>
   );
 };

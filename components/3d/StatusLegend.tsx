@@ -17,6 +17,16 @@ export const StatusLegend: React.FC = () => {
             </span>
           </div>
         ))}
+        <div className="h-px bg-slate-800 my-1" />
+        <h4 className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Acessórios / Suportes</h4>
+        <div className="flex items-center gap-2">
+          <div className="w-3 h-3 rounded-full border border-white/20 bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)]" />
+          <span className="text-[10px] font-bold text-slate-300 uppercase tracking-tight">Montado / Instalado</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-3 h-3 rounded-full border border-white/20 bg-slate-700" />
+          <span className="text-[10px] font-bold text-slate-300 uppercase tracking-tight">Pendente</span>
+        </div>
       </div>
     </div>
   );
