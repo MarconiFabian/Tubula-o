@@ -44,6 +44,39 @@ function useProjectHistory(initialPipes: PipeSegment[]) {
     return { pipes: currentState.pipes, setPipes, undo, redo, canUndo: currentIndex > 0, canRedo: currentIndex < history.length - 1, resetHistory };
 }
 
+// --- SAFE LOCAL STORAGE WRAPPER ---
+const safeStorage = {
+  getItem: (key: string) => {
+    try {
+      return localStorage.getItem(key);
+    } catch (e) {
+      console.warn('LocalStorage is blocked or unavailable:', e);
+      return null;
+    }
+  },
+  setItem: (key: string, value: string) => {
+    try {
+      localStorage.setItem(key, value);
+    } catch (e) {
+      console.warn('LocalStorage is blocked or unavailable:', e);
+    }
+  },
+  removeItem: (key: string) => {
+    try {
+      localStorage.removeItem(key);
+    } catch (e) {
+      console.warn('LocalStorage is blocked or unavailable:', e);
+    }
+  },
+  clear: () => {
+    try {
+      localStorage.clear();
+    } catch (e) {
+      console.warn('LocalStorage is blocked or unavailable:', e);
+    }
+  }
+};
+
 // --- ERROR BOUNDARY ---
 class ErrorBoundary extends React.Component<{children: React.ReactNode}, {hasError: boolean, error: Error | null}> {
   constructor(props: {children: React.ReactNode}) {
@@ -77,7 +110,7 @@ class ErrorBoundary extends React.Component<{children: React.ReactNode}, {hasErr
                 Recarregar
               </button>
               <button 
-                onClick={() => { if(confirm("Isso apagará o projeto atual não salvo. Deseja continuar?")) { localStorage.clear(); window.location.reload(); } }} 
+                onClick={() => { if(confirm("Isso apagará o projeto atual não salvo. Deseja continuar?")) { safeStorage.clear(); window.location.reload(); } }} 
                 className="bg-slate-800 hover:bg-red-600 text-slate-400 hover:text-white px-6 py-2 rounded-xl font-bold transition-all border border-slate-700"
               >
                 Limpar Cache
@@ -105,14 +138,14 @@ function AppContent() {
 
   const initialPipes = useMemo(() => {
     try {
-        const saved = localStorage.getItem('iso-manager-pipes');
+        const saved = safeStorage.getItem('iso-manager-pipes');
         return saved ? JSON.parse(saved) : INITIAL_PIPES;
     } catch { return INITIAL_PIPES; }
   }, []);
   const { pipes, setPipes, undo, redo, canUndo, canRedo, resetHistory } = useProjectHistory(initialPipes);
   const [annotations, setAnnotations] = useState<Annotation[]>(() => {
     try {
-        const saved = localStorage.getItem('iso-manager-annotations');
+        const saved = safeStorage.getItem('iso-manager-annotations');
         return saved ? JSON.parse(saved) : [];
     } catch { return []; }
   });
@@ -195,10 +228,10 @@ function AppContent() {
   const [savedProjects, setSavedProjects] = useState<any[]>([]);
   const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>([]);
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(() => {
-    return localStorage.getItem('iso-manager-current-project-id');
+    return safeStorage.getItem('iso-manager-current-project-id');
   });
   const [currentProjectName, setCurrentProjectName] = useState<string | null>(() => {
-    return localStorage.getItem('iso-manager-current-project-name');
+    return safeStorage.getItem('iso-manager-current-project-name');
   });
   const [dailyProduction, setDailyProduction] = useState<DailyProduction[]>([]);
     const [projectCalendar, setProjectCalendar] = useState<ProjectCalendar>({
@@ -213,34 +246,34 @@ function AppContent() {
   const [isDailyProductionModalOpen, setIsDailyProductionModalOpen] = useState(false);
 
   useEffect(() => {
-    if (currentProjectId) localStorage.setItem('iso-manager-current-project-id', currentProjectId);
-    else localStorage.removeItem('iso-manager-current-project-id');
+    if (currentProjectId) safeStorage.setItem('iso-manager-current-project-id', currentProjectId);
+    else safeStorage.removeItem('iso-manager-current-project-id');
   }, [currentProjectId]);
 
   useEffect(() => {
-    if (currentProjectName) localStorage.setItem('iso-manager-current-project-name', currentProjectName);
-    else localStorage.removeItem('iso-manager-current-project-name');
+    if (currentProjectName) safeStorage.setItem('iso-manager-current-project-name', currentProjectName);
+    else safeStorage.removeItem('iso-manager-current-project-name');
   }, [currentProjectName]);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
-    return localStorage.getItem('iso-manager-auth') === 'true';
+    return safeStorage.getItem('iso-manager-auth') === 'true';
   });
   const [currentUser, setCurrentUser] = useState<string | null>(() => {
-    return localStorage.getItem('iso-manager-user');
+    return safeStorage.getItem('iso-manager-user');
   });
   const [dynamicZoom, setDynamicZoom] = useState(true);
 
   const handleLogin = (user: string) => {
     setIsAuthenticated(true);
     setCurrentUser(user);
-    localStorage.setItem('iso-manager-auth', 'true');
-    localStorage.setItem('iso-manager-user', user);
+    safeStorage.setItem('iso-manager-auth', 'true');
+    safeStorage.setItem('iso-manager-user', user);
   };
 
   const handleLogout = () => {
     setIsAuthenticated(false);
     setCurrentUser(null);
-    localStorage.removeItem('iso-manager-auth');
-    localStorage.removeItem('iso-manager-user');
+    safeStorage.removeItem('iso-manager-auth');
+    safeStorage.removeItem('iso-manager-user');
   };
 
   const selectedPipes = useMemo(() => pipes.filter(p => selectedIds.includes(p.id)), [pipes, selectedIds]);

@@ -2,7 +2,28 @@
 import { GoogleGenAI } from "@google/genai";
 import { PipeSegment, Annotation, ProductivitySettings, DailyProduction } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+let aiInstance: GoogleGenAI | null = null;
+
+function getAI() {
+  if (!aiInstance) {
+    const getEnv = (key: string): string => {
+      try {
+        if (typeof process !== 'undefined' && process.env && process.env[key]) return process.env[key];
+        if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env[key]) return import.meta.env[key];
+      } catch (e) {
+        // Ignore errors in env access
+      }
+      return '';
+    };
+
+    const apiKey = getEnv('GEMINI_API_KEY') || getEnv('VITE_GEMINI_API_KEY');
+    if (!apiKey) {
+      console.warn('GEMINI_API_KEY not found in environment variables');
+    }
+    aiInstance = new GoogleGenAI({ apiKey: apiKey || '' });
+  }
+  return aiInstance;
+}
 
 export interface ProjectInsight {
   type: 'WARNING' | 'SUCCESS' | 'INFO' | 'CRITICAL';
@@ -19,6 +40,7 @@ export async function generateProjectInsights(
   progress: number,
   totalHH: number
 ): Promise<ProjectInsight[]> {
+  const ai = getAI();
   const prompt = `
     Analyze the following industrial piping project data and provide 3-4 professional insights.
     
