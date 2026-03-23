@@ -44,7 +44,63 @@ function useProjectHistory(initialPipes: PipeSegment[]) {
     return { pipes: currentState.pipes, setPipes, undo, redo, canUndo: currentIndex > 0, canRedo: currentIndex < history.length - 1, resetHistory };
 }
 
+// --- ERROR BOUNDARY ---
+class ErrorBoundary extends React.Component<{children: React.ReactNode}, {hasError: boolean, error: Error | null}> {
+  constructor(props: {children: React.ReactNode}) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error("ErrorBoundary caught an error", error, errorInfo);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6 text-center">
+          <div className="bg-slate-900 border border-red-500/50 p-8 rounded-2xl max-w-lg shadow-2xl">
+            <AlertCircle className="text-red-500 mx-auto mb-4" size={48} />
+            <h1 className="text-2xl font-bold text-white mb-2">Ops! Algo deu errado.</h1>
+            <p className="text-slate-400 mb-6">Ocorreu um erro inesperado ao carregar o aplicativo.</p>
+            <div className="bg-slate-950 p-4 rounded-xl text-left overflow-auto max-h-40 mb-6">
+              <code className="text-red-400 text-[10px] font-mono whitespace-pre-wrap leading-tight">
+                {this.state.error?.stack || this.state.error?.toString()}
+              </code>
+            </div>
+            <div className="flex gap-4 justify-center">
+              <button 
+                onClick={() => window.location.reload()} 
+                className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-xl font-bold transition-all shadow-lg shadow-blue-600/20"
+              >
+                Recarregar
+              </button>
+              <button 
+                onClick={() => { if(confirm("Isso apagará o projeto atual não salvo. Deseja continuar?")) { localStorage.clear(); window.location.reload(); } }} 
+                className="bg-slate-800 hover:bg-red-600 text-slate-400 hover:text-white px-6 py-2 rounded-xl font-bold transition-all border border-slate-700"
+              >
+                Limpar Cache
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export default function App() {
+  return (
+    <ErrorBoundary>
+      <AppContent />
+    </ErrorBoundary>
+  );
+}
+
+function AppContent() {
+  console.log('Isometrico Manager: AppContent rendering...');
   const [showDimensions, setShowDimensions] = useState(true);
 
   const initialPipes = useMemo(() => {

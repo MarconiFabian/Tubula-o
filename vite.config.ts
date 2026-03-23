@@ -5,16 +5,26 @@ import tailwindcss from '@tailwindcss/vite'
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  base: './',
   build: {
-    // Aumenta o limite do aviso para 2500kb (2.5MB) para silenciar o aviso no Vercel
-    // devido às bibliotecas pesadas de 3D e PDF.
-    chunkSizeWarningLimit: 2500,
+    target: 'esnext',
+    chunkSizeWarningLimit: 2000,
     rollupOptions: {
       output: {
-        // Separa as bibliotecas (node_modules) em um arquivo 'vendor' separado
-        // Isso ajuda o navegador a fazer cache das bibliotecas separadamente do seu código
         manualChunks(id) {
           if (id.includes('node_modules')) {
+            if (id.includes('three') || id.includes('@react-three')) {
+              return 'three-vendor';
+            }
+            if (id.includes('jspdf') || id.includes('html2canvas')) {
+              return 'pdf-vendor';
+            }
+            if (id.includes('recharts') || id.includes('d3')) {
+              return 'charts-vendor';
+            }
+            if (id.includes('xlsx')) {
+              return 'excel-vendor';
+            }
             return 'vendor';
           }
         },
