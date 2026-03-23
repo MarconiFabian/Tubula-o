@@ -355,12 +355,14 @@ const Dashboard: React.FC<DashboardProps> = ({
         // Count supports from the 'supports' field (legacy or direct)
         if (p.supports) {
             componentStats.supports.total += (p.supports.total || 0);
-            componentStats.supports.installed += (p.supports.installed || 0);
+            const isPipeInstalled = p.status === 'MOUNTED' || p.status === 'WELDED' || p.status === 'HYDROTEST';
+            componentStats.supports.installed += isPipeInstalled ? (p.supports.total || 0) : (p.supports.installed || 0);
         }
         // Count accessories (modern way)
         if (p.accessories) {
             p.accessories.forEach(a => {
-                const isInstalled = a.status === AccessoryStatus.MOUNTED;
+                const isPipeInstalled = p.status === 'MOUNTED' || p.status === 'WELDED' || p.status === 'HYDROTEST';
+                const isInstalled = a.status === AccessoryStatus.MOUNTED || isPipeInstalled;
                 if (a.type === 'SUPPORT') {
                     componentStats.supports.total += 1;
                     if (isInstalled) componentStats.supports.installed += 1;
