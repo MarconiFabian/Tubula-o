@@ -738,20 +738,8 @@ const ComponentLegend = () => (
         </h4>
         <div className="space-y-1.5">
             <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-[#f59e0b] shadow-[0_0_8px_rgba(245,158,11,0.5)]"></div>
-                <span className="text-[9px] font-bold text-slate-300 uppercase">Válvulas</span>
-            </div>
-            <div className="flex items-center gap-2">
                 <div className="w-2 h-2 bg-[#cbd5e1] shadow-[0_0_8px_rgba(59,130,246,0.8)] border border-blue-400"></div>
                 <span className="text-[9px] font-bold text-slate-300 uppercase">Suportes</span>
-            </div>
-            <div className="flex items-center gap-2">
-                <div className="w-2 h-0.5 bg-[#06b6d4] shadow-[0_0_8px_rgba(6,182,212,0.5)]"></div>
-                <span className="text-[9px] font-bold text-slate-300 uppercase">Instrumentos</span>
-            </div>
-            <div className="flex items-center gap-2">
-                <div className="w-1.5 h-1.5 bg-[#a855f7]"></div>
-                <span className="text-[9px] font-bold text-slate-300 uppercase">Outros</span>
             </div>
             <div className="mt-2 pt-2 border-t border-slate-800">
                 <span className="text-[8px] text-slate-500 font-medium italic">Escuro = Não Instalado</span>

@@ -42,9 +42,6 @@ export interface ProductivitySettings {
   pipingBase: number;
   insulationBase: number;
   supportBase: number; // HH per support
-  valveBase: number;   // HH per valve
-  instrumentBase: number; // HH per instrument
-  otherBase: number;   // HH per other component
   weights: ProductivityWeights;
   globalConfig: {
     weatherFactor: number; // Multiplicador para chuva/vento
@@ -98,7 +95,7 @@ export interface PipeSegment {
   accessories?: Accessory[];
 }
 
-export type AccessoryType = 'SUPPORT' | 'VALVE' | 'INSTRUMENT' | 'OTHER';
+export type AccessoryType = 'SUPPORT';
 
 export enum AccessoryStatus {
   PENDING = 'PENDING',

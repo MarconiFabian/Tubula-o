@@ -172,16 +172,10 @@ const Dashboard: React.FC<DashboardProps> = ({
         
         // Adicionar esforço de acessórios (apenas se for piping)
         const supportCount = (p.supports?.total || 0) + (p.accessories?.filter(a => a.type === 'SUPPORT').length || 0);
-        const valveCount = p.accessories?.filter(a => a.type === 'VALVE').length || 0;
-        const instrumentCount = p.accessories?.filter(a => a.type === 'INSTRUMENT').length || 0;
-        const otherCount = p.accessories?.filter(a => a.type === 'OTHER').length || 0;
 
         const supportEffort = supportCount * (prodSettings?.supportBase || 2.5) * pipingF;
-        const valveEffort = valveCount * (prodSettings?.valveBase || 8) * pipingF;
-        const instrumentEffort = instrumentCount * (prodSettings?.instrumentBase || 4) * pipingF;
-        const otherEffort = otherCount * (prodSettings?.otherBase || 2) * pipingF;
         
-        const baseEffort = pipingBaseEffort + insulationBaseEffort + supportEffort + valveEffort + instrumentEffort + otherEffort;
+        const baseEffort = pipingBaseEffort + insulationBaseEffort + supportEffort;
         
         const factors = p.planningFactors || { teamCount: 1, hasCrane: false, hasBlockage: false, isNightShift: false, isCriticalArea: false, accessType: 'NONE', delayHours: 0, materialAvailable: true, weatherExposed: false };
         let mult = 1.0;
@@ -354,10 +348,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     }
 
     const componentStats = {
-        supports: { total: 0, installed: 0 },
-        valves: { total: 0, installed: 0 },
-        instruments: { total: 0, installed: 0 },
-        others: { total: 0, installed: 0 }
+        supports: { total: 0, installed: 0 }
     };
 
     currentPipes.forEach(p => {
@@ -373,15 +364,6 @@ const Dashboard: React.FC<DashboardProps> = ({
                 if (a.type === 'SUPPORT') {
                     componentStats.supports.total += 1;
                     if (isInstalled) componentStats.supports.installed += 1;
-                } else if (a.type === 'VALVE') {
-                    componentStats.valves.total += 1;
-                    if (isInstalled) componentStats.valves.installed += 1;
-                } else if (a.type === 'INSTRUMENT') {
-                    componentStats.instruments.total += 1;
-                    if (isInstalled) componentStats.instruments.installed += 1;
-                } else if (a.type === 'OTHER') {
-                    componentStats.others.total += 1;
-                    if (isInstalled) componentStats.others.installed += 1;
                 }
             });
         }
@@ -537,19 +519,19 @@ const Dashboard: React.FC<DashboardProps> = ({
                     <div className="grid grid-cols-3 gap-4 relative z-10">
                         <div className="flex flex-col">
                             <span className="text-slate-500 text-[10px] font-black uppercase tracking-tighter mb-1">Total Projeto</span>
-                            <span className="text-3xl font-black text-white font-mono tracking-tighter">{stats.componentStats.supports.total}</span>
+                            <span className="text-3xl font-black text-white font-mono tracking-tighter">{stats?.componentStats?.supports?.total || 0}</span>
                         </div>
                         <div className="flex flex-col">
                             <span className="text-emerald-500 text-[10px] font-black uppercase tracking-tighter mb-1">Montados</span>
-                            <span className="text-3xl font-black text-emerald-400 font-mono tracking-tighter">{stats.componentStats.supports.installed}</span>
+                            <span className="text-3xl font-black text-emerald-400 font-mono tracking-tighter">{stats?.componentStats?.supports?.installed || 0}</span>
                         </div>
                         <div className="flex flex-col">
                             <span className="text-amber-500 text-[10px] font-black uppercase tracking-tighter mb-1">Falta Montar</span>
-                            <span className="text-3xl font-black text-amber-400 font-mono tracking-tighter">{stats.componentStats.supports.total - stats.componentStats.supports.installed}</span>
+                            <span className="text-3xl font-black text-amber-400 font-mono tracking-tighter">{(stats?.componentStats?.supports?.total || 0) - (stats?.componentStats?.supports?.installed || 0)}</span>
                         </div>
                     </div>
                     <div className="w-full h-3 bg-slate-800 rounded-full overflow-hidden border border-slate-700">
-                        <div className="h-full bg-gradient-to-r from-amber-600 to-amber-400 shadow-[0_0_10px_rgba(245,158,11,0.4)]" style={{ width: `${stats.componentStats.supports.total > 0 ? (stats.componentStats.supports.installed / stats.componentStats.supports.total) * 100 : 0}%` }}></div>
+                        <div className="h-full bg-gradient-to-r from-amber-600 to-amber-400 shadow-[0_0_10px_rgba(245,158,11,0.4)]" style={{ width: `${(stats?.componentStats?.supports?.total || 0) > 0 ? ((stats?.componentStats?.supports?.installed || 0) / stats.componentStats.supports.total) * 100 : 0}%` }}></div>
                     </div>
                 </div>
             </div>
@@ -683,20 +665,15 @@ const Dashboard: React.FC<DashboardProps> = ({
                             <span className="text-slate-400 text-xs font-mono uppercase tracking-widest font-bold">Acessórios e Componentes</span>
                         </div>
                         <div className="flex flex-wrap gap-4">
-                            <span className="text-amber-400 font-mono text-[10px] font-bold">Suportes: {stats.componentStats.supports.installed}/{stats.componentStats.supports.total}</span>
-                            {stats.componentStats.valves.total > 0 && <span className="text-amber-400 font-mono text-[10px] font-bold">Válvulas: {stats.componentStats.valves.installed}/{stats.componentStats.valves.total}</span>}
-                            {stats.componentStats.instruments.total > 0 && <span className="text-amber-400 font-mono text-[10px] font-bold">Instr.: {stats.componentStats.instruments.installed}/{stats.componentStats.instruments.total}</span>}
+                            <span className="text-amber-400 font-mono text-[10px] font-bold">Suportes: {stats?.componentStats?.supports?.installed || 0}/{stats?.componentStats?.supports?.total || 0}</span>
                         </div>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-1 gap-6">
                         {[
-                            { id: 'supports', label: 'Suportes', color: 'bg-orange-500' },
-                            { id: 'valves', label: 'Válvulas', color: 'bg-red-500' },
-                            { id: 'instruments', label: 'Instrumentos', color: 'bg-blue-500' },
-                            { id: 'others', label: 'Outros', color: 'bg-emerald-500' }
-                        ].filter(comp => (stats.componentStats as any)[comp.id].total > 0).map(comp => {
-                            const data = (stats.componentStats as any)[comp.id];
-                            const pct = data.total > 0 ? (data.installed / data.total) * 100 : 0;
+                            { id: 'supports', label: 'Suportes', color: 'bg-orange-500' }
+                        ].filter(comp => stats?.componentStats?.[comp.id] && (stats.componentStats[comp.id]?.total || 0) > 0).map(comp => {
+                            const data = stats?.componentStats?.[comp.id];
+                            const pct = (data?.total || 0) > 0 ? ((data?.installed || 0) / (data?.total || 1)) * 100 : 0;
                             return (
                                 <div key={comp.id} className="flex flex-col gap-2">
                                     <div className="flex justify-between items-center">
@@ -704,9 +681,9 @@ const Dashboard: React.FC<DashboardProps> = ({
                                         <span className="text-[10px] font-mono text-white font-bold">{pct.toFixed(0)}%</span>
                                     </div>
                                     <div className="flex items-end gap-2">
-                                        <span className="text-xl font-bold text-white font-mono">{data.installed}</span>
-                                        <span className="text-[10px] text-slate-500 mb-1">/ {data.total}</span>
-                                        <span className="text-[9px] text-amber-500 font-bold ml-auto mb-1">FALTA: {data.total - data.installed}</span>
+                                        <span className="text-xl font-bold text-white font-mono">{data?.installed || 0}</span>
+                                        <span className="text-[10px] text-slate-500 mb-1">/ {data?.total || 0}</span>
+                                        <span className="text-[9px] text-amber-500 font-bold ml-auto mb-1">FALTA: {(data?.total || 0) - (data?.installed || 0)}</span>
                                     </div>
                                     <div className="w-full h-1 bg-slate-800 rounded-full overflow-hidden">
                                         <div className={`h-full ${comp.color} transition-all duration-1000`} style={{ width: `${pct}%` }}></div>

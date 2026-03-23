@@ -315,10 +315,7 @@ function AppContent() {
       const projectedEnd = getWorkingEndDate(new Date(activityDate + 'T12:00:00'), daysNeeded, prodSettings.globalConfig.workOnWeekends).toLocaleDateString('pt-BR');
 
       const componentStats = {
-          supports: { total: 0, installed: 0 },
-          valves: { total: 0, installed: 0 },
-          instruments: { total: 0, installed: 0 },
-          others: { total: 0, installed: 0 }
+          supports: { total: 0, installed: 0 }
       };
 
       pipes.forEach(p => {
@@ -356,15 +353,6 @@ function AppContent() {
                   if (a.type === 'SUPPORT') {
                       componentStats.supports.total += 1;
                       if (isInstalled) componentStats.supports.installed += 1;
-                  } else if (a.type === 'VALVE') {
-                      componentStats.valves.total += 1;
-                      if (isInstalled) componentStats.valves.installed += 1;
-                  } else if (a.type === 'INSTRUMENT') {
-                      componentStats.instruments.total += 1;
-                      if (isInstalled) componentStats.instruments.installed += 1;
-                  } else if (a.type === 'OTHER') {
-                      componentStats.others.total += 1;
-                      if (isInstalled) componentStats.others.installed += 1;
                   }
               });
           }
@@ -634,10 +622,7 @@ function AppContent() {
             ALL_INSULATION_STATUSES.forEach(s => insulationLengths[s] = 0);
 
             const componentStats = {
-                supports: { total: 0, installed: 0 },
-                valves: { total: 0, installed: 0 },
-                instruments: { total: 0, installed: 0 },
-                others: { total: 0, installed: 0 }
+                supports: { total: 0, installed: 0 }
             };
 
             pipesToExport.forEach(p => {
@@ -659,8 +644,8 @@ function AppContent() {
                 insulationLengths[insStatus] = (insulationLengths[insStatus] || 0) + p.length;
                 
                 if (p.supports) {
-                    componentStats.supports.total += p.supports.total;
-                    componentStats.supports.installed += p.supports.installed;
+                    componentStats.supports.total += (p.supports.total || 0);
+                    componentStats.supports.installed += (p.supports.installed || 0);
                 }
 
                 let pEffort = p.length * prodSettings.pipingBase * pipingF;
@@ -668,14 +653,8 @@ function AppContent() {
 
                 // Adicionar esforço de acessórios (apenas se for piping)
                 const supportCount = (p.supports?.total || 0) + (p.accessories?.filter(a => a.type === 'SUPPORT').length || 0);
-                const valveCount = p.accessories?.filter(a => a.type === 'VALVE').length || 0;
-                const instrumentCount = p.accessories?.filter(a => a.type === 'INSTRUMENT').length || 0;
-                const otherCount = p.accessories?.filter(a => a.type === 'OTHER').length || 0;
 
                 pEffort += supportCount * prodSettings.supportBase * pipingF;
-                pEffort += valveCount * (prodSettings.valveBase || 8) * pipingF;
-                pEffort += instrumentCount * (prodSettings.instrumentBase || 4) * pipingF;
-                pEffort += otherCount * (prodSettings.otherBase || 2) * pipingF;
 
                 if (p.planningFactors) {
                     let mult = 1.0;
@@ -1027,15 +1006,12 @@ function AppContent() {
 
         // Adicionar Resumo de Componentes
         const compSummary = {
-            supports: { total: 0, installed: 0 },
-            valves: { total: 0, installed: 0 },
-            instruments: { total: 0, installed: 0 },
-            others: { total: 0, installed: 0 }
+            supports: { total: 0, installed: 0 }
         };
         pipesToExport.forEach(p => {
             if (p.supports) { 
-                compSummary.supports.total += p.supports.total; 
-                compSummary.supports.installed += p.supports.installed; 
+                compSummary.supports.total += (p.supports.total || 0); 
+                compSummary.supports.installed += (p.supports.installed || 0); 
             }
             if (p.accessories) {
                 p.accessories.forEach(a => {
@@ -1043,25 +1019,13 @@ function AppContent() {
                     if (a.type === 'SUPPORT') {
                         compSummary.supports.total += 1;
                         if (isInstalled) compSummary.supports.installed += 1;
-                    } else if (a.type === 'VALVE') {
-                        compSummary.valves.total += 1;
-                        if (isInstalled) compSummary.valves.installed += 1;
-                    } else if (a.type === 'INSTRUMENT') {
-                        compSummary.instruments.total += 1;
-                        if (isInstalled) compSummary.instruments.installed += 1;
-                    } else if (a.type === 'OTHER') {
-                        compSummary.others.total += 1;
-                        if (isInstalled) compSummary.others.installed += 1;
                     }
                 });
             }
         });
 
         const compData = [
-            { 'Componente': 'Suportes', 'Total': compSummary.supports.total, 'Instalado': compSummary.supports.installed, 'Progresso': compSummary.supports.total > 0 ? `${((compSummary.supports.installed / compSummary.supports.total) * 100).toFixed(1)}%` : '0%' },
-            { 'Componente': 'Válvulas', 'Total': compSummary.valves.total, 'Instalado': compSummary.valves.installed, 'Progresso': compSummary.valves.total > 0 ? `${((compSummary.valves.installed / compSummary.valves.total) * 100).toFixed(1)}%` : '0%' },
-            { 'Componente': 'Instrumentos', 'Total': compSummary.instruments.total, 'Instalado': compSummary.instruments.installed, 'Progresso': compSummary.instruments.total > 0 ? `${((compSummary.instruments.installed / compSummary.instruments.total) * 100).toFixed(1)}%` : '0%' },
-            { 'Componente': 'Outros', 'Total': compSummary.others.total, 'Instalado': compSummary.others.installed, 'Progresso': compSummary.others.total > 0 ? `${((compSummary.others.installed / compSummary.others.total) * 100).toFixed(1)}%` : '0%' }
+            { 'Componente': 'Suportes', 'Total': compSummary.supports.total, 'Instalado': compSummary.supports.installed, 'Progresso': compSummary.supports.total > 0 ? `${((compSummary.supports.installed / compSummary.supports.total) * 100).toFixed(1)}%` : '0%' }
         ].filter(c => c.Total > 0);
         const compSheet = XLSX.utils.json_to_sheet(compData);
         XLSX.utils.book_append_sheet(workbook, compSheet, "Resumo de Componentes");

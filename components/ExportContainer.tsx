@@ -136,24 +136,24 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
             <div className="p-6 rounded-2xl flex flex-col items-center" style={{ backgroundColor: 'rgba(30, 41, 59, 0.4)', border: '1px solid #334155' }}>
             <Ruler style={{ color: '#60a5fa', marginBottom: '8px' }} size={32} />
             <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#64748b' }}>Total Metros</span>
-            <div className="text-4xl font-bold" style={{ color: '#ffffff' }}>{(reportStats.totalLength || 0).toFixed(2)}m</div>
+            <div className="text-4xl font-bold" style={{ color: '#ffffff' }}>{(reportStats?.totalLength || 0).toFixed(2)}m</div>
             </div>
             <div className="p-6 rounded-2xl flex flex-col items-center" style={{ backgroundColor: 'rgba(30, 41, 59, 0.4)', border: '1px solid #334155' }}>
             <Wrench style={{ color: '#93c5fd', marginBottom: '8px' }} size={32} />
             <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#64748b' }}>Saldo Piping</span>
-            <div className="text-4xl font-bold" style={{ color: '#ffffff' }}>{(reportStats.totalPipingHH || 0).toFixed(1)}h</div>
+            <div className="text-4xl font-bold" style={{ color: '#ffffff' }}>{(reportStats?.totalPipingHH || 0).toFixed(1)}h</div>
             </div>
             <div className="p-6 rounded-2xl flex flex-col items-center" style={{ backgroundColor: 'rgba(30, 41, 59, 0.4)', border: '1px solid #334155' }}>
             <Shield style={{ color: '#c084fc', marginBottom: '8px' }} size={32} />
             <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#64748b' }}>Saldo Isolamento</span>
-            <div className="text-4xl font-bold" style={{ color: '#ffffff' }}>{(reportStats.totalInsulationHH || 0).toFixed(1)}h</div>
+            <div className="text-4xl font-bold" style={{ color: '#ffffff' }}>{(reportStats?.totalInsulationHH || 0).toFixed(1)}h</div>
             </div>
             <div className="p-6 rounded-2xl flex flex-col items-center" style={{ backgroundColor: 'rgba(30, 41, 59, 0.4)', border: '1px solid #334155' }}>
             <Timer style={{ color: '#d8b4fe', marginBottom: '8px' }} size={32} />
             <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#64748b' }}>Total Saldo</span>
-            <div className="text-4xl font-bold" style={{ color: '#ffffff' }}>{(reportStats.totalHH || 0).toFixed(1)}h</div>
-            {reportStats.annotationHH > 0 && (
-                <div className="text-[10px] font-bold mt-1" style={{ color: '#94a3b8' }}>Inclui {(reportStats.annotationHH || 0).toFixed(1)}h Apoio</div>
+            <div className="text-4xl font-bold" style={{ color: '#ffffff' }}>{(reportStats?.totalHH || 0).toFixed(1)}h</div>
+            {reportStats?.annotationHH > 0 && (
+                <div className="text-[10px] font-bold mt-1" style={{ color: '#94a3b8' }}>Inclui {(reportStats?.annotationHH || 0).toFixed(1)}h Apoio</div>
             )}
             </div>
             <div className="p-6 rounded-2xl flex flex-col items-center" style={{ backgroundColor: 'rgba(30, 41, 59, 0.4)', border: '1px solid #334155' }}>
@@ -162,9 +162,9 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
             <div className="text-3xl font-bold mt-1" style={{ color: '#4ade80' }}>{progress.toFixed(1)}%</div>
             {deadlineDate && (
                 <div className="text-[10px] font-bold mt-2 uppercase px-2 py-1 rounded" style={{ 
-                    color: reportStats.deadlineStats?.isFeasible ? '#4ade80' : '#f87171',
-                    backgroundColor: reportStats.deadlineStats?.isFeasible ? 'rgba(74, 222, 128, 0.1)' : 'rgba(248, 113, 113, 0.1)',
-                    border: `1px solid ${reportStats.deadlineStats?.isFeasible ? 'rgba(74, 222, 128, 0.2)' : 'rgba(248, 113, 113, 0.2)'}`
+                    color: reportStats?.deadlineStats?.isFeasible ? '#4ade80' : '#f87171',
+                    backgroundColor: reportStats?.deadlineStats?.isFeasible ? 'rgba(74, 222, 128, 0.1)' : 'rgba(248, 113, 113, 0.1)',
+                    border: `1px solid ${reportStats?.deadlineStats?.isFeasible ? 'rgba(74, 222, 128, 0.2)' : 'rgba(248, 113, 113, 0.2)'}`
                 }}>
                     Meta: {deadlineDate.split('-').reverse().join('/')}
                 </div>
@@ -179,44 +179,44 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
                         <div className="w-3 h-3 rounded-full bg-blue-500"></div>
                         Balanço de Tubulação
                     </h3>
-                    <span className="text-blue-400 font-bold text-lg">{reportStats.pipingTotalLength > 0 ? ((reportStats.pipingExecutedLength / reportStats.pipingTotalLength) * 100).toFixed(1) : 0}%</span>
+                    <span className="text-blue-400 font-bold text-lg">{(reportStats?.pipingTotalLength || 0) > 0 ? (((reportStats?.pipingExecutedLength || 0) / reportStats.pipingTotalLength) * 100).toFixed(1) : 0}%</span>
                 </div>
                 <div className="grid grid-cols-3 gap-6">
                     <div className="flex flex-col">
                         <span className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">Total</span>
-                        <span className="text-3xl font-bold text-white font-mono">{reportStats.pipingTotalLength?.toFixed(2) || '0.00'}<span className="text-sm text-slate-500 ml-1">m</span></span>
+                        <span className="text-3xl font-bold text-white font-mono">{(reportStats?.pipingTotalLength || 0).toFixed(2)}<span className="text-sm text-slate-500 ml-1">m</span></span>
                     </div>
                     <div className="flex flex-col">
                         <span className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">Executado</span>
-                        <span className="text-3xl font-bold text-green-400 font-mono">{reportStats.pipingExecutedLength?.toFixed(2) || '0.00'}<span className="text-sm text-slate-500 ml-1">m</span></span>
+                        <span className="text-3xl font-bold text-green-400 font-mono">{(reportStats?.pipingExecutedLength || 0).toFixed(2)}<span className="text-sm text-slate-500 ml-1">m</span></span>
                         <div className="mt-2 space-y-1">
                             <div className="flex justify-between text-[10px] font-mono text-slate-400">
                                 <span>Soldado:</span>
-                                <span className="text-white">{((reportStats.pipeLengths?.['WELDED'] || 0) + (reportStats.pipeLengths?.['HYDROTEST'] || 0)).toFixed(2)}m</span>
+                                <span className="text-white">{((reportStats?.pipeLengths?.['WELDED'] || 0) + (reportStats?.pipeLengths?.['HYDROTEST'] || 0)).toFixed(2)}m</span>
                             </div>
                             <div className="flex justify-between text-[10px] font-mono text-slate-400">
                                 <span>Testado:</span>
-                                <span className="text-white">{(reportStats.pipeLengths?.['HYDROTEST'] || 0).toFixed(2)}m</span>
+                                <span className="text-white">{(reportStats?.pipeLengths?.['HYDROTEST'] || 0).toFixed(2)}m</span>
                             </div>
                         </div>
                     </div>
                     <div className="flex flex-col">
                         <span className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">A Executar</span>
-                        <span className="text-3xl font-bold text-yellow-400 font-mono">{reportStats.pipingRemainingLength?.toFixed(2) || '0.00'}<span className="text-sm text-slate-500 ml-1">m</span></span>
+                        <span className="text-3xl font-bold text-yellow-400 font-mono">{(reportStats?.pipingRemainingLength || 0).toFixed(2)}<span className="text-sm text-slate-500 ml-1">m</span></span>
                         <div className="mt-2 space-y-1">
                             <div className="flex justify-between text-[10px] font-mono text-slate-400">
                                 <span>P/ Soldar:</span>
-                                <span className="text-white">{((reportStats.pipeLengths?.['PENDING'] || 0) + (reportStats.pipeLengths?.['MOUNTED'] || 0)).toFixed(2)}m</span>
+                                <span className="text-white">{((reportStats?.pipeLengths?.['PENDING'] || 0) + (reportStats?.pipeLengths?.['MOUNTED'] || 0)).toFixed(2)}m</span>
                             </div>
                             <div className="flex justify-between text-[10px] font-mono text-slate-400">
                                 <span>P/ Testar:</span>
-                                <span className="text-white">{(reportStats.pipingTotalLength - (reportStats.pipeLengths?.['HYDROTEST'] || 0)).toFixed(2)}m</span>
+                                <span className="text-white">{((reportStats?.pipingTotalLength || 0) - (reportStats?.pipeLengths?.['HYDROTEST'] || 0)).toFixed(2)}m</span>
                             </div>
                         </div>
                     </div>
                 </div>
                 <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden mt-2">
-                    <div className="h-full bg-blue-500" style={{ width: `${reportStats.pipingTotalLength > 0 ? (reportStats.pipingExecutedLength / reportStats.pipingTotalLength) * 100 : 0}%` }}></div>
+                    <div className="h-full bg-blue-500" style={{ width: `${(reportStats?.pipingTotalLength || 0) > 0 ? ((reportStats?.pipingExecutedLength || 0) / reportStats.pipingTotalLength) * 100 : 0}%` }}></div>
                 </div>
             </div>
 
@@ -226,36 +226,36 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
                         <div className="w-3 h-3 rounded-full bg-purple-500"></div>
                         Balanço de Proteção Térmica
                     </h3>
-                    <span className="text-purple-400 font-bold text-lg">{reportStats.insulationTotalLength > 0 ? ((reportStats.insulationExecutedLength / reportStats.insulationTotalLength) * 100).toFixed(1) : 0}%</span>
+                    <span className="text-purple-400 font-bold text-lg">{(reportStats?.insulationTotalLength || 0) > 0 ? (((reportStats?.insulationExecutedLength || 0) / reportStats.insulationTotalLength) * 100).toFixed(1) : 0}%</span>
                 </div>
                 <div className="grid grid-cols-3 gap-6">
                     <div className="flex flex-col">
                         <span className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">Total</span>
-                        <span className="text-3xl font-bold text-white font-mono">{reportStats.insulationTotalLength?.toFixed(2) || '0.00'}<span className="text-sm text-slate-500 ml-1">m</span></span>
+                        <span className="text-3xl font-bold text-white font-mono">{(reportStats?.insulationTotalLength || 0).toFixed(2)}<span className="text-sm text-slate-500 ml-1">m</span></span>
                     </div>
                     <div className="flex flex-col">
                         <span className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">Executado</span>
-                        <span className="text-3xl font-bold text-green-400 font-mono">{reportStats.insulationExecutedLength?.toFixed(2) || '0.00'}<span className="text-sm text-slate-500 ml-1">m</span></span>
+                        <span className="text-3xl font-bold text-green-400 font-mono">{(reportStats?.insulationExecutedLength || 0).toFixed(2)}<span className="text-sm text-slate-500 ml-1">m</span></span>
                         <div className="mt-2 space-y-1">
                             <div className="flex justify-between text-[10px] font-mono text-slate-400">
                                 <span>Concluído:</span>
-                                <span className="text-white">{reportStats.insulationLengths?.['FINISHED']?.toFixed(2) || '0.00'}m</span>
+                                <span className="text-white">{(reportStats?.insulationLengths?.['FINISHED'] || 0).toFixed(2)}m</span>
                             </div>
                         </div>
                     </div>
                     <div className="flex flex-col">
                         <span className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">A Executar</span>
-                        <span className="text-3xl font-bold text-yellow-400 font-mono">{reportStats.insulationRemainingLength?.toFixed(2) || '0.00'}<span className="text-sm text-slate-500 ml-1">m</span></span>
+                        <span className="text-3xl font-bold text-yellow-400 font-mono">{(reportStats?.insulationRemainingLength || 0).toFixed(2)}<span className="text-sm text-slate-500 ml-1">m</span></span>
                         <div className="mt-2 space-y-1">
                             <div className="flex justify-between text-[10px] font-mono text-slate-400">
                                 <span>P/ Concluir:</span>
-                                <span className="text-white">{(reportStats.insulationTotalLength - (reportStats.insulationLengths?.['FINISHED'] || 0)).toFixed(2)}m</span>
+                                <span className="text-white">{((reportStats?.insulationTotalLength || 0) - (reportStats?.insulationLengths?.['FINISHED'] || 0)).toFixed(2)}m</span>
                             </div>
                         </div>
                     </div>
                 </div>
                 <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden mt-2">
-                    <div className="h-full bg-purple-500" style={{ width: `${reportStats.insulationTotalLength > 0 ? (reportStats.insulationExecutedLength / reportStats.insulationTotalLength) * 100 : 0}%` }}></div>
+                    <div className="h-full bg-purple-500" style={{ width: `${(reportStats?.insulationTotalLength || 0) > 0 ? ((reportStats?.insulationExecutedLength || 0) / reportStats.insulationTotalLength) * 100 : 0}%` }}></div>
                 </div>
             </div>
         </div>
@@ -267,30 +267,25 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
                     Acessórios e Componentes
                 </h3>
                 <div className="flex gap-6">
-                    <span className="text-amber-400 font-bold text-lg">Suportes: {reportStats.componentStats.supports.installed}/{reportStats.componentStats.supports.total}</span>
-                    {reportStats.componentStats.valves.total > 0 && <span className="text-amber-400 font-bold text-lg">Válvulas: {reportStats.componentStats.valves.installed}/{reportStats.componentStats.valves.total}</span>}
-                    {reportStats.componentStats.instruments.total > 0 && <span className="text-amber-400 font-bold text-lg">Instr.: {reportStats.componentStats.instruments.installed}/{reportStats.componentStats.instruments.total}</span>}
+                    <span className="text-amber-400 font-bold text-lg">Suportes: {reportStats?.componentStats?.supports?.installed || 0}/{reportStats?.componentStats?.supports?.total || 0}</span>
                 </div>
             </div>
-            <div className="grid grid-cols-1 gap-8">
+            <div className="grid grid-cols-1 gap-8 mt-4">
                 {[
-                    { id: 'supports', label: 'Suportes', color: '#f97316' },
-                    { id: 'valves', label: 'Válvulas', color: '#ef4444' },
-                    { id: 'instruments', label: 'Instrumentos', color: '#3b82f6' },
-                    { id: 'others', label: 'Outros', color: '#10b981' }
-                ].filter(comp => reportStats.componentStats[comp.id].total > 0).map(comp => {
-                    const data = reportStats.componentStats[comp.id];
-                    const pct = data.total > 0 ? (data.installed / data.total) * 100 : 0;
+                    { id: 'supports', label: 'Suportes', color: '#f97316' }
+                ].filter(comp => reportStats?.componentStats?.[comp.id] && (reportStats.componentStats[comp.id]?.total || 0) > 0).map(comp => {
+                    const data = reportStats?.componentStats?.[comp.id];
+                    const pct = (data?.total || 0) > 0 ? ((data?.installed || 0) / (data?.total || 1)) * 100 : 0;
                     return (
                         <div key={comp.id} className="flex flex-col gap-3">
                             <div className="flex justify-between items-center">
-                                <span className="text-xs text-slate-400 uppercase font-bold tracking-wider">{comp.label}</span>
+                                <span className="text-xs text-slate-500 uppercase font-bold tracking-wider">{comp.label}</span>
                                 <span className="text-sm font-mono text-white font-bold">{pct.toFixed(0)}%</span>
                             </div>
                             <div className="flex items-end gap-2">
-                                <span className="text-3xl font-bold text-white font-mono">{data.installed}</span>
-                                <span className="text-sm text-slate-500 mb-1">/ {data.total}</span>
-                                <span className="text-xs text-amber-500 font-bold ml-auto mb-1">FALTA: {data.total - data.installed}</span>
+                                <span className="text-3xl font-bold text-white font-mono">{data?.installed || 0}</span>
+                                <span className="text-sm text-slate-500 mb-1">/ {data?.total || 0}</span>
+                                <span className="text-xs text-amber-500 font-bold ml-auto mb-1">FALTA: {(data?.total || 0) - (data?.installed || 0)}</span>
                             </div>
                             <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
                                 <div className="h-full transition-all duration-1000" style={{ width: `${pct}%`, backgroundColor: comp.color }}></div>
@@ -686,14 +681,14 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
                         <AlertCircle size={28}/> Alertas de Gestão
                     </h3>
                     <div className="flex flex-col gap-6">
-                        {reportStats.totalHH > 500 && (
+                        {(reportStats?.totalHH || 0) > 500 && (
                             <div className="p-6 rounded-xl border border-red-500/20" style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)' }}>
                                 <p className="text-xl text-red-200 leading-relaxed font-medium">
-                                    <span className="font-bold text-red-400">CRÍTICO:</span> Volume de saldo H/H elevado ({reportStats.totalHH.toFixed(1)}h). Recomenda-se reforço de equipe imediato.
+                                    <span className="font-bold text-red-400">CRÍTICO:</span> Volume de saldo H/H elevado ({(reportStats?.totalHH || 0).toFixed(1)}h). Recomenda-se reforço de equipe imediato.
                                 </p>
                             </div>
                         )}
-                        {reportStats.deadlineStats && !reportStats.deadlineStats.isFeasible && (
+                        {reportStats?.deadlineStats && !reportStats.deadlineStats.isFeasible && (
                             <div className="p-6 rounded-xl border border-red-500/20" style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)' }}>
                                 <p className="text-xl text-red-200 leading-relaxed font-medium">
                                     <span className="font-bold text-red-400">ALERTA DE PRAZO:</span> A meta de {deadlineDate?.split('-').reverse().join('/')} é inviável com a capacidade atual. Necessário aumento de {(reportStats.deadlineStats.ratio - 100).toFixed(0)}% na produtividade.
@@ -702,7 +697,7 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
                         )}
                         <div className="p-6 rounded-xl border border-blue-500/20" style={{ backgroundColor: 'rgba(59, 130, 246, 0.1)' }}>
                             <p className="text-xl text-blue-200 leading-relaxed font-medium">
-                                <span className="font-bold text-blue-400">INFO:</span> Produtividade média linear necessária para conclusão no prazo: <span className="text-white">{(reportStats.totalLength / Math.max(1, reportStats.daysNeeded)).toFixed(2)}m/dia</span>.
+                                <span className="font-bold text-blue-400">INFO:</span> Produtividade média linear necessária para conclusão no prazo: <span className="text-white">{( (reportStats?.totalLength || 0) / Math.max(1, reportStats?.daysNeeded || 1)).toFixed(2)}m/dia</span>.
                             </p>
                         </div>
                         <div className="p-6 rounded-xl border border-purple-500/20" style={{ backgroundColor: 'rgba(168, 85, 247, 0.1)' }}>
@@ -720,15 +715,15 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
                     <div className="flex flex-col gap-8 mt-4">
                         <div className="flex justify-between items-center border-b border-slate-800 pb-4">
                             <span className="text-xl font-bold text-slate-400 uppercase">Progresso Global</span>
-                            <span className="text-4xl font-bold text-green-400 font-mono">{(reportStats.progress || 0).toFixed(1)}%</span>
+                            <span className="text-4xl font-bold text-green-400 font-mono">{(reportStats?.progress || 0).toFixed(1)}%</span>
                         </div>
                         <div className="flex justify-between items-center border-b border-slate-800 pb-4">
                             <span className="text-xl font-bold text-slate-400 uppercase">H/H por Metro</span>
-                            <span className="text-4xl font-bold text-white font-mono">{(reportStats.totalHH / Math.max(1, reportStats.totalLength)).toFixed(2)}</span>
+                            <span className="text-4xl font-bold text-white font-mono">{( (reportStats?.totalHH || 0) / Math.max(1, reportStats?.totalLength || 1)).toFixed(2)}</span>
                         </div>
                         <div className="flex justify-between items-center">
                             <span className="text-xl font-bold text-slate-400 uppercase">Dias para Término</span>
-                            <span className="text-4xl font-bold text-yellow-400 font-mono">{reportStats.daysNeeded}</span>
+                            <span className="text-4xl font-bold text-yellow-400 font-mono">{reportStats?.daysNeeded || 0}</span>
                         </div>
                     </div>
                 </div>

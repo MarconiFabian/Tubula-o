@@ -29,9 +29,6 @@ export const DEFAULT_PROD_SETTINGS: ProductivitySettings = {
   pipingBase: BASE_PRODUCTIVITY.PIPING,
   insulationBase: BASE_PRODUCTIVITY.INSULATION,
   supportBase: 2.5, // 2.5 HH por suporte
-  valveBase: 8.0,   // 8.0 HH por válvula
-  instrumentBase: 4.0, // 4.0 HH por instrumento
-  otherBase: 2.0,   // 2.0 HH por outros
   weights: {
     crane: 0.75,
     blockage: 0.65,
