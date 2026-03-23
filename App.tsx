@@ -214,9 +214,35 @@ function AppContent() {
           status: status
         });
       }
+      
+      const existingOtherAccessories = (p.accessories || []).filter(a => a.type !== 'SUPPORT');
+
       return {
         ...p,
-        accessories: [...(p.accessories || []), ...newAccessories]
+        supports: { total: 0, installed: 0 }, // Clear legacy supports
+        accessories: [...existingOtherAccessories, ...newAccessories]
+      };
+    }));
+  }, [selectedIds, setPipes]);
+
+  const handleBatchUpdateSupportStatus = useCallback((status: AccessoryStatus) => {
+    setPipes(prev => prev.map(p => {
+      if (!selectedIds.includes(p.id)) return p;
+      if (!p.accessories && !p.supports) return p;
+      
+      const newAccessories = (p.accessories || []).map(a => 
+        a.type === 'SUPPORT' ? { ...a, status } : a
+      );
+      
+      const newSupports = p.supports ? {
+          ...p.supports,
+          installed: status === AccessoryStatus.MOUNTED ? p.supports.total : 0
+      } : undefined;
+
+      return {
+        ...p,
+        accessories: newAccessories,
+        ...(newSupports ? { supports: newSupports } : {})
       };
     }));
   }, [selectedIds, setPipes]);
@@ -349,18 +375,25 @@ function AppContent() {
               insulationLengths[p.insulationStatus] = (insulationLengths[p.insulationStatus] || 0) + length;
           }
 
-          if (p.supports) {
-              componentStats.supports.total += (p.supports.total || 0);
-              componentStats.supports.installed += (p.supports.installed || 0);
-          }
+          // Count accessories (modern way)
+          let hasModernSupports = false;
           if (p.accessories) {
               p.accessories.forEach(a => {
-                  const isInstalled = a.status === AccessoryStatus.MOUNTED;
+                  const isPipeInstalled = p.status === 'MOUNTED' || p.status === 'WELDED' || p.status === 'HYDROTEST';
+                  const isInstalled = a.status === AccessoryStatus.MOUNTED || isPipeInstalled;
                   if (a.type === 'SUPPORT') {
+                      hasModernSupports = true;
                       componentStats.supports.total += 1;
                       if (isInstalled) componentStats.supports.installed += 1;
                   }
               });
+          }
+
+          // Count supports from the 'supports' field (legacy or direct) ONLY if no modern supports
+          if (p.supports && !hasModernSupports) {
+              componentStats.supports.total += (p.supports.total || 0);
+              const isPipeInstalled = p.status === 'MOUNTED' || p.status === 'WELDED' || p.status === 'HYDROTEST';
+              componentStats.supports.installed += isPipeInstalled ? (p.supports.total || 0) : (p.supports.installed || 0);
           }
       });
 
@@ -649,16 +682,34 @@ function AppContent() {
                 const insStatus = p.insulationStatus || 'NONE';
                 insulationLengths[insStatus] = (insulationLengths[insStatus] || 0) + p.length;
                 
-                if (p.supports) {
+                // Count accessories (modern way)
+                let hasModernSupports = false;
+                if (p.accessories) {
+                    p.accessories.forEach(a => {
+                        const isPipeInstalled = p.status === 'MOUNTED' || p.status === 'WELDED' || p.status === 'HYDROTEST';
+                        const isInstalled = a.status === AccessoryStatus.MOUNTED || isPipeInstalled;
+                        if (a.type === 'SUPPORT') {
+                            hasModernSupports = true;
+                            componentStats.supports.total += 1;
+                            if (isInstalled) componentStats.supports.installed += 1;
+                        }
+                    });
+                }
+
+                // Count supports from the 'supports' field (legacy or direct) ONLY if no modern supports
+                if (p.supports && !hasModernSupports) {
                     componentStats.supports.total += (p.supports.total || 0);
-                    componentStats.supports.installed += (p.supports.installed || 0);
+                    const isPipeInstalled = p.status === 'MOUNTED' || p.status === 'WELDED' || p.status === 'HYDROTEST';
+                    componentStats.supports.installed += isPipeInstalled ? (p.supports.total || 0) : (p.supports.installed || 0);
                 }
 
                 let pEffort = p.length * prodSettings.pipingBase * pipingF;
                 let iEffort = p.length * prodSettings.insulationBase * insF;
 
                 // Adicionar esforço de acessórios (apenas se for piping)
-                const supportCount = (p.supports?.total || 0) + (p.accessories?.filter(a => a.type === 'SUPPORT').length || 0);
+                const supportCount = hasModernSupports 
+                    ? (p.accessories?.filter(a => a.type === 'SUPPORT').length || 0)
+                    : (p.supports?.total || 0);
 
                 pEffort += supportCount * prodSettings.supportBase * pipingF;
 
@@ -978,6 +1029,28 @@ function AppContent() {
                 hh = (effort * mult) + (p.planningFactors.delayHours || 0);
             } else if (effort > 0) { hh = effort; }
 
+            let supportsTotal = 0;
+            let supportsInstalled = 0;
+            
+            let hasModernSupports = false;
+            if (p.accessories) {
+                p.accessories.forEach(a => {
+                    const isPipeInstalled = p.status === 'MOUNTED' || p.status === 'WELDED' || p.status === 'HYDROTEST';
+                    const isInstalled = a.status === AccessoryStatus.MOUNTED || isPipeInstalled;
+                    if (a.type === 'SUPPORT') {
+                        hasModernSupports = true;
+                        supportsTotal += 1;
+                        if (isInstalled) supportsInstalled += 1;
+                    }
+                });
+            }
+
+            if (p.supports && !hasModernSupports) {
+                supportsTotal += (p.supports.total || 0);
+                const isPipeInstalled = p.status === 'MOUNTED' || p.status === 'WELDED' || p.status === 'HYDROTEST';
+                supportsInstalled += isPipeInstalled ? (p.supports.total || 0) : (p.supports.installed || 0);
+            }
+
             return {
                 'ID': p.id,
                 'Spool': p.spoolId || '-',
@@ -986,7 +1059,7 @@ function AppContent() {
                 'Comprimento (m)': p.length.toFixed(2),
                 'Status Montagem': STATUS_LABELS[p.status],
                 'Isolamento': INSULATION_LABELS[p.insulationStatus || 'NONE'],
-                'Suportes (Inst/Total)': `${p.supports?.installed || 0}/${p.supports?.total || 0}`,
+                'Suportes (Inst/Total)': `${supportsInstalled}/${supportsTotal}`,
                 'Saldo HH': hh.toFixed(2),
                 'Acesso': p.planningFactors?.accessType || 'NÍVEL 0',
                 'Equipes': p.planningFactors?.teamCount || 1
@@ -1015,18 +1088,23 @@ function AppContent() {
             supports: { total: 0, installed: 0 }
         };
         pipesToExport.forEach(p => {
-            if (p.supports) { 
-                compSummary.supports.total += (p.supports.total || 0); 
-                compSummary.supports.installed += (p.supports.installed || 0); 
-            }
+            let hasModernSupports = false;
             if (p.accessories) {
                 p.accessories.forEach(a => {
-                    const isInstalled = a.status === AccessoryStatus.MOUNTED;
+                    const isPipeInstalled = p.status === 'MOUNTED' || p.status === 'WELDED' || p.status === 'HYDROTEST';
+                    const isInstalled = a.status === AccessoryStatus.MOUNTED || isPipeInstalled;
                     if (a.type === 'SUPPORT') {
+                        hasModernSupports = true;
                         compSummary.supports.total += 1;
                         if (isInstalled) compSummary.supports.installed += 1;
                     }
                 });
+            }
+
+            if (p.supports && !hasModernSupports) { 
+                compSummary.supports.total += (p.supports.total || 0); 
+                const isPipeInstalled = p.status === 'MOUNTED' || p.status === 'WELDED' || p.status === 'HYDROTEST';
+                compSummary.supports.installed += isPipeInstalled ? (p.supports.total || 0) : (p.supports.installed || 0); 
             }
         });
 
@@ -1231,6 +1309,7 @@ function AppContent() {
                             placementMode={placementMode}
                             onSetPlacementMode={setPlacementMode}
                             onBatchAddSupports={handleBatchAddSupports}
+                            onBatchUpdateSupportStatus={handleBatchUpdateSupportStatus}
                             onClearAccessories={handleClearAccessories}
                             onClearAllAccessories={handleClearAllAccessories}
                         />

@@ -22,6 +22,7 @@ interface SidebarProps {
   placementMode?: AccessoryType | null;
   onSetPlacementMode?: (mode: AccessoryType | null) => void;
   onBatchAddSupports?: (spacing: number, status: AccessoryStatus) => void;
+  onBatchUpdateSupportStatus?: (status: AccessoryStatus) => void;
   onClearAccessories?: () => void;
   onClearAllAccessories?: () => void;
 }
@@ -42,7 +43,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     selectedPipes, onUpdateSingle, onUpdateBatch, onDelete, onClose, 
     mode = 'TRACKING', startDate = new Date().toISOString().split('T')[0],
     prodSettings, onUpdateProdSettings, onCopy, deadlineDate, onUpdateDeadline,
-    placementMode, onSetPlacementMode, onBatchAddSupports, onClearAccessories, onClearAllAccessories
+    placementMode, onSetPlacementMode, onBatchAddSupports, onBatchUpdateSupportStatus, onClearAccessories, onClearAllAccessories
 }) => {
   const [showMetricsConfig, setShowMetricsConfig] = useState(false);
   const [showReport, setShowReport] = useState(false);
@@ -438,7 +439,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                                     onClick={() => onBatchAddSupports?.(parseFloat(batchSpacing) || 3, batchInitialStatus)}
                                     className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded font-black text-[10px] uppercase transition-all flex items-center gap-2 shadow-lg shadow-blue-600/20"
                                 >
-                                    <Wrench size={12}/> Aplicar
+                                    <Wrench size={12}/> Recalcular
                                 </button>
                             </div>
                         </div>
@@ -450,7 +451,25 @@ const Sidebar: React.FC<SidebarProps> = ({
                                 </span>
                             </div>
                         )}
-                        <p className="text-[8px] text-slate-500 italic">O sistema calculará a quantidade automaticamente para cada tubo.</p>
+                        <p className="text-[8px] text-slate-500 italic">O sistema calculará a quantidade automaticamente para cada tubo e substituirá os suportes existentes.</p>
+                        
+                        <div className="pt-3 mt-3 border-t border-blue-500/20">
+                            <span className="text-[9px] text-blue-300 uppercase font-bold mb-2 block">Atualizar Status dos Existentes:</span>
+                            <div className="flex gap-2">
+                                <button 
+                                    onClick={() => onBatchUpdateSupportStatus?.(AccessoryStatus.MOUNTED)}
+                                    className="flex-1 bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-400 border border-emerald-500/30 py-2 rounded text-[9px] font-bold uppercase transition-colors flex items-center justify-center gap-1"
+                                >
+                                    <Check size={10}/> Marcar Montados
+                                </button>
+                                <button 
+                                    onClick={() => onBatchUpdateSupportStatus?.(AccessoryStatus.PENDING)}
+                                    className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 py-2 rounded text-[9px] font-bold uppercase transition-colors flex items-center justify-center gap-1"
+                                >
+                                    Marcar Pendentes
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -549,7 +568,15 @@ const Sidebar: React.FC<SidebarProps> = ({
                 {[
                     { id: 'supports', label: 'Suportes', icon: <Wrench size={12}/> }
                 ].map(comp => {
-                    const status = (singlePipe as any)[comp.id] || { total: 0, installed: 0 };
+                    const hasModernSupports = singlePipe.accessories?.some(a => a.type === 'SUPPORT');
+                    const isPipeInstalled = singlePipe.status === 'MOUNTED' || singlePipe.status === 'WELDED' || singlePipe.status === 'HYDROTEST';
+                    const status = hasModernSupports 
+                        ? { 
+                            total: singlePipe.accessories!.filter(a => a.type === 'SUPPORT').length, 
+                            installed: singlePipe.accessories!.filter(a => a.type === 'SUPPORT' && (a.status === AccessoryStatus.MOUNTED || isPipeInstalled)).length 
+                          }
+                        : ((singlePipe as any)[comp.id] || { total: 0, installed: 0 });
+                        
                     return (
                         <div key={comp.id} className="space-y-2 pb-3 border-b border-slate-800/50 last:border-0 last:pb-0">
                             <div className="flex justify-between items-center">
@@ -567,11 +594,12 @@ const Sidebar: React.FC<SidebarProps> = ({
                                         type="number" 
                                         min="0"
                                         value={status.total}
+                                        disabled={hasModernSupports}
                                         onChange={(e) => onUpdateSingle({ 
                                             ...singlePipe, 
                                             [comp.id]: { ...status, total: parseInt(e.target.value) || 0 } 
                                         })}
-                                        className="bg-slate-900 border border-slate-800 rounded px-2 py-1 text-xs text-white outline-none focus:border-blue-500"
+                                        className={`bg-slate-900 border border-slate-800 rounded px-2 py-1 text-xs text-white outline-none focus:border-blue-500 ${hasModernSupports ? 'opacity-50 cursor-not-allowed' : ''}`}
                                     />
                                 </div>
                                 <div className="flex flex-col gap-1">
@@ -581,14 +609,18 @@ const Sidebar: React.FC<SidebarProps> = ({
                                         min="0"
                                         max={status.total}
                                         value={status.installed}
+                                        disabled={hasModernSupports}
                                         onChange={(e) => onUpdateSingle({ 
                                             ...singlePipe, 
                                             [comp.id]: { ...status, installed: parseInt(e.target.value) || 0 } 
                                         })}
-                                        className="bg-slate-900 border border-slate-800 rounded px-2 py-1 text-xs text-white outline-none focus:border-blue-500"
+                                        className={`bg-slate-900 border border-slate-800 rounded px-2 py-1 text-xs text-white outline-none focus:border-blue-500 ${hasModernSupports ? 'opacity-50 cursor-not-allowed' : ''}`}
                                     />
                                 </div>
                             </div>
+                            {hasModernSupports && (
+                                <p className="text-[8px] text-blue-400 italic mt-1">Gerenciado via Lote/3D. Use a ferramenta abaixo ou clique no 3D para alterar.</p>
+                            )}
                             {/* Progress Bar */}
                             <div className="h-1 bg-slate-800 rounded-full overflow-hidden">
                                 <div 
@@ -602,7 +634,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             </div>
 
             {/* Manual Accessory Management */}
-            {!isBatch ? (
+            {!isBatch && (
                 <div className="bg-slate-950/40 p-4 rounded-xl border border-slate-800 space-y-4">
                     <label className="text-[10px] font-bold text-slate-500 uppercase mb-1 block flex items-center gap-2">
                         <MousePointer2 size={14}/> Posicionamento Manual
@@ -672,60 +704,9 @@ const Sidebar: React.FC<SidebarProps> = ({
                         </div>
                     )}
                 </div>
-            ) : (
-                <div className="bg-slate-950/40 p-4 rounded-xl border border-blue-500/20 space-y-4">
-                    <label className="text-[10px] font-bold text-blue-400 uppercase mb-1 block flex items-center gap-2">
-                        <Layers size={14}/> Ferramentas em Lote (Suportes)
-                    </label>
-                    <div className="space-y-3">
-                        <div className="flex items-center justify-between bg-slate-900/50 p-2 rounded border border-slate-800">
-                            <span className="text-[9px] text-slate-500 uppercase font-bold">Status Inicial:</span>
-                            <div className="flex gap-1">
-                                <button 
-                                    onClick={() => setBatchInitialStatus(AccessoryStatus.PENDING)}
-                                    className={`px-2 py-1 rounded text-[8px] font-black uppercase transition-all ${batchInitialStatus === AccessoryStatus.PENDING ? 'bg-slate-700 text-white border border-slate-500' : 'bg-slate-950 text-slate-500 border border-transparent'}`}
-                                >
-                                    Pendente
-                                </button>
-                                <button 
-                                    onClick={() => setBatchInitialStatus(AccessoryStatus.MOUNTED)}
-                                    className={`px-2 py-1 rounded text-[8px] font-black uppercase transition-all ${batchInitialStatus === AccessoryStatus.MOUNTED ? 'bg-emerald-600 text-white border border-emerald-400' : 'bg-slate-950 text-slate-500 border border-transparent'}`}
-                                >
-                                    Montado
-                                </button>
-                            </div>
-                        </div>
-                        <div className="space-y-1">
-                            <label className="text-[9px] text-slate-500 uppercase font-bold">Espaçamento entre Suportes (m)</label>
-                            <div className="flex gap-2">
-                                <input 
-                                    type="number" 
-                                    value={batchSpacing} 
-                                    onChange={(e) => setBatchSpacing(e.target.value)}
-                                    className="flex-1 bg-slate-900 border border-slate-700 rounded p-2 text-xs text-white outline-none focus:border-blue-500"
-                                    placeholder="Ex: 3"
-                                    min="0.1"
-                                    step="0.1"
-                                />
-                                <button 
-                                    onClick={() => onBatchAddSupports?.(parseFloat(batchSpacing) || 3, batchInitialStatus)}
-                                    className="bg-blue-600 hover:bg-blue-500 text-white px-3 py-2 rounded text-[10px] font-bold uppercase transition-colors flex items-center gap-2"
-                                >
-                                    <Wrench size={12}/> Aplicar
-                                </button>
-                            </div>
-                        </div>
-                        <div className="pt-2 border-t border-slate-800">
-                            <button 
-                                onClick={onClearAccessories}
-                                className="w-full bg-red-600/10 hover:bg-red-600/20 text-red-400 py-2 rounded text-[9px] font-bold uppercase transition-colors flex items-center justify-center gap-2 border border-red-500/20"
-                            >
-                                <Trash2 size={12}/> Limpar Todos os Acessórios
-                            </button>
-                        </div>
-                    </div>
-                </div>
             )}
+            {/* End of Manual Accessory Management */}
+
 
             {(singlePipe.status === 'WELDED' || singlePipe.status === 'HYDROTEST') && (
                 <div className="bg-slate-950/60 p-4 rounded-xl border border-green-500/20 space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">

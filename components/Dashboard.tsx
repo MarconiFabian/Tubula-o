@@ -171,7 +171,10 @@ const Dashboard: React.FC<DashboardProps> = ({
         const insulationBaseEffort = (p.length * (prodSettings?.insulationBase || 1) * insulationF);
         
         // Adicionar esforço de acessórios (apenas se for piping)
-        const supportCount = (p.supports?.total || 0) + (p.accessories?.filter(a => a.type === 'SUPPORT').length || 0);
+        const hasModernSupports = p.accessories?.some(a => a.type === 'SUPPORT');
+        const supportCount = hasModernSupports 
+            ? (p.accessories?.filter(a => a.type === 'SUPPORT').length || 0)
+            : (p.supports?.total || 0);
 
         const supportEffort = supportCount * (prodSettings?.supportBase || 2.5) * pipingF;
         
@@ -352,22 +355,25 @@ const Dashboard: React.FC<DashboardProps> = ({
     };
 
     currentPipes.forEach(p => {
-        // Count supports from the 'supports' field (legacy or direct)
-        if (p.supports) {
-            componentStats.supports.total += (p.supports.total || 0);
-            const isPipeInstalled = p.status === 'MOUNTED' || p.status === 'WELDED' || p.status === 'HYDROTEST';
-            componentStats.supports.installed += isPipeInstalled ? (p.supports.total || 0) : (p.supports.installed || 0);
-        }
         // Count accessories (modern way)
+        let hasModernSupports = false;
         if (p.accessories) {
             p.accessories.forEach(a => {
                 const isPipeInstalled = p.status === 'MOUNTED' || p.status === 'WELDED' || p.status === 'HYDROTEST';
                 const isInstalled = a.status === AccessoryStatus.MOUNTED || isPipeInstalled;
                 if (a.type === 'SUPPORT') {
+                    hasModernSupports = true;
                     componentStats.supports.total += 1;
                     if (isInstalled) componentStats.supports.installed += 1;
                 }
             });
+        }
+
+        // Count supports from the 'supports' field (legacy or direct) ONLY if no modern supports
+        if (p.supports && !hasModernSupports) {
+            componentStats.supports.total += (p.supports.total || 0);
+            const isPipeInstalled = p.status === 'MOUNTED' || p.status === 'WELDED' || p.status === 'HYDROTEST';
+            componentStats.supports.installed += isPipeInstalled ? (p.supports.total || 0) : (p.supports.installed || 0);
         }
     });
 

@@ -26,7 +26,10 @@ export const calculatePipeHH = (
     
     // Adicionar esforço de acessórios (apenas se for piping)
     if (isPiping) {
-        const supportCount = (pipe.supports?.total || 0) + (pipe.accessories?.filter(a => a.type === 'SUPPORT').length || 0);
+        const hasModernSupports = pipe.accessories?.some(a => a.type === 'SUPPORT');
+        const supportCount = hasModernSupports 
+            ? (pipe.accessories?.filter(a => a.type === 'SUPPORT').length || 0)
+            : (pipe.supports?.total || 0);
 
         // Se o tubo já está testado, o esforço remanescente dos acessórios é 0
         const supportFactor = PIPING_REMAINING_FACTOR[pipe.status] ?? 1;
