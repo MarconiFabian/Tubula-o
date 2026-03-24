@@ -14,7 +14,7 @@ import { LayoutDashboard, Cuboid, PenTool, XCircle, FileDown, Save, FolderOpen, 
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
 import * as XLSX from 'xlsx';
-import { getWorkingEndDate, getWorkingDaysBetween, calculateTotalHH } from './utils/planning';
+import { getWorkingEndDate, getWorkingDaysBetween, calculateTotalHH, getSnapPoint } from './utils/planning';
 import DailyProductionModal from './components/DailyProductionModal';
 
 // Auxiliar global para cálculo de término em dias úteis (REMOVIDO - USANDO UTILS)
@@ -429,13 +429,72 @@ function AppContent() {
   const handleUpdateAnnotation = (id: string, text: string, type?: AnnotationType, estimatedHours?: number) => setAnnotations(prev => prev.map(a => a.id === id ? { ...a, text, type: type || a.type, estimatedHours: estimatedHours !== undefined ? estimatedHours : a.estimatedHours } : a));
   const handleDeleteAnnotation = (id: string) => setAnnotations(prev => prev.filter(a => a.id !== id));
   const handleUpdateSinglePipe = (p: PipeSegment) => { const length = Math.sqrt(Math.pow(p.end.x - p.start.x, 2) + Math.pow(p.end.y - p.start.y, 2) + Math.pow(p.end.z - p.start.z, 2)); setPipes(prev => prev.map(old => old.id === p.id ? { ...p, length } : old)); };
-  const handleMovePipes = (delta: {x:number, y:number, z:number}) => { setPipes(prev => prev.map(p => selectedIds.includes(p.id) ? { ...p, start: {x:p.start.x+delta.x, y:p.start.y+delta.y, z:p.start.z+delta.z}, end: {x:p.end.x+delta.x, y:p.end.y+delta.y, z:p.end.z+delta.z} } : p)); setAnnotations(prev => prev.map(a => selectedIds.includes(a.id) ? { ...a, position: {x:a.position.x+delta.x, y:a.position.y+delta.y, z:a.position.z+delta.z} } : a)); };
+  const handleMovePipes = (delta: {x:number, y:number, z:number}) => {
+    // 1. Apply delta to selected pipes
+    let movedPipes = pipes.map(p => selectedIds.includes(p.id) ? { 
+        ...p, 
+        start: {x:p.start.x+delta.x, y:p.start.y+delta.y, z:p.start.z+delta.z}, 
+        end: {x:p.end.x+delta.x, y:p.end.y+delta.y, z:p.end.z+delta.z} 
+    } : p);
+
+    // 2. Check for snap (only for the first selected pipe)
+    const firstSelectedId = selectedIds[0];
+    const firstSelectedPipe = movedPipes.find(p => p.id === firstSelectedId);
+    
+    if (firstSelectedPipe) {
+        const snap = getSnapPoint(firstSelectedPipe.start, pipes.filter(p => !selectedIds.includes(p.id)));
+        if (snap) {
+            const snapDx = snap.x - firstSelectedPipe.start.x;
+            const snapDy = snap.y - firstSelectedPipe.start.y;
+            const snapDz = snap.z - firstSelectedPipe.start.z;
+            
+            movedPipes = movedPipes.map(p => selectedIds.includes(p.id) ? {
+                ...p,
+                start: {x: p.start.x + snapDx, y: p.start.y + snapDy, z: p.start.z + snapDz},
+                end: {x: p.end.x + snapDx, y: p.end.y + snapDy, z: p.end.z + snapDz}
+            } : p);
+        }
+    }
+
+    setPipes(movedPipes);
+    setAnnotations(prev => prev.map(a => selectedIds.includes(a.id) ? { ...a, position: {x:a.position.x+delta.x, y:a.position.y+delta.y, z:a.position.z+delta.z} } : a));
+  };
   const handleBatchUpdate = (u: Partial<PipeSegment>) => setPipes(prev => prev.map(p => selectedIds.includes(p.id) ? { ...p, ...u } : p));
   const handleAddPipe = (start: any, end: any) => { const length = Math.sqrt(Math.pow(end.x-start.x, 2)+Math.pow(end.y-start.y, 2)+Math.pow(end.z-start.z, 2)); const newP: PipeSegment = { id: `P-${Math.floor(Math.random()*10000)}`, name: `Nova Linha ${pipes.length+1}`, start, end, diameter: selectedDiameter, status: 'PENDING' as PipeStatus, length }; setPipes(prev => [...prev, newP]); };
   const handleDeleteSelected = useCallback(() => { if (pastePreview) return setPastePreview(null); setPipes(prev => prev.filter(p => !selectedIds.includes(p.id))); setAnnotations(prev => prev.filter(a => !selectedIds.includes(a.id))); setSelectedIds([]); }, [selectedIds, pastePreview]);
   const handleCopy = useCallback(() => { const toCopy = pipes.filter(p => selectedIds.includes(p.id)); if (toCopy.length === 0) return; let cx=0, cy=0, cz=0, count=0; toCopy.forEach(p => { cx+=p.start.x+p.end.x; cy+=p.start.y+p.end.y; cz+=p.start.z+p.end.z; count+=2; }); if (count>0) setPasteCentroid({ x:cx/count, y:cy/count, z:cz/count }); setClipboard(toCopy); }, [selectedIds, pipes]);
   const handlePasteStart = useCallback(() => { if (!clipboard || !pasteCentroid) return; setPastePreview(clipboard.map(p => ({ ...p, id: `PREVIEW-${p.id}`, status: 'PENDING' as PipeStatus }))); setSelectedIds([]); setIsDrawing(false); }, [clipboard, pasteCentroid]);
-  const handlePasteMove = useCallback((target: any) => { if (!pastePreview || !pasteCentroid) return; const dx=target.x-pasteCentroid.x, dy=target.y-pasteCentroid.y, dz=target.z-pasteCentroid.z; setPastePreview(clipboard!.map(p => ({ ...p, id: `NEW-${p.id}-${Date.now()}`, start: {x:p.start.x+dx, y:p.start.y+dy, z:p.start.z+dz}, end: {x:p.end.x+dx, y:p.end.y+dy, z:p.end.z+dz} }))); }, [clipboard, pasteCentroid, pastePreview]);
+  const handlePasteMove = useCallback((target: any) => {
+    if (!pastePreview || !pasteCentroid) return;
+    
+    const dx = target.x - pasteCentroid.x;
+    const dy = target.y - pasteCentroid.y;
+    const dz = target.z - pasteCentroid.z;
+    
+    let preview = clipboard!.map(p => ({ 
+        ...p, 
+        id: `NEW-${p.id}-${Date.now()}`, 
+        start: {x:p.start.x+dx, y:p.start.y+dy, z:p.start.z+dz}, 
+        end: {x:p.end.x+dx, y:p.end.y+dy, z:p.end.z+dz} 
+    }));
+
+    // Check for snap
+    const firstPipe = preview[0];
+    const snap = getSnapPoint(firstPipe.start, pipes);
+    if (snap) {
+        const snapDx = snap.x - firstPipe.start.x;
+        const snapDy = snap.y - firstPipe.start.y;
+        const snapDz = snap.z - firstPipe.start.z;
+        
+        preview = preview.map(p => ({
+            ...p,
+            start: {x: p.start.x + snapDx, y: p.start.y + snapDy, z: p.start.z + snapDz},
+            end: {x: p.end.x + snapDx, y: p.end.y + snapDy, z: p.end.z + snapDz}
+        }));
+    }
+
+    setPastePreview(preview);
+  }, [clipboard, pasteCentroid, pastePreview, pipes]);
   const handlePasteConfirm = useCallback(() => { if (!pastePreview) return; const final = pastePreview.map(p => ({ ...p, id: `P-${Math.floor(Math.random()*1000000)}`, name: `${p.name} (Cópia)` })); setPipes(prev => [...prev, ...final]); setPastePreview(null); setSelectedIds(final.map(p => p.id)); }, [pastePreview]);
 
   // --- DATABASE ACTIONS ---

@@ -133,3 +133,34 @@ export const getWorkingDaysBetween = (startDate: Date, endDate: Date, includeWee
     }
     return count;
 };
+
+/**
+ * Encontra o ponto mais próximo de um ponto dado dentro de um limite de distância.
+ * @param point Ponto a ser verificado
+ * @param allPipes Lista de todos os tubos
+ * @param threshold Distância máxima para considerar um "snap"
+ * @returns O ponto mais próximo ou null se nenhum for encontrado
+ */
+export const getSnapPoint = (
+    point: {x:number, y:number, z:number}, 
+    allPipes: PipeSegment[], 
+    threshold: number = 0.3
+): {x:number, y:number, z:number} | null => {
+    let nearest: {x:number, y:number, z:number} | null = null;
+    let minDist = threshold;
+
+    allPipes.forEach(p => {
+        [p.start, p.end].forEach(pt => {
+            const dist = Math.sqrt(
+                Math.pow(pt.x - point.x, 2) +
+                Math.pow(pt.y - point.y, 2) +
+                Math.pow(pt.z - point.z, 2)
+            );
+            if (dist < minDist) {
+                minDist = dist;
+                nearest = pt;
+            }
+        });
+    });
+    return nearest;
+};
