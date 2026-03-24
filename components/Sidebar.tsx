@@ -4,7 +4,7 @@ import { PipeSegment, PipeStatus, InsulationStatus, PlanningFactors, Productivit
 import { STATUS_LABELS, STATUS_COLORS, ALL_STATUSES, INSULATION_LABELS, INSULATION_COLORS, ALL_INSULATION_STATUSES, PIPING_REMAINING_FACTOR, INSULATION_REMAINING_FACTOR, HOURS_PER_DAY } from '../constants';
 import { X, CheckCircle, AlertCircle, FileText, Trash2, Shield, Wrench, Layers, MapPin, Timer, Truck, Construction, Users, ArrowUpCircle, Calendar, Moon, ShieldAlert, Clock, Activity, Settings2, Sliders, Info, Percent, ZapOff, HardHat, Copy, BarChart3, Flag, Package, Zap, CheckSquare, Check, CircleDot, MousePointer2 } from 'lucide-react';
 import PlanningReportModal from './PlanningReportModal';
-import { getWorkingEndDate } from '../utils/planning';
+import { getWorkingEndDate, calculatePipeHH } from '../utils/planning';
 
 interface SidebarProps {
   selectedPipes: PipeSegment[];
@@ -84,27 +84,13 @@ const Sidebar: React.FC<SidebarProps> = ({
               hasWorkButZeroIndex = true;
           }
 
-          const pipeEffort = (p.length * prodSettings.pipingBase) * pipingFactor;
-          const insEffort = (p.length * prodSettings.insulationBase) * insulationFactor;
+          const pipePipingHH = calculatePipeHH(p, prodSettings, true);
+          const pipeInsulationHH = calculatePipeHH(p, prodSettings, false);
           
-          let baseEffort = pipeEffort + insEffort;
-          if (baseEffort <= 0) return;
+          const finalHH = pipePipingHH + pipeInsulationHH;
+          if (finalHH <= 0) return;
 
           const factors = p.planningFactors || DEFAULT_FACTORS;
-          let mult = 1.0;
-          if (factors.hasCrane) mult += prodSettings.weights.crane;
-          if (factors.hasBlockage) mult += prodSettings.weights.blockage;
-          if (factors.isNightShift) mult += prodSettings.weights.nightShift;
-          if (factors.isCriticalArea) mult += prodSettings.weights.criticalArea;
-          if (factors.accessType === 'SCAFFOLD_FLOOR') mult += prodSettings.weights.scaffoldFloor;
-          if (factors.accessType === 'SCAFFOLD_HANGING') mult += prodSettings.weights.scaffoldHanging;
-          if (factors.accessType === 'PTA') mult += prodSettings.weights.pta;
-          
-          // Novos Fatores
-          if (factors.weatherExposed) mult += prodSettings.globalConfig.weatherFactor;
-          if (!factors.materialAvailable) mult += prodSettings.globalConfig.materialDelayFactor;
-
-          let finalHH = (baseEffort * mult) * (1 + prodSettings.globalConfig.reworkFactor) + (factors.delayHours || 0);
           totalHH += finalHH;
           weightedHours += (finalHH / (factors.teamCount || 1));
       });
@@ -508,9 +494,8 @@ const Sidebar: React.FC<SidebarProps> = ({
                     </button>
                 </div>
             </div>
-            <div className="p-4 bg-slate-950 border-t border-slate-700 grid grid-cols-2 gap-2">
-                {onCopy && <button onClick={onCopy} className="bg-blue-600 hover:bg-blue-500 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-colors uppercase text-xs tracking-widest"><Copy size={16} /> Copiar</button>}
-                <button onClick={onDelete} className={`${onCopy ? '' : 'col-span-2'} bg-red-600 hover:bg-red-700 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-colors uppercase text-xs tracking-widest`}><Trash2 size={16} /> Excluir</button>
+            <div className="p-4 bg-slate-950 border-t border-slate-700 grid grid-cols-1 gap-2">
+                <button onClick={onDelete} className="w-full bg-red-600 hover:bg-red-700 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-colors uppercase text-xs tracking-widest"><Trash2 size={16} /> Excluir</button>
             </div>
         </div>
       )
@@ -757,9 +742,8 @@ const Sidebar: React.FC<SidebarProps> = ({
         </div>
         <div className="bg-slate-950/40 p-4 rounded-xl border border-slate-800"><label className="text-[10px] font-bold text-slate-500 uppercase mb-3 block flex items-center gap-2"><Shield size={14}/> Isolamento</label><div className="grid grid-cols-1 gap-2">{ALL_INSULATION_STATUSES.map(i => (<button key={i} onClick={() => onUpdateSingle({ ...singlePipe, insulationStatus: i as InsulationStatus })} className={`flex items-center gap-3 p-2.5 rounded-lg text-[10px] font-bold border transition-all ${singlePipe.insulationStatus === i ? 'bg-slate-800 border-slate-700 text-white shadow-inner' : 'border-transparent text-slate-600 hover:text-slate-400'}`}><div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: INSULATION_COLORS[i] === 'transparent' ? '#334155' : INSULATION_COLORS[i] }} /> {INSULATION_LABELS[i]}</button>))}</div></div>
       </div>
-      <div className="p-4 bg-slate-950 border-t border-slate-700 grid grid-cols-2 gap-2">
-          {onCopy && <button onClick={onCopy} className="bg-blue-600 hover:bg-blue-500 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-colors uppercase text-xs tracking-widest"><Copy size={16} /> Copiar</button>}
-          <button onClick={onDelete} className={`${onCopy ? '' : 'col-span-2'} bg-red-600/10 hover:bg-red-600 text-red-500 hover:text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all uppercase text-[10px] tracking-widest`}><Trash2 size={16} /> Excluir</button>
+      <div className="p-4 bg-slate-950 border-t border-slate-700 grid grid-cols-1 gap-2">
+          <button onClick={onDelete} className="w-full bg-red-600/10 hover:bg-red-600 text-red-500 hover:text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all uppercase text-[10px] tracking-widest"><Trash2 size={16} /> Excluir</button>
       </div>
     </div>
   );

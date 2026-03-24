@@ -731,23 +731,6 @@ const SceneContent: React.FC<SceneProps & { lockedAxis: 'x'|'y'|'z'|null, select
     );
 }
 
-const ComponentLegend = () => (
-    <div className="absolute bottom-20 left-4 bg-slate-900/80 backdrop-blur-md border border-slate-700 p-3 rounded-xl shadow-2xl z-10 pointer-events-none">
-        <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-2">
-            <Package size={12} /> Legenda de Itens
-        </h4>
-        <div className="space-y-1.5">
-            <div className="flex items-center gap-2">
-                <div className="w-2 h-2 bg-[#cbd5e1] shadow-[0_0_8px_rgba(59,130,246,0.8)] border border-blue-400"></div>
-                <span className="text-[9px] font-bold text-slate-300 uppercase">Suportes</span>
-            </div>
-            <div className="mt-2 pt-2 border-t border-slate-800">
-                <span className="text-[8px] text-slate-500 font-medium italic">Escuro = Não Instalado</span>
-            </div>
-        </div>
-    </div>
-);
-
 const Scene: React.FC<SceneProps & { fixedLength?: number, onUndo?: ()=>void, onRedo?: ()=>void, colorMode?: 'STATUS'|'SPOOL', onMovePipes?: (d:any)=>void, onSetSelection?: (ids:string[])=>void, pastePreview?: PipeSegment[] | null, onPasteMove?: any,  onPasteConfirm?: any, 
   snapAngle?: number, 
   onSetSnapAngle?: (angle: number) => void,
@@ -884,7 +867,6 @@ const Scene: React.FC<SceneProps & { fixedLength?: number, onUndo?: ()=>void, on
       </div>
       <div className="flex-1 relative">
           <StatusLegend />
-          <ComponentLegend />
           <Canvas camera={{ position: [8, 8, 8], fov: 50, near: 0.05, far: 5000 }} shadows gl={{ preserveDrawingBuffer: true, antialias: true }} onPointerMissed={(e) => {
               // Se clicar no vazio SEM arrastar (box w=0) e SEM colar, limpa seleção
               if (!props.isDrawing && !selectionBox.isSelecting && !props.pastePreview && e.type === 'click') {
