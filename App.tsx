@@ -973,7 +973,7 @@ function AppContent() {
         }
         
         setPdfExportStats(exportStats);
-        await new Promise(r => setTimeout(r, 1200));
+        await new Promise(r => setTimeout(r, 2000));
 
         const pdf = new jsPDF('p', 'mm', 'a4');
         const pageWidth = pdf.internal.pageSize.getWidth();
@@ -1393,21 +1393,23 @@ function AppContent() {
         
         <main className="flex-1 relative overflow-hidden flex">
             {/* EXPORT CONTAINER HIDDEN */}
-            <ExportContainer 
-                viewMode={viewMode}
-                reportStats={pdfExportStats || reportStats}
-                sceneScreenshot={sceneScreenshot}
-                secondaryImage={secondaryImage}
-                mapImage={mapImage}
-                projectClient={projectClient}
-                projectLocation={projectLocation}
-                activityDate={activityDate}
-                pipes={pipes}
-                prodSettings={prodSettings}
-                startDate={activityDate}
-                annotations={annotations}
-                deadlineDate={deadlineDate}
-            />
+            <div className="absolute left-[-9999px] top-0">
+                <ExportContainer 
+                    viewMode={viewMode}
+                    reportStats={pdfExportStats || reportStats}
+                    sceneScreenshot={sceneScreenshot}
+                    secondaryImage={secondaryImage}
+                    mapImage={mapImage}
+                    projectClient={projectClient}
+                    projectLocation={projectLocation}
+                    activityDate={activityDate}
+                    pipes={pipes}
+                    prodSettings={prodSettings}
+                    startDate={activityDate}
+                    annotations={annotations}
+                    deadlineDate={deadlineDate}
+                />
+            </div>
 
             <div className="flex-1 w-full h-full relative">
                 <div id="scene-canvas-wrapper" className="absolute inset-0 bg-slate-900 z-0">
