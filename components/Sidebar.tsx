@@ -25,6 +25,7 @@ interface SidebarProps {
   onBatchUpdateSupportStatus?: (status: AccessoryStatus) => void;
   onClearAccessories?: () => void;
   onClearAllAccessories?: () => void;
+  onJoinPipes?: (id1: string, id2: string, staticId: string) => void;
 }
 
 const DEFAULT_FACTORS: PlanningFactors = { 
@@ -43,7 +44,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     selectedPipes, onUpdateSingle, onUpdateBatch, onDelete, onClose, 
     mode = 'TRACKING', startDate = new Date().toISOString().split('T')[0],
     prodSettings, onUpdateProdSettings, onCopy, deadlineDate, onUpdateDeadline,
-    placementMode, onSetPlacementMode, onBatchAddSupports, onBatchUpdateSupportStatus, onClearAccessories, onClearAllAccessories
+    placementMode, onSetPlacementMode, onBatchAddSupports, onBatchUpdateSupportStatus, onClearAccessories, onClearAllAccessories, onJoinPipes
 }) => {
   const [showMetricsConfig, setShowMetricsConfig] = useState(false);
   const [showReport, setShowReport] = useState(false);
@@ -439,6 +440,25 @@ const Sidebar: React.FC<SidebarProps> = ({
                         )}
                         <p className="text-[8px] text-slate-500 italic">O sistema calculará a quantidade automaticamente para cada tubo e substituirá os suportes existentes.</p>
                         
+                        {selectedPipes.length === 2 && (
+                            <div className="pt-3 mt-3 border-t border-blue-500/20 space-y-2">
+                                <span className="text-[9px] text-blue-300 uppercase font-bold mb-2 block">Unir Tubulações:</span>
+                                <div className="flex gap-2">
+                                    <button 
+                                        onClick={() => onJoinPipes?.(selectedPipes[0].id, selectedPipes[1].id, selectedPipes[0].id)}
+                                        className="flex-1 bg-blue-600 hover:bg-blue-500 text-white py-2 rounded text-[9px] font-bold uppercase transition-colors"
+                                    >
+                                        Unir (1º Estático)
+                                    </button>
+                                    <button 
+                                        onClick={() => onJoinPipes?.(selectedPipes[0].id, selectedPipes[1].id, selectedPipes[1].id)}
+                                        className="flex-1 bg-blue-600 hover:bg-blue-500 text-white py-2 rounded text-[9px] font-bold uppercase transition-colors"
+                                    >
+                                        Unir (2º Estático)
+                                    </button>
+                                </div>
+                            </div>
+                        )}
                         <div className="pt-3 mt-3 border-t border-blue-500/20">
                             <span className="text-[9px] text-blue-300 uppercase font-bold mb-2 block">Atualizar Status dos Existentes:</span>
                             <div className="flex gap-2">
@@ -452,7 +472,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                                     onClick={() => onBatchUpdateSupportStatus?.(AccessoryStatus.PENDING)}
                                     className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 py-2 rounded text-[9px] font-bold uppercase transition-colors flex items-center justify-center gap-1"
                                 >
-                                    Marcar Pendentes
+                                    <CheckSquare size={10}/> Marcar Pendentes
                                 </button>
                             </div>
                         </div>

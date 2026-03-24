@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import * as THREE from 'three';
 import Scene from './components/3d/Scene';
 import Dashboard from './components/Dashboard';
 import Sidebar from './components/Sidebar';
@@ -460,6 +461,60 @@ function AppContent() {
     setAnnotations(prev => prev.map(a => selectedIds.includes(a.id) ? { ...a, position: {x:a.position.x+delta.x, y:a.position.y+delta.y, z:a.position.z+delta.z} } : a));
   };
   const handleBatchUpdate = (u: Partial<PipeSegment>) => setPipes(prev => prev.map(p => selectedIds.includes(p.id) ? { ...p, ...u } : p));
+  const handleJoinPipes = (id1: string, id2: string, staticId: string) => {
+    const pipe1 = pipes.find(p => p.id === id1);
+    const pipe2 = pipes.find(p => p.id === id2);
+    if (!pipe1 || !pipe2) return;
+
+    const movingId = staticId === id1 ? id2 : id1;
+    const movingPipe = staticId === id1 ? pipe2 : pipe1;
+    const staticPipe = staticId === id1 ? pipe1 : pipe2;
+
+    // Find closest endpoints
+    const p1Start = new THREE.Vector3(pipe1.start.x, pipe1.start.y, pipe1.start.z);
+    const p1End = new THREE.Vector3(pipe1.end.x, pipe1.end.y, pipe1.end.z);
+    const p2Start = new THREE.Vector3(pipe2.start.x, pipe2.start.y, pipe2.start.z);
+    const p2End = new THREE.Vector3(pipe2.end.x, pipe2.end.y, pipe2.end.z);
+
+    const points = [
+        { p: p1Start, pipe: pipe1, isStart: true },
+        { p: p1End, pipe: pipe1, isStart: false },
+        { p: p2Start, pipe: pipe2, isStart: true },
+        { p: p2End, pipe: pipe2, isStart: false }
+    ];
+
+    // Find closest pair of points (one from pipe1, one from pipe2)
+    let minD = 1000;
+    let bestPair = { p1: points[0], p2: points[2] };
+
+    for (let i = 0; i < 2; i++) {
+        for (let j = 2; j < 4; j++) {
+            const d = points[i].p.distanceTo(points[j].p);
+            if (d < minD) {
+                minD = d;
+                bestPair = { p1: points[i], p2: points[j] };
+            }
+        }
+    }
+
+    // Move movingPipe so bestPair.p2 matches bestPair.p1
+    const delta = bestPair.p1.p.clone().sub(bestPair.p2.p);
+    
+    setPipes(prev => prev.map(p => {
+        if (p.id === movingId) {
+            return {
+                ...p,
+                start: { x: p.start.x + delta.x, y: p.start.y + delta.y, z: p.start.z + delta.z },
+                end: { x: p.end.x + delta.x, y: p.end.y + delta.y, z: p.end.z + delta.z },
+                accessories: [
+                    ...(p.accessories || []),
+                    { id: `WELD-${Date.now()}`, type: 'WELD' as AccessoryType, offset: bestPair.p2.isStart ? 0 : 1, status: AccessoryStatus.MOUNTED }
+                ]
+            };
+        }
+        return p;
+    }));
+  };
   const handleAddPipe = (start: any, end: any) => { const length = Math.sqrt(Math.pow(end.x-start.x, 2)+Math.pow(end.y-start.y, 2)+Math.pow(end.z-start.z, 2)); const newP: PipeSegment = { id: `P-${Math.floor(Math.random()*10000)}`, name: `Nova Linha ${pipes.length+1}`, start, end, diameter: selectedDiameter, status: 'PENDING' as PipeStatus, length }; setPipes(prev => [...prev, newP]); };
   const handleDeleteSelected = useCallback(() => { if (pastePreview) return setPastePreview(null); setPipes(prev => prev.filter(p => !selectedIds.includes(p.id))); setAnnotations(prev => prev.filter(a => !selectedIds.includes(a.id))); setSelectedIds([]); }, [selectedIds, pastePreview]);
   const handleCopy = useCallback(() => { const toCopy = pipes.filter(p => selectedIds.includes(p.id)); if (toCopy.length === 0) return; let cx=0, cy=0, cz=0, count=0; toCopy.forEach(p => { cx+=p.start.x+p.end.x; cy+=p.start.y+p.end.y; cz+=p.start.z+p.end.z; count+=2; }); if (count>0) setPasteCentroid({ x:cx/count, y:cy/count, z:cz/count }); setClipboard(toCopy); }, [selectedIds, pipes]);
@@ -495,7 +550,34 @@ function AppContent() {
 
     setPastePreview(preview);
   }, [clipboard, pasteCentroid, pastePreview, pipes]);
-  const handlePasteConfirm = useCallback(() => { if (!pastePreview) return; const final = pastePreview.map(p => ({ ...p, id: `P-${Math.floor(Math.random()*1000000)}`, name: `${p.name} (Cópia)` })); setPipes(prev => [...prev, ...final]); setPastePreview(null); setSelectedIds(final.map(p => p.id)); }, [pastePreview]);
+  const handlePasteConfirm = useCallback(() => { 
+    if (!pastePreview) return; 
+    
+    const final = pastePreview.map(p => {
+        let newPipe = { ...p, id: `P-${Math.floor(Math.random()*1000000)}`, name: `${p.name} (Cópia)` };
+        
+        // Check for connections to existing pipes
+        const startVec = new THREE.Vector3(newPipe.start.x, newPipe.start.y, newPipe.start.z);
+        const endVec = new THREE.Vector3(newPipe.end.x, newPipe.end.y, newPipe.end.z);
+        
+        pipes.forEach(existingPipe => {
+            const eStart = new THREE.Vector3(existingPipe.start.x, existingPipe.start.y, existingPipe.start.z);
+            const eEnd = new THREE.Vector3(existingPipe.end.x, existingPipe.end.y, existingPipe.end.z);
+            
+            if (startVec.distanceTo(eStart) < 0.3 || startVec.distanceTo(eEnd) < 0.3) {
+                newPipe.accessories = [...(newPipe.accessories || []), { id: `WELD-${Date.now()}-${Math.random()}`, type: 'WELD' as AccessoryType, offset: 0, status: AccessoryStatus.MOUNTED }];
+            } else if (endVec.distanceTo(eStart) < 0.3 || endVec.distanceTo(eEnd) < 0.3) {
+                newPipe.accessories = [...(newPipe.accessories || []), { id: `WELD-${Date.now()}-${Math.random()}`, type: 'WELD' as AccessoryType, offset: 1, status: AccessoryStatus.MOUNTED }];
+            }
+        });
+        
+        return newPipe;
+    });
+    
+    setPipes(prev => [...prev, ...final]); 
+    setPastePreview(null); 
+    setSelectedIds(final.map(p => p.id)); 
+  }, [pastePreview, pipes]);
 
   // --- DATABASE ACTIONS ---
   const refreshProjects = useCallback(async () => {
@@ -1367,6 +1449,7 @@ function AppContent() {
                             onBatchUpdateSupportStatus={handleBatchUpdateSupportStatus}
                             onClearAccessories={handleClearAccessories}
                             onClearAllAccessories={handleClearAllAccessories}
+                            onJoinPipes={handleJoinPipes}
                         />
                 </div>
             )}
