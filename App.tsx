@@ -983,37 +983,45 @@ function AppContent() {
 
         const capturePage = async (id: string) => {
             const el = document.getElementById(id);
-            if (!el) return null;
-            return await html2canvas(el, { 
-                backgroundColor: '#0f172a', 
-                scale: 1.5, 
-                width: 1920, 
-                windowWidth: 1920,
-                useCORS: true,
-                allowTaint: false,
-                logging: false,
-                imageTimeout: 15000,
-                onclone: (clonedDoc) => {
-                    const elements = clonedDoc.getElementsByTagName('*');
-                    for (let i = 0; i < elements.length; i++) {
-                        const el = elements[i] as HTMLElement;
-                        if (el.style && el.style.cssText.includes('oklch')) {
-                            el.style.cssText = el.style.cssText.replace(/oklch\([^)]+\)/g, '#888888');
+            if (!el) {
+                console.error(`Elemento ${id} não encontrado para PDF.`);
+                return null;
+            }
+            try {
+                return await html2canvas(el, { 
+                    backgroundColor: '#0f172a', 
+                    scale: 1.5, 
+                    width: 1920, 
+                    windowWidth: 1920,
+                    useCORS: true,
+                    allowTaint: false,
+                    logging: true, // Enabled logging for debugging
+                    imageTimeout: 15000,
+                    onclone: (clonedDoc) => {
+                        const elements = clonedDoc.getElementsByTagName('*');
+                        for (let i = 0; i < elements.length; i++) {
+                            const el = elements[i] as HTMLElement;
+                            if (el.style && el.style.cssText.includes('oklch')) {
+                                el.style.cssText = el.style.cssText.replace(/oklch\([^)]+\)/g, '#888888');
+                            }
                         }
+                        const style = clonedDoc.createElement('style');
+                        style.innerHTML = `
+                            * { color-interpolation: sRGB !important; }
+                            #${id} { background-color: #0f172a !important; color: #f1f5f9 !important; }
+                            .text-white { color: #ffffff !important; }
+                            .text-blue-400 { color: #60a5fa !important; }
+                            .text-slate-400 { color: #94a3b8 !important; }
+                            .bg-slate-800\\/40 { background-color: rgba(30, 41, 59, 0.4) !important; }
+                            .border-slate-700 { border-color: #334155 !important; }
+                        `;
+                        clonedDoc.head.appendChild(style);
                     }
-                    const style = clonedDoc.createElement('style');
-                    style.innerHTML = `
-                        * { color-interpolation: sRGB !important; }
-                        #${id} { background-color: #0f172a !important; color: #f1f5f9 !important; }
-                        .text-white { color: #ffffff !important; }
-                        .text-blue-400 { color: #60a5fa !important; }
-                        .text-slate-400 { color: #94a3b8 !important; }
-                        .bg-slate-800\\/40 { background-color: rgba(30, 41, 59, 0.4) !important; }
-                        .border-slate-700 { border-color: #334155 !important; }
-                    `;
-                    clonedDoc.head.appendChild(style);
-                }
-            });
+                });
+            } catch (err) {
+                console.error(`Erro ao capturar ${id}:`, err);
+                return null;
+            }
         };
 
         const page1Canvas = await capturePage('export-page-1');

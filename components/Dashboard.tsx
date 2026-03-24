@@ -736,10 +736,15 @@ const Dashboard: React.FC<DashboardProps> = ({
                             <h3 className="text-[10px] font-mono font-bold text-blue-400 uppercase tracking-widest mb-6 flex items-center gap-2 border-b border-slate-800 pb-3">
                                 <Layers size={14}/> MATRIZ_DE_STATUS_DE_MONTAGEM
                             </h3>
-                            <div className="flex items-end justify-around gap-3 h-32">
+                            <div className="flex items-end gap-3 h-32">
                                 {ALL_STATUSES.map(status => {
-                                    const height = (stats.pipeLengths[status] / Math.max(1, stats.pipingTotalLength)) * 100;
-                                    const pct = stats.pipingTotalLength > 0 ? ((stats.pipeLengths[status] / stats.pipingTotalLength) * 100).toFixed(1) : "0.0";
+                                    const cumulativeLengths = { ...stats.pipeLengths };
+                                    cumulativeLengths['WELDED'] = (stats.pipeLengths['WELDED'] || 0) + (stats.pipeLengths['HYDROTEST'] || 0);
+                                    cumulativeLengths['MOUNTED'] = (stats.pipeLengths['MOUNTED'] || 0) + cumulativeLengths['WELDED'];
+                                    
+                                    const length = cumulativeLengths[status] || 0;
+                                    const height = (length / Math.max(1, stats.pipingTotalLength)) * 100;
+                                    const pct = stats.pipingTotalLength > 0 ? ((length / stats.pipingTotalLength) * 100).toFixed(1) : "0.0";
                                     return (
                                         <div key={status} className="flex flex-col items-center flex-1 h-full justify-end group">
                                             <span className="text-white font-mono text-[9px] mb-1 opacity-0 group-hover:opacity-100 transition-opacity">{pct}%</span>
@@ -748,7 +753,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                                             </div>
                                             <span className="text-[7px] text-slate-400 font-mono uppercase text-center mt-2 truncate w-full tracking-tighter">{STATUS_LABELS[status].split(' ')[0]}</span>
                                         </div>
-                                    )
+                                    );
                                 })}
                             </div>
                         </div>
