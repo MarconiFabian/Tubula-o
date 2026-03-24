@@ -515,7 +515,36 @@ function AppContent() {
         return p;
     }));
   };
-  const handleAddPipe = (start: any, end: any) => { const length = Math.sqrt(Math.pow(end.x-start.x, 2)+Math.pow(end.y-start.y, 2)+Math.pow(end.z-start.z, 2)); const newP: PipeSegment = { id: `P-${Math.floor(Math.random()*10000)}`, name: `Nova Linha ${pipes.length+1}`, start, end, diameter: selectedDiameter, status: 'PENDING' as PipeStatus, length }; setPipes(prev => [...prev, newP]); };
+  const handleAddPipe = (start: any, end: any) => { 
+      const length = Math.sqrt(Math.pow(end.x-start.x, 2)+Math.pow(end.y-start.y, 2)+Math.pow(end.z-start.z, 2)); 
+      let newPipe: PipeSegment = { 
+          id: `P-${Math.floor(Math.random()*10000)}`, 
+          name: `Nova Linha ${pipes.length+1}`, 
+          start, 
+          end, 
+          diameter: selectedDiameter, 
+          status: 'PENDING' as PipeStatus, 
+          length,
+          accessories: []
+      }; 
+
+      // Check for connections
+      const startVec = new THREE.Vector3(start.x, start.y, start.z);
+      const endVec = new THREE.Vector3(end.x, end.y, end.z);
+      
+      pipes.forEach(existingPipe => {
+          const eStart = new THREE.Vector3(existingPipe.start.x, existingPipe.start.y, existingPipe.start.z);
+          const eEnd = new THREE.Vector3(existingPipe.end.x, existingPipe.end.y, existingPipe.end.z);
+          
+          if (startVec.distanceTo(eStart) < 0.3 || startVec.distanceTo(eEnd) < 0.3) {
+              newPipe.accessories = [...(newPipe.accessories || []), { id: `WELD-${Date.now()}-${Math.random()}`, type: 'WELD' as AccessoryType, offset: 0, status: AccessoryStatus.MOUNTED }];
+          } else if (endVec.distanceTo(eStart) < 0.3 || endVec.distanceTo(eEnd) < 0.3) {
+              newPipe.accessories = [...(newPipe.accessories || []), { id: `WELD-${Date.now()}-${Math.random()}`, type: 'WELD' as AccessoryType, offset: 1, status: AccessoryStatus.MOUNTED }];
+          }
+      });
+
+      setPipes(prev => [...prev, newPipe]); 
+  };
   const handleDeleteSelected = useCallback(() => { if (pastePreview) return setPastePreview(null); setPipes(prev => prev.filter(p => !selectedIds.includes(p.id))); setAnnotations(prev => prev.filter(a => !selectedIds.includes(a.id))); setSelectedIds([]); }, [selectedIds, pastePreview]);
   const handleCopy = useCallback(() => { const toCopy = pipes.filter(p => selectedIds.includes(p.id)); if (toCopy.length === 0) return; let cx=0, cy=0, cz=0, count=0; toCopy.forEach(p => { cx+=p.start.x+p.end.x; cy+=p.start.y+p.end.y; cz+=p.start.z+p.end.z; count+=2; }); if (count>0) setPasteCentroid({ x:cx/count, y:cy/count, z:cz/count }); setClipboard(toCopy); }, [selectedIds, pipes]);
   const handlePasteStart = useCallback(() => { if (!clipboard || !pasteCentroid) return; setPastePreview(clipboard.map(p => ({ ...p, id: `PREVIEW-${p.id}`, status: 'PENDING' as PipeStatus }))); setSelectedIds([]); setIsDrawing(false); }, [clipboard, pasteCentroid]);
