@@ -57,7 +57,13 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
     const days = reportStats.daysNeeded || 30;
     const start = new Date(startStr + 'T12:00:00');
     
-    const plotDays = Math.max(days, reportStats.daysNeeded || 0);
+    let plotDays = reportStats.daysNeeded || 30;
+    if (deadlineDate) {
+        const end = new Date(deadlineDate + 'T12:00:00');
+        const diffTime = end.getTime() - start.getTime();
+        plotDays = Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
+    }
+
     const today = new Date(todayStr + 'T12:00:00');
     const daysSinceStart = Math.max(1, Math.floor((today.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
 
@@ -75,7 +81,7 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
         }, 0);
         cumulativeActual += dayProd;
 
-        const x = (i / days) * 12 - 6;
+        const x = (i / (plotDays || 1)) * 12 - 6;
         const sigmoid = 1 / (1 + Math.exp(-x));
         const planned = sigmoid * 100; // Percentage
 
@@ -92,8 +98,9 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
 
         const isFuture = dateStr > todayStr;
 
+        const [y, m, day] = dateStr.split('-');
         data.push({
-            date: dateStr.split('-').slice(1).join('/'),
+            date: `${day}/${m}/${y.slice(2)}`,
             actual: !isFuture && totalLengthValue && totalLengthValue > 0 ? parseFloat(((cumulativeActual || 0) / totalLengthValue * 100).toFixed(2)) : null,
             planned: parseFloat(planned.toFixed(2)),
             autoProgress: autoProgress,

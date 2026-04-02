@@ -624,7 +624,7 @@ function AppContent() {
       }
   }, [isDBModalOpen, refreshProjects]);
 
-  const handleDBAction_Save = async (name: string, overwriteId?: string) => {
+  const handleDBAction_Save = async (name: string, overwriteId?: string, overrides?: any) => {
       try {
           const isOverwrite = !!overwriteId;
           const projectId = overwriteId || `PROJ-${Date.now()}`;
@@ -632,14 +632,17 @@ function AppContent() {
               id: projectId,
               name,
               updatedAt: new Date(),
-              pipes,
-              annotations,
-              location: projectLocation,
-              client: projectClient,
-              secondaryImage,
-              mapImage,
+              pipes: overrides?.pipes || pipes,
+              annotations: overrides?.annotations || annotations,
+              location: overrides?.location || projectLocation,
+              client: overrides?.client || projectClient,
+              secondaryImage: overrides?.secondaryImage || secondaryImage,
+              mapImage: overrides?.mapImage || mapImage,
               userId: currentUser || undefined,
-              dailyProduction
+              dailyProduction: overrides?.dailyProduction || dailyProduction,
+              activityDate: overrides?.activityDate || activityDate,
+              deadlineDate: overrides?.deadlineDate || deadlineDate,
+              projectCalendar: overrides?.projectCalendar || projectCalendar
           };
           await saveProjectToDB(projectData);
           await refreshProjects();
@@ -661,6 +664,9 @@ function AppContent() {
           setSecondaryImage(project.secondaryImage || null);
           setMapImage(project.mapImage || null);
           setDailyProduction(project.dailyProduction || []);
+          setActivityDate(project.activityDate || new Date().toISOString().split('T')[0]);
+          setDeadlineDate(project.deadlineDate || new Date(new Date().getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
+          setProjectCalendar(project.projectCalendar || null);
           setCurrentProjectId(project.id);
           setCurrentProjectName(project.name);
           setIsDBModalOpen(false);
@@ -1381,14 +1387,26 @@ function AppContent() {
             onSave={(data, calendar) => {
                 setDailyProduction(data);
                 setProjectCalendar(calendar);
+                if (calendar.startDate) {
+                    setActivityDate(calendar.startDate);
+                }
+                if (calendar.endDate) {
+                    setDeadlineDate(calendar.endDate);
+                }
                 setIsDailyProductionModalOpen(false);
                 setToast({ message: 'Produção diária calculada e salva!', type: 'success' });
                 // Auto-save to DB if project exists
                 if (currentProjectId && currentProjectName) {
-                    handleDBAction_Save(currentProjectName, currentProjectId);
+                    handleDBAction_Save(currentProjectName, currentProjectId, { 
+                        dailyProduction: data, 
+                        projectCalendar: calendar, 
+                        activityDate: calendar.startDate,
+                        deadlineDate: calendar.endDate
+                    });
                 }
             }}
             projectStartDate={activityDate}
+            projectEndDate={deadlineDate}
         />
         
         <main className="flex-1 relative overflow-hidden flex">

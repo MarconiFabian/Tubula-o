@@ -14,6 +14,7 @@ interface DailyProductionModalProps {
     annotations: Annotation[];
     onSave: (production: DailyProduction[], calendar: ProjectCalendar) => void;
     projectStartDate: string;
+    projectEndDate: string;
 }
 
 const DAYS_OF_WEEK = [
@@ -35,7 +36,8 @@ const DailyProductionModal: React.FC<DailyProductionModalProps> = ({
     prodSettings,
     annotations,
     onSave, 
-    projectStartDate 
+    projectStartDate,
+    projectEndDate
 }) => {
     const [activeTab, setActiveTab] = useState<'SHIFT' | 'EXCEPTIONS' | 'PREVIEW'>('SHIFT');
     
@@ -44,7 +46,7 @@ const DailyProductionModal: React.FC<DailyProductionModalProps> = ({
         if (projectCalendar) return projectCalendar;
         return {
             startDate: projectStartDate || new Date().toISOString().split('T')[0],
-            endDate: new Date().toISOString().split('T')[0],
+            endDate: projectEndDate || new Date().toISOString().split('T')[0],
             startTime: '07:00',
             endTime: '17:48',
             workDays: ['1', '2', '3', '4', '5'],
@@ -59,7 +61,9 @@ const DailyProductionModal: React.FC<DailyProductionModalProps> = ({
     useEffect(() => {
         if (isOpen) {
             setEditedProduction(dailyProduction || []);
-            if (projectCalendar) setCalendar(projectCalendar);
+            if (projectCalendar) {
+                setCalendar(projectCalendar);
+            }
         }
     }, [isOpen, dailyProduction, projectCalendar]);
 

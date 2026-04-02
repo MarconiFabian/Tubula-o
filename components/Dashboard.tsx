@@ -269,11 +269,15 @@ const Dashboard: React.FC<DashboardProps> = ({
         const initialProgressPct = totalLengthValue > 0 ? (initialCumulativeActual / totalLengthValue * 100) : 0;
 
         // Theoretical Planned Curve
-        const days = deadlineStats ? deadlineStats.daysUntilDeadline : (daysNeeded || 30); 
         const start = new Date(startStr + 'T12:00:00');
         const today = new Date(todayStr + 'T12:00:00');
         
-        const plotDays = Math.max(days, daysNeeded || 0);
+        let plotDays = daysNeeded || 30;
+        if (deadlineDate) {
+            const end = new Date(deadlineDate + 'T12:00:00');
+            const diffTime = end.getTime() - start.getTime();
+            plotDays = Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
+        }
 
         // Calculate Automatic Progression (Linear from start to today based on current total progress)
         const totalProgressValue = progress; // Current total %
@@ -333,8 +337,9 @@ const Dashboard: React.FC<DashboardProps> = ({
 
             const dp = dailyProduction.find(d => d.date === dateStr);
 
+            const [y, m, day] = dateStr.split('-');
             sCurveData.push({
-                date: dateStr.split('-').slice(1).join('/'),
+                date: `${day}/${m}/${y.slice(2)}`,
                 actual: !isFuture && totalLengthValue && totalLengthValue > 0 ? parseFloat(((cumulativeActual || 0) / totalLengthValue * 100).toFixed(2)) : null,
                 planned: parseFloat(planned.toFixed(2)),
                 autoProgress: autoProgress,
