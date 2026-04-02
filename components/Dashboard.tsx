@@ -257,14 +257,14 @@ const Dashboard: React.FC<DashboardProps> = ({
         const todayStr = new Date().toISOString().split('T')[0];
         
         // Initial cumulative: everything before start date
-        const initialCumulativeActual = (dailyProduction && dailyProduction.length > 0) 
-            ? dailyProduction.filter(dp => dp.date < startStr).reduce((acc, dp) => acc + dp.pipeMeters, 0)
-            : currentPipes.filter(p => (p.welderInfo?.weldDate || todayStr) < startStr).reduce((acc, p) => {
-                const pipingDone = 1 - (PIPING_REMAINING_FACTOR[p.status] ?? 1);
-                return acc + (p.length * pipingDone);
-            }, 0);
+        const initialCumulativeActual = currentPipes.filter(p => (p.welderInfo?.weldDate || todayStr) < startStr).reduce((acc, p) => {
+            const pipingDone = 1 - (PIPING_REMAINING_FACTOR[p.status] ?? 1);
+            return acc + (p.length * pipingDone);
+        }, 0);
 
         let cumulativeActual = initialCumulativeActual;
+        let cumulativePlanned = initialCumulativeActual; // Planned starts from current progress if we are planning the future
+        
         const totalLengthValue = totalLength;
         const initialProgressPct = totalLengthValue > 0 ? (initialCumulativeActual / totalLengthValue * 100) : 0;
 
@@ -288,35 +288,37 @@ const Dashboard: React.FC<DashboardProps> = ({
             d.setDate(d.getDate() + i);
             const dateStr = d.toISOString().split('T')[0];
             
-            // Actual production on this specific day
-            let dayProd = 0;
+            // Actual production on this specific day (Always from pipes)
+            const actualDayProd = currentPipes.filter(p => {
+                const d = p.welderInfo?.weldDate || todayStr;
+                return d === dateStr;
+            }).reduce((acc, p) => {
+                const pipingDone = 1 - (PIPING_REMAINING_FACTOR[p.status] ?? 1);
+                return acc + (p.length * pipingDone);
+            }, 0);
+            
+            cumulativeActual += actualDayProd;
+
+            // Planned (Sigmoid Curve or Daily Production)
+            let planned = 0;
             if (dailyProduction && dailyProduction.length > 0) {
                 const dp = dailyProduction.find(d => d.date === dateStr);
-                dayProd = dp ? dp.pipeMeters : 0;
+                if (dp) {
+                    cumulativePlanned += dp.pipeMeters;
+                }
+                planned = totalLengthValue > 0 ? (cumulativePlanned / totalLengthValue * 100) : 0;
             } else {
-                dayProd = currentPipes.filter(p => {
-                    const d = p.welderInfo?.weldDate || todayStr;
-                    return d === dateStr;
-                }).reduce((acc, p) => {
-                    const pipingDone = 1 - (PIPING_REMAINING_FACTOR[p.status] ?? 1);
-                    return acc + (p.length * pipingDone);
-                }, 0);
+                // Sigmoid fallback
+                const progressRatio = plotDays > 0 ? (i / plotDays) : 1;
+                const x = progressRatio * 10 - 5; // Range -5 to 5
+                const sigmoid = 1 / (1 + Math.exp(-x));
+                
+                const s0 = 1 / (1 + Math.exp(5)); // sigmoid(-5)
+                const s1 = 1 / (1 + Math.exp(-5)); // sigmoid(5)
+                const normalizedSigmoid = (sigmoid - s0) / (s1 - s0);
+                
+                planned = initialProgressPct + (normalizedSigmoid * (100 - initialProgressPct));
             }
-            cumulativeActual += dayProd;
-
-            // Planned (Sigmoid Curve) - Adjusted to start from initial progress
-            // We use a slightly less aggressive sigmoid for better realism
-            // If plotDays is 0, we avoid division by zero
-            const progressRatio = plotDays > 0 ? (i / plotDays) : 1;
-            const x = progressRatio * 10 - 5; // Range -5 to 5
-            const sigmoid = 1 / (1 + Math.exp(-x));
-            
-            // Normalize sigmoid to start at 0 and end at 1 within the plot window
-            const s0 = 1 / (1 + Math.exp(5)); // sigmoid(-5)
-            const s1 = 1 / (1 + Math.exp(-5)); // sigmoid(5)
-            const normalizedSigmoid = (sigmoid - s0) / (s1 - s0);
-            
-            const planned = initialProgressPct + (normalizedSigmoid * (100 - initialProgressPct));
 
             // Automatic Progression: Linear from initial progress to current total progress
             let autoProgress = null;

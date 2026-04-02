@@ -1424,6 +1424,7 @@ function AppContent() {
                     pipes={pipes}
                     prodSettings={prodSettings}
                     startDate={activityDate}
+                    dailyProduction={dailyProduction}
                     annotations={annotations}
                     deadlineDate={deadlineDate}
                 />

@@ -106,29 +106,11 @@ const DailyProductionModal: React.FC<DailyProductionModalProps> = ({
             return;
         }
 
-        // Paso A: Calcular esforço total (HH)
-        // Usamos os tubos que já foram executados para o "Realizado"
-        // E usamos todos os tubos para o "Planejado" (ideal)
-        
-        let totalPipingHH = 0;
-        let totalInsulationHH = 0;
-
-        currentPipes.forEach(p => {
-            // Esforço total do item (como se estivesse pendente)
-            const fullPipingHH = calculatePipeHH({ ...p, status: 'PENDING' as any }, prodSettings, true);
-            const fullInsulationHH = calculatePipeHH({ ...p, insulationStatus: 'PENDING' as any }, prodSettings, false);
-            
-            // Quanto já foi feito (Realizado)
-            const pipingDoneFactor = 1 - (PIPING_REMAINING_FACTOR[p.status] ?? 1);
-            const insulationDoneFactor = 1 - (INSULATION_REMAINING_FACTOR[p.insulationStatus || 'NONE'] ?? 1);
-            
-            totalPipingHH += fullPipingHH * pipingDoneFactor;
-            totalInsulationHH += fullInsulationHH * insulationDoneFactor;
-        });
-
-        // Aplicar margem de segurança global (15%)
-        totalPipingHH *= (1 + prodSettings.globalConfig.safetyBuffer);
-        totalInsulationHH *= (1 + prodSettings.globalConfig.safetyBuffer);
+        // Paso A: Calcular esforço total (HH) REMANESCENTE
+        // Usamos o calculateTotalHH que já considera o que falta fazer
+        const totalStats = calculateTotalHH(currentPipes, annotations, prodSettings);
+        let totalPipingHH = totalStats.totalPipingHH;
+        let totalInsulationHH = totalStats.totalInsulationHH;
 
         // Paso B: Capacidade Diária
         const dailyCapacityHH = calendar.teamCount * netHoursPerDay;
@@ -151,9 +133,9 @@ const DailyProductionModal: React.FC<DailyProductionModalProps> = ({
                 remainingInsulationHH -= dayInsulationHH;
             }
             
-            // Converter HH de volta para metros proporcionais
-            const totalPipeMeters = currentPipes.reduce((acc, p) => acc + (p.length * (1 - (PIPING_REMAINING_FACTOR[p.status] ?? 1))), 0);
-            const totalInsMeters = currentPipes.reduce((acc, p) => acc + (p.length * (1 - (INSULATION_REMAINING_FACTOR[p.insulationStatus || 'NONE'] ?? 1))), 0);
+            // Converter HH de volta para metros proporcionais (do que falta fazer)
+            const totalPipeMeters = currentPipes.reduce((acc, p) => acc + (p.length * (PIPING_REMAINING_FACTOR[p.status] ?? 1)), 0);
+            const totalInsMeters = currentPipes.reduce((acc, p) => acc + (p.length * (INSULATION_REMAINING_FACTOR[p.insulationStatus || 'NONE'] ?? 1)), 0);
             
             const pipeMeters = totalPipingHH > 0 ? (dayPipingHH / totalPipingHH) * totalPipeMeters : 0;
             const insulationMeters = totalInsulationHH > 0 ? (dayInsulationHH / totalInsulationHH) * totalInsMeters : 0;
@@ -464,7 +446,7 @@ const DailyProductionModal: React.FC<DailyProductionModalProps> = ({
                                     <span className="text-xl font-mono font-bold text-blue-400">{((workedDaysList.length * (netHoursPerDay || 0) * (calendar.teamCount || 0)).toFixed(1))} HH</span>
                                 </div>
                                 <div className="bg-slate-950 border border-slate-800 rounded-xl p-4">
-                                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Esforço Realizado (Saldo)</span>
+                                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Esforço Pendente (Saldo)</span>
                                     <span className="text-xl font-mono font-bold text-emerald-400">
                                         {((calculateTotalHH(currentPipes, annotations, prodSettings).totalHH || 0).toFixed(1))} HH
                                     </span>

@@ -16,22 +16,19 @@ interface ExportContainerProps {
   pipes: PipeSegment[];
   prodSettings: ProductivitySettings;
   startDate: string;
+  dailyProduction?: any[];
   annotations?: Annotation[];
   deadlineDate?: string | null;
 }
 
 export const ExportContainer: React.FC<ExportContainerProps> = ({
-  viewMode, reportStats, sceneScreenshot, secondaryImage, mapImage, projectClient, projectLocation, activityDate, pipes, prodSettings, startDate, annotations = [], deadlineDate
+  viewMode, reportStats, sceneScreenshot, secondaryImage, mapImage, projectClient, projectLocation, activityDate, pipes, prodSettings, startDate, dailyProduction = [], annotations = [], deadlineDate
 }) => {
   const progress = useMemo(() => {
       const pipingTotalLength = pipes.reduce((acc, p) => acc + (p.length || 0), 0);
       const completedWeight = pipes.reduce((acc, p) => {
-          const isCompleted = ['WELDED', 'HYDROTEST', 'FINISHED'].includes(p.status);
-          if (isCompleted) {
-              const weight = (p.status === 'WELDED' ? 0.8 : p.status === 'HYDROTEST' ? 1.0 : 0.3) * (p.length || 0);
-              return acc + weight;
-          }
-          return acc;
+          const pipingDone = 1 - (PIPING_REMAINING_FACTOR[p.status] ?? 1);
+          return acc + (p.length * pipingDone);
       }, 0);
       return pipingTotalLength > 0 ? (completedWeight / pipingTotalLength) * 100 : 0;
   }, [pipes]);
@@ -44,7 +41,7 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
     const startStr = (startDate || new Date().toISOString().split('T')[0]);
     const todayStr = new Date().toISOString().split('T')[0];
     
-    let cumulativeActual = pipes
+    const initialCumulativeActual = pipes
         .filter(p => {
             const d = p.welderInfo?.weldDate || todayStr;
             return d < startStr;
@@ -54,7 +51,11 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
             return acc + (p.length * pipingDone);
         }, 0);
 
-    const days = reportStats.daysNeeded || 30;
+    let cumulativeActual = initialCumulativeActual;
+    let cumulativePlanned = initialCumulativeActual;
+    
+    const initialProgressPct = totalLengthValue > 0 ? (initialCumulativeActual / totalLengthValue * 100) : 0;
+
     const start = new Date(startStr + 'T12:00:00');
     
     let plotDays = reportStats.daysNeeded || 30;
@@ -81,13 +82,28 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
         }, 0);
         cumulativeActual += dayProd;
 
-        const x = (i / (plotDays || 1)) * 12 - 6;
-        const sigmoid = 1 / (1 + Math.exp(-x));
-        const planned = sigmoid * 100; // Percentage
+        let planned = 0;
+        if (dailyProduction && dailyProduction.length > 0) {
+            const dp = dailyProduction.find(d => d.date === dateStr);
+            if (dp) {
+                cumulativePlanned += dp.pipeMeters;
+            }
+            planned = totalLengthValue > 0 ? (cumulativePlanned / totalLengthValue * 100) : 0;
+        } else {
+            const x = (i / (plotDays || 1)) * 10 - 5;
+            const sigmoid = 1 / (1 + Math.exp(-x));
+            
+            const s0 = 1 / (1 + Math.exp(5));
+            const s1 = 1 / (1 + Math.exp(-5));
+            const normalizedSigmoid = (sigmoid - s0) / (s1 - s0);
+            
+            planned = initialProgressPct + (normalizedSigmoid * (100 - initialProgressPct));
+        }
 
         let autoProgress = null;
         if (dateStr <= todayStr) {
-            autoProgress = parseFloat((Math.min(i / daysSinceStart, 1) * progress).toFixed(2));
+            const linearFactor = Math.min(i / daysSinceStart, 1);
+            autoProgress = parseFloat((initialProgressPct + (linearFactor * (progress - initialProgressPct))).toFixed(2));
         }
 
         let milestone = null;
