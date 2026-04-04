@@ -113,7 +113,18 @@ const DailyProductionModal: React.FC<DailyProductionModalProps> = ({
         let totalInsulationHH = totalStats.totalInsulationHH;
 
         // Paso B: Capacidade Diária
-        const dailyCapacityHH = calendar.teamCount * netHoursPerDay;
+        const maxDailyCapacityHH = calendar.teamCount * netHoursPerDay;
+        
+        // Calcular a capacidade necessária para distribuir uniformemente pelo período
+        const totalNeededHH = totalPipingHH + totalInsulationHH;
+        const requiredDailyHH = workedDaysList.length > 0 ? totalNeededHH / workedDaysList.length : 0;
+        
+        // Usamos o menor entre a capacidade máxima e a necessária para espalhar
+        // Se a necessária for maior que a máxima, usamos a máxima (vai terminar o quanto antes, mas dentro do limite físico)
+        // Se a necessária for menor que a máxima, usamos a necessária para ocupar todo o tempo (reorganizar)
+        const dailyCapacityHH = (requiredDailyHH > 0 && requiredDailyHH < maxDailyCapacityHH) 
+            ? requiredDailyHH 
+            : maxDailyCapacityHH;
         
         // Paso C: Distribuir
         // Lógica: Primeiro Piping, depois Insulation.
