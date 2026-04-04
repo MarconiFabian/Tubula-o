@@ -260,6 +260,30 @@ function AppContent() {
   const [isDBModalOpen, setIsDBModalOpen] = useState(false);
   const [savedProjects, setSavedProjects] = useState<any[]>([]);
   const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>([]);
+
+  const aggregatedData = useMemo(() => {
+    if (selectedProjectIds.length === 0) {
+      return { pipes, annotations };
+    }
+
+    let allPipes = [...pipes];
+    let allAnnotations = [...annotations];
+
+    selectedProjectIds.forEach(id => {
+      const project = savedProjects.find(p => p.id === id);
+      if (project) {
+        const projectPipes = project.pipes.map(p => ({
+          ...p,
+          name: `[${project.name}] ${p.name}`,
+          id: `${project.id}-${p.id}`
+        }));
+        allPipes = [...allPipes, ...projectPipes];
+        allAnnotations = [...allAnnotations, ...project.annotations];
+      }
+    });
+
+    return { pipes: allPipes, annotations: allAnnotations };
+  }, [pipes, annotations, selectedProjectIds, savedProjects]);
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(() => {
     return safeStorage.getItem('iso-manager-current-project-id');
   });
@@ -613,6 +637,10 @@ function AppContent() {
   }, [currentUser]);
 
   useEffect(() => {
+      refreshProjects();
+  }, [refreshProjects]);
+
+  useEffect(() => {
       if (isDBModalOpen) {
           refreshProjects();
       }
@@ -636,7 +664,8 @@ function AppContent() {
               dailyProduction: overrides?.dailyProduction || dailyProduction,
               activityDate: overrides?.activityDate || activityDate,
               deadlineDate: overrides?.deadlineDate || deadlineDate,
-              projectCalendar: overrides?.projectCalendar || projectCalendar
+              projectCalendar: overrides?.projectCalendar || projectCalendar,
+              prodSettings: overrides?.prodSettings || prodSettings
           };
           await saveProjectToDB(projectData);
           await refreshProjects();
@@ -658,6 +687,7 @@ function AppContent() {
           setSecondaryImage(project.secondaryImage || null);
           setMapImage(project.mapImage || null);
           setDailyProduction(project.dailyProduction || []);
+          setProdSettings(project.prodSettings || DEFAULT_PROD_SETTINGS);
           setActivityDate(project.activityDate || new Date().toISOString().split('T')[0]);
           setDeadlineDate(project.deadlineDate || new Date(new Date().getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
           setProjectCalendar(project.projectCalendar || null);
@@ -1368,11 +1398,11 @@ function AppContent() {
         <DailyProductionModal 
             isOpen={isDailyProductionModalOpen}
             onClose={() => setIsDailyProductionModalOpen(false)}
-            currentPipes={pipes}
+            currentPipes={aggregatedData.pipes}
             dailyProduction={dailyProduction}
             projectCalendar={projectCalendar}
             prodSettings={prodSettings}
-            annotations={annotations}
+            annotations={aggregatedData.annotations}
             onSave={(data, calendar) => {
                 setDailyProduction(data);
                 setProjectCalendar(calendar);
@@ -1473,7 +1503,7 @@ function AppContent() {
                         </div>
                     </div>
                 </div>
-                {viewMode === 'dashboard' && (<div className="absolute inset-0 z-50 bg-slate-950/95 backdrop-blur-sm overflow-y-auto p-4 animate-in fade-in"><div className="max-w-[1600px] mx-auto h-full"><Dashboard pipes={pipes} annotations={annotations} onExportPDF={handleExportPDF} isExporting={isExporting} secondaryImage={secondaryImage} onUploadSecondary={setSecondaryImage} mapImage={mapImage} onUploadMap={setMapImage} sceneScreenshot={sceneScreenshot} onSelectPipe={handleSelectPipe} selectedIds={selectedIds} onSetSelection={handleSetSelection} prodSettings={prodSettings} startDate={activityDate} deadlineDate={deadlineDate} savedProjects={savedProjects} selectedProjectIds={selectedProjectIds} onSetSelectedProjectIds={setSelectedProjectIds} dailyProduction={dailyProduction} onUpdateDailyProduction={setDailyProduction} onOpenDailyProduction={() => setIsDailyProductionModalOpen(true)} /></div></div>)}
+                {viewMode === 'dashboard' && (<div className="absolute inset-0 z-50 bg-slate-950/95 backdrop-blur-sm overflow-y-auto p-4 animate-in fade-in"><div className="max-w-[1600px] mx-auto h-full"><Dashboard pipes={aggregatedData.pipes} annotations={aggregatedData.annotations} onExportPDF={handleExportPDF} isExporting={isExporting} secondaryImage={secondaryImage} onUploadSecondary={setSecondaryImage} mapImage={mapImage} onUploadMap={setMapImage} sceneScreenshot={sceneScreenshot} onSelectPipe={handleSelectPipe} selectedIds={selectedIds} onSetSelection={handleSetSelection} prodSettings={prodSettings} startDate={activityDate} deadlineDate={deadlineDate} savedProjects={savedProjects} selectedProjectIds={selectedProjectIds} onSetSelectedProjectIds={setSelectedProjectIds} dailyProduction={dailyProduction} onUpdateDailyProduction={setDailyProduction} onOpenDailyProduction={() => setIsDailyProductionModalOpen(true)} /></div></div>)}
             </div>
             {selectedPipes.length > 0 && !isDrawing && !pastePreview && (
                 <div className="w-96 relative z-20 shadow-2xl border-l border-slate-700">

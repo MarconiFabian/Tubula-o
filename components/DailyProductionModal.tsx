@@ -462,10 +462,22 @@ const DailyProductionModal: React.FC<DailyProductionModalProps> = ({
                                 </div>
                                 <div className="bg-slate-950 border border-slate-800 rounded-xl p-4">
                                     <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Esforço Pendente (Saldo)</span>
-                                    <span className="text-xl font-mono font-bold text-emerald-400">
+                                    <span className={`text-xl font-mono font-bold ${currentPipes.length === 0 ? 'text-red-500' : 'text-emerald-400'}`}>
                                         {((calculateTotalHH(currentPipes, annotations, prodSettings).totalHH || 0).toFixed(1))} HH
                                     </span>
+                                    {currentPipes.length === 0 && (
+                                        <span className="text-[8px] text-red-400 block mt-1 uppercase font-bold">Nenhum tubo carregado no projeto</span>
+                                    )}
                                 </div>
+                            </div>
+
+                            <div className="bg-slate-900/50 border border-slate-800 p-4 rounded-xl">
+                                <h4 className="text-[10px] font-bold text-blue-400 uppercase tracking-widest mb-2 flex items-center gap-2">
+                                    <Calculator size={14} /> MOTOR DE CÁLCULO NATIVO
+                                </h4>
+                                <p className="text-[10px] text-slate-500 leading-relaxed">
+                                    A distribuição de HH é realizada através de algoritmos matemáticos locais (Curva Sigmóide para o futuro e Linear para o passado). Não há uso de inteligência artificial externa para estes cálculos, garantindo estabilidade e precisão no ambiente de produção (Vercel).
+                                </p>
                             </div>
 
                             {editedProduction.length > 0 ? (

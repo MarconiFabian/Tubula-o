@@ -4,7 +4,6 @@ import { PipeSegment, ProductivitySettings, Annotation, DailyProduction, Accesso
 import { ProjectData } from '../utils/db';
 import { STATUS_COLORS, STATUS_LABELS, ALL_STATUSES, INSULATION_COLORS, INSULATION_LABELS, ALL_INSULATION_STATUSES, PIPING_REMAINING_FACTOR, INSULATION_REMAINING_FACTOR, HOURS_PER_DAY } from '../constants';
 import { Activity, FileDown, Upload, Image as ImageIcon, Map as MapIcon, Layers, Shield, Ruler, Package, AlertCircle, Search, Filter, ClipboardList, UserCog, Calendar, CheckSquare, TrendingUp, Timer, Users, Target, BarChart3, Database, ChevronDown, Check, Zap, Calculator, LayoutDashboard } from 'lucide-react';
-import SmartInsights from './SmartInsights';
 import ProjectTimeline from './ProjectTimeline';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area, ReferenceDot, BarChart, Bar, Cell, ComposedChart } from 'recharts';
 import { getWorkingEndDate, getWorkingDaysBetween } from '../utils/planning';
@@ -68,31 +67,6 @@ const Dashboard: React.FC<DashboardProps> = ({
   const secInputRef = useRef<HTMLInputElement>(null);
   const mapInputRef = useRef<HTMLInputElement>(null);
 
-  const aggregatedData = useMemo(() => {
-    if (selectedProjectIds.length === 0) {
-      return { pipes, annotations };
-    }
-
-    let allPipes = [...pipes];
-    let allAnnotations = [...annotations];
-
-    selectedProjectIds.forEach(id => {
-      const project = savedProjects.find(p => p.id === id);
-      if (project) {
-        // Add project name as prefix to pipe names to distinguish them
-        const projectPipes = project.pipes.map(p => ({
-          ...p,
-          name: `[${project.name}] ${p.name}`,
-          id: `${project.id}-${p.id}` // Ensure unique IDs
-        }));
-        allPipes = [...allPipes, ...projectPipes];
-        allAnnotations = [...allAnnotations, ...project.annotations];
-      }
-    });
-
-    return { pipes: allPipes, annotations: allAnnotations };
-  }, [pipes, annotations, selectedProjectIds, savedProjects]);
-
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>, setter?: (val: string | null) => void) => {
       const file = e.target.files?.[0];
       if (file && setter) {
@@ -105,8 +79,8 @@ const Dashboard: React.FC<DashboardProps> = ({
   const todayStr = new Date().toISOString().split('T')[0];
 
   const stats = useMemo(() => {
-    const currentPipes = aggregatedData.pipes;
-    const currentAnnotations = aggregatedData.annotations;
+    const currentPipes = pipes;
+    const currentAnnotations = annotations;
 
     const totalLength = currentPipes.reduce((acc, p) => acc + (p?.length || 0), 0);
     const totalPipes = currentPipes.length;
@@ -364,10 +338,10 @@ const Dashboard: React.FC<DashboardProps> = ({
     });
 
     return { totalLength, totalPipes, pipeCounts, pipeLengths, insulationCounts, insulationLengths, bom, progress, sortedDailyProd, sCurveData, totalHH: finalTotalHH, annotationHH, annotationBreakdown, totalTeams: avgTeams, projectedEnd, daysNeeded, deadlineStats, pipingTotalLength, pipingRemainingLength, pipingExecutedLength, insulationTotalLength, insulationRemainingLength, insulationExecutedLength, componentStats };
-  }, [pipes, annotations, startDate, prodSettings, deadlineDate, aggregatedData]);
+  }, [pipes, annotations, startDate, prodSettings, deadlineDate]);
 
   const filteredPipes = useMemo(() => {
-      return aggregatedData.pipes.filter(p => {
+      return pipes.filter(p => {
           const matchesSearch = 
             p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
             p.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -376,7 +350,7 @@ const Dashboard: React.FC<DashboardProps> = ({
           const matchesStatus = statusFilter === 'ALL' || p.status === statusFilter;
           return matchesSearch && matchesStatus;
       });
-  }, [aggregatedData.pipes, searchTerm, statusFilter]);
+  }, [pipes, searchTerm, statusFilter]);
 
   const allFilteredSelected = filteredPipes.length > 0 && filteredPipes.every(p => selectedIds.includes(p.id));
   
@@ -403,10 +377,18 @@ const Dashboard: React.FC<DashboardProps> = ({
                  </div>
                  <div>
                      <h2 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">CONTROLE DE MISSÃO <span className="text-[10px] bg-blue-600 px-1.5 py-0.5 rounded text-white font-mono">LIVE</span></h2>
-                     <p className="text-slate-500 text-[10px] font-mono uppercase tracking-widest">Sistema de Gerenciamento de Tubulação Industrial v2.0</p>
+                     <p className="text-slate-500 text-[10px] font-mono uppercase tracking-widest">Sistema Nativo de Gerenciamento Industrial (Cálculos Matemáticos Locais)</p>
                  </div>
              </div>
              <div className="flex gap-4 items-center">
+                  <button 
+                    onClick={() => window.location.reload()} 
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg border border-slate-800 bg-slate-950 text-slate-500 hover:text-blue-400 hover:border-blue-500/30 transition-all h-10 font-mono text-[10px] uppercase tracking-widest"
+                    title="Recarregar dados e forçar recálculo nativo"
+                  >
+                    <Calculator size={14} />
+                    Recalcular
+                  </button>
                   {/* PROJECT MULTI-SELECTOR */}
                   {!exportMode && savedProjects.length > 0 && (
                       <div className="relative">
@@ -911,17 +893,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
               {!exportMode && (
                 <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
-                  <div className="col-span-12 md:col-span-8">
-                    <SmartInsights 
-                      pipes={pipes}
-                      annotations={annotations || []}
-                      settings={prodSettings || ({} as any)}
-                      production={dailyProduction || []}
-                      progress={stats.progress}
-                      totalHH={stats.totalHH}
-                    />
-                  </div>
-                  <div className="col-span-12 md:col-span-4">
+                  <div className="col-span-12 md:col-span-12">
                     <ProjectTimeline pipes={pipes} />
                   </div>
                 </div>
@@ -1157,7 +1129,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                               <Calendar size={14}/> CRONOGRAMA DE EXECUÇÃO (GANTT SIMPLIFICADO)
                           </h3>
                           <div className="space-y-2 max-h-64 overflow-y-auto pr-2">
-                              {aggregatedData.pipes.slice(0, 15).map((p, idx) => {
+                              {pipes.slice(0, 15).map((p, idx) => {
                                   const pipingF = PIPING_REMAINING_FACTOR[p.status] ?? 1;
                                   const hasInsulation = p.insulationStatus && p.insulationStatus !== 'NONE';
                                   const insF = hasInsulation ? (INSULATION_REMAINING_FACTOR[p.insulationStatus] ?? 1) : 0;
@@ -1191,9 +1163,9 @@ const Dashboard: React.FC<DashboardProps> = ({
                                       </div>
                                   );
                               })}
-                              {aggregatedData.pipes.length > 15 && (
+                              {pipes.length > 15 && (
                                   <div className="text-center text-[9px] text-slate-600 font-mono uppercase pt-2">
-                                      + {aggregatedData.pipes.length - 15} itens ocultos
+                                      + {pipes.length - 15} itens ocultos
                                   </div>
                               )}
                           </div>
@@ -1328,14 +1300,14 @@ const Dashboard: React.FC<DashboardProps> = ({
                                   </div>
                               )}
 
-                              {aggregatedData.pipes.some(p => p.planningFactors?.weatherExposed) && (
+                              {pipes.some(p => p.planningFactors?.weatherExposed) && (
                                   <div className="bg-cyan-500/10 border border-cyan-500/20 p-3 rounded-lg flex gap-3">
                                       <Activity className="text-cyan-500 shrink-0" size={16} />
                                       <p className="text-[10px] text-cyan-200 leading-relaxed">Exposição climática detectada. Fator de produtividade reduzido em {((prodSettings?.globalConfig.weatherFactor || 0) * 100).toFixed(0)}%.</p>
                                   </div>
                               )}
 
-                              {aggregatedData.pipes.some(p => p.planningFactors?.materialAvailable === false) && (
+                              {pipes.some(p => p.planningFactors?.materialAvailable === false) && (
                                   <div className="bg-orange-500/10 border border-orange-500/20 p-3 rounded-lg flex gap-3">
                                       <Package className="text-orange-500 shrink-0" size={16} />
                                       <p className="text-[10px] text-orange-200 leading-relaxed">Falta de material em campo. Impacto crítico no cronograma (+{((prodSettings?.globalConfig.materialDelayFactor || 0) * 100).toFixed(0)}%).</p>
