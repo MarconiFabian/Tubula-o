@@ -101,64 +101,68 @@ const DailyProductionModal: React.FC<DailyProductionModalProps> = ({
     }, [calendar]);
 
     const handleCalculate = () => {
-        if (workedDaysList.length === 0) {
-            alert("Nenhum dia de trabalho selecionado no período.");
-            return;
-        }
+        const todayStr = new Date().toISOString().split('T')[0];
+        
+        // 1. Totais de Tubulação e Isolamento (Executado vs Remanescente)
+        const totalPipingMeters = currentPipes.reduce((acc, p) => acc + (p.length || 0), 0);
+        const totalExecutedPiping = currentPipes.reduce((acc, p) => {
+            const pipingDone = 1 - (PIPING_REMAINING_FACTOR[p.status] ?? 1);
+            return acc + (p.length * pipingDone);
+        }, 0);
+        const totalRemainingPiping = totalPipingMeters - totalExecutedPiping;
 
-        // Paso A: Calcular esforço total (HH) REMANESCENTE
-        // Usamos o calculateTotalHH que já considera o que falta fazer
-        const totalStats = calculateTotalHH(currentPipes, annotations, prodSettings);
-        let totalPipingHH = totalStats.totalPipingHH;
-        let totalInsulationHH = totalStats.totalInsulationHH;
+        const totalInsulationMeters = currentPipes.filter(p => p.insulationStatus && p.insulationStatus !== 'NONE')
+            .reduce((acc, p) => acc + (p.length || 0), 0);
+        const totalExecutedInsulation = currentPipes.reduce((acc, p) => {
+            const insDone = 1 - (INSULATION_REMAINING_FACTOR[p.insulationStatus || 'NONE'] ?? 1);
+            return acc + (p.length * insDone);
+        }, 0);
+        const totalRemainingInsulation = totalInsulationMeters - totalExecutedInsulation;
 
-        // Paso B: Capacidade Diária
-        const maxDailyCapacityHH = calendar.teamCount * netHoursPerDay;
-        
-        // Calcular a capacidade necessária para distribuir uniformemente pelo período
-        const totalNeededHH = totalPipingHH + totalInsulationHH;
-        const requiredDailyHH = workedDaysList.length > 0 ? totalNeededHH / workedDaysList.length : 0;
-        
-        // Usamos o menor entre a capacidade máxima e a necessária para espalhar
-        // Se a necessária for maior que a máxima, usamos a máxima (vai terminar o quanto antes, mas dentro do limite físico)
-        // Se a necessária for menor que a máxima, usamos a necessária para ocupar todo o tempo (reorganizar)
-        const dailyCapacityHH = (requiredDailyHH > 0 && requiredDailyHH < maxDailyCapacityHH) 
-            ? requiredDailyHH 
-            : maxDailyCapacityHH;
-        
-        // Paso C: Distribuir
-        // Lógica: Primeiro Piping, depois Insulation.
-        
-        let remainingPipingHH = totalPipingHH;
-        let remainingInsulationHH = totalInsulationHH;
-        
-        const newData: DailyProduction[] = workedDaysList.map(date => {
-            let dayPipingHH = Math.min(remainingPipingHH, dailyCapacityHH);
-            remainingPipingHH -= dayPipingHH;
-            
-            let dayInsulationHH = 0;
-            let remainingCapacity = dailyCapacityHH - dayPipingHH;
-            
-            if (remainingCapacity > 0 && remainingPipingHH <= 0) {
-                dayInsulationHH = Math.min(remainingInsulationHH, remainingCapacity);
-                remainingInsulationHH -= dayInsulationHH;
-            }
-            
-            // Converter HH de volta para metros proporcionais (do que falta fazer)
-            const totalPipeMeters = currentPipes.reduce((acc, p) => acc + (p.length * (PIPING_REMAINING_FACTOR[p.status] ?? 1)), 0);
-            const totalInsMeters = currentPipes.reduce((acc, p) => acc + (p.length * (INSULATION_REMAINING_FACTOR[p.insulationStatus || 'NONE'] ?? 1)), 0);
-            
-            const pipeMeters = totalPipingHH > 0 ? (dayPipingHH / totalPipingHH) * totalPipeMeters : 0;
-            const insulationMeters = totalInsulationHH > 0 ? (dayInsulationHH / totalInsulationHH) * totalInsMeters : 0;
+        // 2. Identificar dias de trabalho (Passado e Futuro)
+        const allWorkedDays = workedDaysList;
+        const pastWorkedDays = allWorkedDays.filter(d => d <= todayStr);
+        const futureWorkedDays = allWorkedDays.filter(d => d > todayStr);
 
-            return {
-                date,
-                pipeMeters: parseFloat(((pipeMeters || 0).toFixed(2))),
-                insulationMeters: parseFloat(((insulationMeters || 0).toFixed(2)))
+        // 3. Distribuição do PASSADO (Linear do que já foi feito)
+        const pastData: DailyProduction[] = pastWorkedDays.map(date => ({
+            date,
+            pipeMeters: pastWorkedDays.length > 0 ? parseFloat((totalExecutedPiping / pastWorkedDays.length).toFixed(2)) : 0,
+            insulationMeters: pastWorkedDays.length > 0 ? parseFloat((totalExecutedInsulation / pastWorkedDays.length).toFixed(2)) : 0
+        }));
+
+        // 4. Distribuição do FUTURO (Curva S / Sigmoide do que falta fazer)
+        const start = new Date(calendar.startDate + 'T12:00:00');
+        const end = new Date(calendar.endDate + 'T12:00:00');
+        const totalDays = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
+
+        const getPlannedWeight = (dateStr: string) => {
+            const d = new Date(dateStr + 'T12:00:00');
+            const dayIdx = Math.floor((d.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+            
+            const getSigmoid = (idx: number) => {
+                const progressRatio = Math.max(0, Math.min(1, idx / totalDays));
+                const x = progressRatio * 10 - 5;
+                const sigmoid = 1 / (1 + Math.exp(-x));
+                const sMin = 1 / (1 + Math.exp(5));
+                const sMax = 1 / (1 + Math.exp(-5));
+                return (sigmoid - sMin) / (sMax - sMin);
             };
-        });
 
-        setEditedProduction(newData);
+            return getSigmoid(dayIdx) - getSigmoid(dayIdx - 1);
+        };
+
+        // Calcular pesos totais dos dias futuros para normalização
+        const futureWeights = futureWorkedDays.map(d => getPlannedWeight(d));
+        const totalFutureWeight = futureWeights.reduce((acc, w) => acc + w, 0) || 1;
+
+        const futureData: DailyProduction[] = futureWorkedDays.map((date, idx) => ({
+            date,
+            pipeMeters: parseFloat(((futureWeights[idx] / totalFutureWeight) * totalRemainingPiping).toFixed(2)),
+            insulationMeters: parseFloat(((futureWeights[idx] / totalFutureWeight) * totalRemainingInsulation).toFixed(2))
+        }));
+
+        setEditedProduction([...pastData, ...futureData]);
         setActiveTab('PREVIEW');
     };
 

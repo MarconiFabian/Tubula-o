@@ -102,6 +102,8 @@ const Dashboard: React.FC<DashboardProps> = ({
       }
   };
 
+  const todayStr = new Date().toISOString().split('T')[0];
+
   const stats = useMemo(() => {
     const currentPipes = aggregatedData.pipes;
     const currentAnnotations = aggregatedData.annotations;
@@ -147,7 +149,6 @@ const Dashboard: React.FC<DashboardProps> = ({
 
     // Daily Productivity Calculation
     const dailyProd: Record<string, number> = {};
-    const todayStr = new Date().toISOString().split('T')[0];
     currentPipes.forEach(p => {
         const isCompleted = ['WELDED', 'HYDROTEST', 'FINISHED'].includes(p.status);
         if (isCompleted) {
@@ -255,20 +256,16 @@ const Dashboard: React.FC<DashboardProps> = ({
     if (currentPipes.length > 0) {
         const startStr = (startDate || new Date().toISOString().split('T')[0]);
         const todayStr = new Date().toISOString().split('T')[0];
+        const totalLengthValue = totalLength;
         
-        // Initial cumulative: everything before start date
-        const initialCumulativeActual = currentPipes.filter(p => (p.welderInfo?.weldDate || todayStr) < startStr).reduce((acc, p) => {
+        // 1. Calculate Total Executed so far (from all pipes)
+        const totalExecutedMeters = currentPipes.reduce((acc, p) => {
             const pipingDone = 1 - (PIPING_REMAINING_FACTOR[p.status] ?? 1);
             return acc + (p.length * pipingDone);
         }, 0);
+        const totalProgressPct = totalLengthValue > 0 ? (totalExecutedMeters / totalLengthValue * 100) : 0;
 
-        let cumulativeActual = initialCumulativeActual;
-        let cumulativePlanned = initialCumulativeActual; // Planned starts from current progress if we are planning the future
-        
-        const totalLengthValue = totalLength;
-        const initialProgressPct = totalLengthValue > 0 ? (initialCumulativeActual / totalLengthValue * 100) : 0;
-
-        // Theoretical Planned Curve
+        // 2. Dates and Duration
         const start = new Date(startStr + 'T12:00:00');
         const today = new Date(todayStr + 'T12:00:00');
         
@@ -279,53 +276,42 @@ const Dashboard: React.FC<DashboardProps> = ({
             plotDays = Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
         }
 
-        // Calculate Automatic Progression (Linear from start to today based on current total progress)
-        const totalProgressValue = progress; // Current total %
+        // Days since start to today (for actual distribution)
         const daysSinceStart = Math.max(1, Math.floor((today.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
+
+        let cumulativePlanned = 0;
+        let cumulativeActualMeters = 0;
 
         for (let i = 0; i <= plotDays; i++) {
             const d = new Date(start);
             d.setDate(d.getDate() + i);
             const dateStr = d.toISOString().split('T')[0];
+            const isFuture = dateStr > todayStr;
             
-            // Actual production on this specific day (Always from pipes)
-            const actualDayProd = currentPipes.filter(p => {
-                const d = p.welderInfo?.weldDate || todayStr;
-                return d === dateStr;
-            }).reduce((acc, p) => {
-                const pipingDone = 1 - (PIPING_REMAINING_FACTOR[p.status] ?? 1);
-                return acc + (p.length * pipingDone);
-            }, 0);
-            
-            cumulativeActual += actualDayProd;
-
-            // Planned (Sigmoid Curve or Daily Production)
-            let planned = 0;
-            if (dailyProduction && dailyProduction.length > 0) {
-                const dp = dailyProduction.find(d => d.date === dateStr);
-                if (dp) {
-                    cumulativePlanned += dp.pipeMeters;
+            // 1. Actual (Realizado): Use table data if available, otherwise linear fallback
+            // Rule: Ends exactly on the current date (today)
+            let actual = null;
+            if (!isFuture) {
+                const dpForDate = dailyProduction.find(d => d.date === dateStr);
+                if (dpForDate) {
+                    cumulativeActualMeters += dpForDate.pipeMeters;
+                    actual = totalLengthValue > 0 ? (cumulativeActualMeters / totalLengthValue * 100) : 0;
+                } else {
+                    // Fallback to linear if no data in table for this past date
+                    const linearFactor = daysSinceStart > 0 ? Math.min(i / daysSinceStart, 1) : 1;
+                    actual = parseFloat((linearFactor * totalProgressPct).toFixed(2));
                 }
-                planned = totalLengthValue > 0 ? (cumulativePlanned / totalLengthValue * 100) : 0;
-            } else {
-                // Sigmoid fallback
-                const progressRatio = plotDays > 0 ? (i / plotDays) : 1;
-                const x = progressRatio * 10 - 5; // Range -5 to 5
-                const sigmoid = 1 / (1 + Math.exp(-x));
-                
-                const s0 = 1 / (1 + Math.exp(5)); // sigmoid(-5)
-                const s1 = 1 / (1 + Math.exp(-5)); // sigmoid(5)
-                const normalizedSigmoid = (sigmoid - s0) / (s1 - s0);
-                
-                planned = initialProgressPct + (normalizedSigmoid * (100 - initialProgressPct));
             }
 
-            // Automatic Progression: Linear from initial progress to current total progress
-            let autoProgress = null;
-            if (dateStr <= todayStr) {
-                const linearFactor = Math.min(i / daysSinceStart, 1);
-                autoProgress = parseFloat((initialProgressPct + (linearFactor * (totalProgressValue - initialProgressPct))).toFixed(2));
-            }
+            // 2. Planned (Planejado): ALWAYS Sigmoid S-Curve (Baseline)
+            // Rule: Affected by start/end date, reprogrammed if dates change, stable shape.
+            const progressRatio = plotDays > 0 ? (i / plotDays) : 1;
+            const x = progressRatio * 10 - 5; // Range -5 to 5 for Sigmoid
+            const sigmoid = 1 / (1 + Math.exp(-x));
+            const sMin = 1 / (1 + Math.exp(5));
+            const sMax = 1 / (1 + Math.exp(-5));
+            const normalizedSigmoid = (sigmoid - sMin) / (sMax - sMin);
+            const planned = normalizedSigmoid * 100;
 
             // Milestones
             let milestone = null;
@@ -334,24 +320,17 @@ const Dashboard: React.FC<DashboardProps> = ({
             if (i === Math.round(plotDays * 0.75)) milestone = "75%";
             if (i === plotDays) milestone = "100%";
 
-            // Only show actual if date is <= today
-            const isFuture = dateStr > todayStr;
-
             const dp = dailyProduction.find(d => d.date === dateStr);
 
             const [y, m, day] = dateStr.split('-');
             sCurveData.push({
                 date: `${day}/${m}/${y.slice(2)}`,
-                actual: !isFuture && totalLengthValue && totalLengthValue > 0 ? parseFloat(((cumulativeActual || 0) / totalLengthValue * 100).toFixed(2)) : null,
+                actual: actual,
                 planned: parseFloat(planned.toFixed(2)),
-                autoProgress: autoProgress,
-                actualMeters: parseFloat((cumulativeActual || 0).toFixed(2)),
+                actualMeters: actual ? parseFloat(((actual / 100) * totalLengthValue).toFixed(2)) : 0,
                 plannedMeters: parseFloat(((planned / 100) * totalLengthValue).toFixed(2)),
                 pipingProgress: dp?.pipingProgress ?? null,
-                insulationProgress: dp?.insulationProgress ?? null,
-                totalProgress: dp?.totalProgress ?? null,
-                plannedTotalProgress: parseFloat(planned.toFixed(2)),
-                milestone,
+                milestone: milestone,
                 isLastActual: dateStr === todayStr
             });
         }
@@ -1057,6 +1036,15 @@ const Dashboard: React.FC<DashboardProps> = ({
                                       />
                                       <Area type="monotone" dataKey="planned" stroke="#3b82f6" strokeWidth={3} fillOpacity={1} fill="url(#colorPlanned)" dot={false} />
                                       <Area type="monotone" dataKey="actual" stroke="#22c55e" strokeWidth={3} fillOpacity={1} fill="url(#colorActual)" dot={{ r: 4, fill: '#22c55e' }} />
+                                      
+                                      {/* Today Reference Line */}
+                                      <ReferenceDot 
+                                          x={stats.sCurveData.find(d => d.isLastActual)?.date} 
+                                          y={0} 
+                                          r={0} 
+                                          label={{ position: 'top', value: 'HOJE', fill: '#ef4444', fontSize: 10, fontWeight: 'bold' }} 
+                                      />
+
                                       {stats.sCurveData.filter(d => d.milestone).map((d, idx) => (
                                           <ReferenceDot 
                                               key={idx} 
