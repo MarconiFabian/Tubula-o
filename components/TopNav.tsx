@@ -8,8 +8,6 @@ interface TopNavProps {
   setProjectLocation: (v: string) => void;
   activityDate: string;
   setActivityDate: (v: string) => void;
-  currentUser: string | null;
-  handleLogout: () => void;
   setIsDBModalOpen: (v: boolean) => void;
   viewMode: '3d' | 'dashboard' | 'planning';
   setViewMode: (v: '3d' | 'dashboard' | 'planning') => void;
@@ -29,7 +27,6 @@ export const TopNav: React.FC<TopNavProps> = ({
   projectClient, setProjectClient,
   projectLocation, setProjectLocation,
   activityDate, setActivityDate,
-  currentUser, handleLogout,
   setIsDBModalOpen,
   viewMode, setViewMode,
   setIsDrawing,
@@ -100,19 +97,6 @@ export const TopNav: React.FC<TopNavProps> = ({
       </div>
 
       <div className="flex items-center gap-2 flex-shrink-0">
-        <div className="hidden xl:flex flex-col items-end mr-2">
-          <span className="text-[9px] text-slate-600 font-black uppercase tracking-widest">Operador</span>
-          <span className="text-xs font-bold text-blue-400 leading-none">{currentUser}</span>
-        </div>
-        
-        <button 
-          onClick={handleLogout}
-          className="p-2 text-slate-500 hover:text-red-400 hover:bg-red-400/10 rounded-xl transition-all border border-transparent hover:border-red-400/20"
-          title="Sair do Sistema"
-        >
-          <LogOut size={18} />
-        </button>
-        
         <div className="h-6 w-px bg-slate-800 mx-1"></div>
         
         <button 

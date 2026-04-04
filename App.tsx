@@ -6,9 +6,8 @@ import Dashboard from './components/Dashboard';
 import Sidebar from './components/Sidebar';
 import { TopNav } from './components/TopNav';
 import { ExportContainer } from './components/ExportContainer';
-import { Login } from './components/Login';
 import { DatabaseModal } from './components/DatabaseModal';
-import { auth, googleProvider, signInWithPopup, onAuthStateChanged, User } from './firebase';
+import { auth, onAuthStateChanged } from './firebase';
 import { saveProjectToDB, getAllProjects, deleteProjectFromDB, ProjectData } from './utils/db';
 import { INITIAL_PIPES, STATUS_LABELS, STATUS_COLORS, INSULATION_LABELS, PIPE_DIAMETERS, AVAILABLE_DIAMETERS, ALL_STATUSES, ALL_INSULATION_STATUSES, INSULATION_COLORS, BASE_PRODUCTIVITY, DIFFICULTY_WEIGHTS, PIPING_REMAINING_FACTOR, INSULATION_REMAINING_FACTOR, HOURS_PER_DAY, DEFAULT_PROD_SETTINGS } from './constants';
 import { PipeSegment, PipeStatus, Annotation, AnnotationType, Accessory, AccessoryType, AccessoryStatus, ProductivitySettings, DailyProduction, ProjectCalendar } from './types';
@@ -288,49 +287,21 @@ function AppContent() {
     if (currentProjectName) safeStorage.setItem('iso-manager-current-project-name', currentProjectName);
     else safeStorage.removeItem('iso-manager-current-project-name');
   }, [currentProjectName]);
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
-  const [currentUser, setCurrentUser] = useState<string | null>(null);
-  const [isAuthReady, setIsAuthReady] = useState(false);
+  const [isAuthenticated] = useState<boolean>(true);
+  const [currentUser, setCurrentUser] = useState<string | null>('marconi-default');
+  const [isAuthReady] = useState(true);
   const [dynamicZoom, setDynamicZoom] = useState(true);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
-        setIsAuthenticated(true);
         setCurrentUser(user.uid);
       } else {
-        setIsAuthenticated(false);
-        setCurrentUser(null);
+        setCurrentUser('marconi-default');
       }
-      setIsAuthReady(true);
     });
     return () => unsubscribe();
   }, []);
-
-  const handleLogin = async () => {
-    try {
-      const result = await signInWithPopup(auth, googleProvider);
-      if (result.user) {
-        setIsAuthenticated(true);
-        setCurrentUser(result.user.uid);
-        showToast('Login realizado com sucesso!', 'success');
-      }
-    } catch (error) {
-      console.error("Erro no login:", error);
-      showToast('Erro ao realizar login.', 'error');
-    }
-  };
-
-  const handleLogout = async () => {
-    try {
-      await auth.signOut();
-      setIsAuthenticated(false);
-      setCurrentUser(null);
-      showToast('Logout realizado com sucesso!', 'success');
-    } catch (error) {
-      console.error("Erro no logout:", error);
-    }
-  };
 
   const selectedPipes = useMemo(() => pipes.filter(p => selectedIds.includes(p.id)), [pipes, selectedIds]);
 
@@ -1335,18 +1306,7 @@ function AppContent() {
     );
   };
 
-  if (!isAuthReady) {
-    return (
-      <div className="flex items-center justify-center h-screen bg-slate-900">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
-      </div>
-    );
-  }
-
-  if (!isAuthenticated) {
-    return <Login onLogin={handleLogin} />;
-  }
-
+  // Removido o bloqueio de login para acesso direto
   return (
     <div className="h-screen w-screen bg-slate-950 text-slate-100 flex flex-col overflow-hidden font-sans">
         {toast && (
@@ -1390,8 +1350,6 @@ function AppContent() {
             setProjectLocation={setProjectLocation}
             activityDate={activityDate}
             setActivityDate={setActivityDate}
-            currentUser={currentUser}
-            handleLogout={handleLogout}
             setIsDBModalOpen={setIsDBModalOpen}
             viewMode={viewMode}
             setViewMode={setViewMode}

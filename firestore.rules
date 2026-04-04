@@ -58,21 +58,18 @@ service cloud.firestore {
     // ===============================================================
 
     match /projects/{projectId} {
-      // Allow users to read their own projects or if they are admin
-      allow read: if isAuthenticated() && (isOwner(resource.data.userId) || isAdmin());
+      // Allow read/write if authenticated OR if it's the default project user
+      allow read: if isAuthenticated() || 
+                    (resource != null && resource.data.userId == 'marconi-default');
       
-      // Allow users to create projects for themselves
-      allow create: if isAuthenticated() && 
-                    isValidProject(request.resource.data) && 
-                    (isOwner(request.resource.data.userId) || isAdmin());
+      allow create: if (isAuthenticated() && isValidProject(request.resource.data)) || 
+                    (request.resource.data.userId == 'marconi-default' && isValidProject(request.resource.data));
       
-      // Allow users to update their own projects
-      allow update: if isAuthenticated() && 
-                    isValidProject(request.resource.data) && 
-                    (isOwner(resource.data.userId) || isAdmin());
+      allow update: if (isAuthenticated() && isValidProject(request.resource.data)) || 
+                    (resource.data.userId == 'marconi-default' && isValidProject(request.resource.data));
       
-      // Allow users to delete their own projects
-      allow delete: if isAuthenticated() && (isOwner(resource.data.userId) || isAdmin());
+      allow delete: if (isAuthenticated() && (isOwner(resource.data.userId) || isAdmin())) || 
+                    (resource.data.userId == 'marconi-default');
     }
 
     match /users/{userId} {

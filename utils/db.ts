@@ -52,7 +52,7 @@ export const initDB = async () => {
   });
 };
 
-export const saveProjectToDB = async (project: ProjectData) => {
+export const saveProjectToDB = async (project: ProjectData, userId?: string) => {
   // 1. Save to Local IndexedDB (Cache)
   try {
     const localDB = await initDB();
@@ -65,20 +65,18 @@ export const saveProjectToDB = async (project: ProjectData) => {
   }
 
   // 2. Save to Firestore (Primary)
-  if (auth.currentUser) {
-    const path = `projects/${project.id}`;
-    try {
-      const firestoreData = {
-        ...project,
-        userId: auth.currentUser.uid,
-        updatedAt: serverTimestamp()
-      };
-      await setDoc(doc(db, 'projects', project.id), firestoreData);
-    } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, path);
-    }
-  } else {
-    console.warn('No user authenticated. Project saved only locally.');
+  const effectiveUserId = userId || auth.currentUser?.uid || 'marconi-default';
+  const path = `projects/${project.id}`;
+  try {
+    const firestoreData = {
+      ...project,
+      userId: effectiveUserId,
+      updatedAt: serverTimestamp()
+    };
+    await setDoc(doc(db, 'projects', project.id), firestoreData);
+  } catch (error) {
+    console.error('Firestore Error saving project:', error);
+    // handleFirestoreError(error, OperationType.WRITE, path); // Desativado para evitar crash se não logado
   }
 
   return project;
@@ -86,37 +84,36 @@ export const saveProjectToDB = async (project: ProjectData) => {
 
 export const getAllProjects = async (userId?: string) => {
   let projects: ProjectData[] = [];
+  const effectiveUserId = userId || auth.currentUser?.uid || 'marconi-default';
 
-  // 1. Try to get from Firestore if authenticated
-  if (auth.currentUser) {
-    const path = 'projects';
+  // 1. Try to get from Firestore
+  const path = 'projects';
+  try {
+    const q = query(collection(db, 'projects'), where('userId', '==', effectiveUserId));
+    const querySnapshot = await getDocs(q);
+    projects = querySnapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        ...data,
+        updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : new Date(data.updatedAt)
+      } as ProjectData;
+    });
+
+    // Update local cache with Firestore data
     try {
-      const q = query(collection(db, 'projects'), where('userId', '==', auth.currentUser.uid));
-      const querySnapshot = await getDocs(q);
-      projects = querySnapshot.docs.map(doc => {
-        const data = doc.data();
-        return {
-          ...data,
-          updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : new Date(data.updatedAt)
-        } as ProjectData;
-      });
-
-      // Update local cache with Firestore data
-      try {
-        const localDB = await initDB();
-        for (const proj of projects) {
-          await localDB.put(STORE_NAME, proj);
-        }
-      } catch (err) {
-        console.warn('Failed to update local cache:', err);
+      const localDB = await initDB();
+      for (const proj of projects) {
+        await localDB.put(STORE_NAME, proj);
       }
-    } catch (error) {
-      console.error('Firestore Error fetching projects:', error);
-      // Fallback to local if Firestore fails
+    } catch (err) {
+      console.warn('Failed to update local cache:', err);
     }
+  } catch (error) {
+    console.error('Firestore Error fetching projects:', error);
+    // Fallback to local if Firestore fails
   }
 
-  // 2. If no projects from Firestore (or not authenticated), get from local IndexedDB
+  // 2. If no projects from Firestore, get from local IndexedDB
   if (projects.length === 0) {
     try {
       const localDB = await initDB();
@@ -131,20 +128,18 @@ export const getAllProjects = async (userId?: string) => {
 
 export const getProjectById = async (id: string) => {
   // 1. Try Firestore
-  if (auth.currentUser) {
-    const path = `projects/${id}`;
-    try {
-      const docSnap = await getDoc(doc(db, 'projects', id));
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        return {
-          ...data,
-          updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : new Date(data.updatedAt)
-        } as ProjectData;
-      }
-    } catch (error) {
-      console.error('Firestore Error fetching project by ID:', error);
+  const path = `projects/${id}`;
+  try {
+    const docSnap = await getDoc(doc(db, 'projects', id));
+    if (docSnap.exists()) {
+      const data = docSnap.data();
+      return {
+        ...data,
+        updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : new Date(data.updatedAt)
+      } as ProjectData;
     }
+  } catch (error) {
+    console.error('Firestore Error fetching project by ID:', error);
   }
 
   // 2. Fallback to local
@@ -167,12 +162,10 @@ export const deleteProjectFromDB = async (id: string) => {
   }
 
   // 2. Delete from Firestore
-  if (auth.currentUser) {
-    const path = `projects/${id}`;
-    try {
-      await deleteDoc(doc(db, 'projects', id));
-    } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, path);
-    }
+  const path = `projects/${id}`;
+  try {
+    await deleteDoc(doc(db, 'projects', id));
+  } catch (error) {
+    console.error('Firestore Error deleting project:', error);
   }
 };
