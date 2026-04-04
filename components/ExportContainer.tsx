@@ -107,9 +107,9 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
 
         // Milestones
         let milestone = null;
-        if (i === Math.round(plotDays * 0.25)) milestone = "25%";
-        if (i === Math.round(plotDays * 0.50)) milestone = "50%";
-        if (i === Math.round(plotDays * 0.75)) milestone = "75%";
+        if (i === Math.round(plotDays * 0.25)) milestone = planned.toFixed(2) + "%";
+        if (i === Math.round(plotDays * 0.50)) milestone = planned.toFixed(2) + "%";
+        if (i === Math.round(plotDays * 0.75)) milestone = planned.toFixed(2) + "%";
         if (i === plotDays) milestone = "100%";
 
         const [y, m, day] = dateStr.split('-');
@@ -727,7 +727,11 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
                         )}
                         <div className="p-6 rounded-xl border border-blue-500/20" style={{ backgroundColor: 'rgba(59, 130, 246, 0.1)' }}>
                             <p className="text-xl text-blue-200 leading-relaxed font-medium">
-                                <span className="font-bold text-blue-400">INFO:</span> Produtividade média linear necessária para conclusão no prazo: <span className="text-white">{( (reportStats?.totalLength || 0) / Math.max(1, reportStats?.daysNeeded || 1)).toFixed(2)}m/dia</span>.
+                                <span className="font-bold text-blue-400">INFO:</span> {reportStats?.deadlineStats ? (
+                                    <>Produtividade diária necessária para o prazo: <span className="text-white">{reportStats.deadlineStats.requiredDailyPiping.toFixed(2)}m (Tubo)</span> e <span className="text-white">{reportStats.deadlineStats.requiredDailyInsulation.toFixed(2)}m (Isolamento)</span>.</>
+                                ) : (
+                                    <>Produtividade média linear recomendada: <span className="text-white">{( (reportStats?.totalLength || 0) / Math.max(1, reportStats?.daysNeeded || 1)).toFixed(2)}m/dia</span>.</>
+                                )}
                             </p>
                         </div>
                         <div className="p-6 rounded-xl border border-purple-500/20" style={{ backgroundColor: 'rgba(168, 85, 247, 0.1)' }}>
@@ -751,10 +755,16 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
                             <span className="text-xl font-bold text-slate-400 uppercase">H/H por Metro</span>
                             <span className="text-4xl font-bold text-white font-mono">{( (reportStats?.totalHH || 0) / Math.max(1, reportStats?.totalLength || 1)).toFixed(2)}</span>
                         </div>
-                        <div className="flex justify-between items-center">
-                            <span className="text-xl font-bold text-slate-400 uppercase">Dias para Término</span>
+                        <div className="flex justify-between items-center border-b border-slate-800 pb-4">
+                            <span className="text-xl font-bold text-slate-400 uppercase">Dias para Término (Est.)</span>
                             <span className="text-4xl font-bold text-yellow-400 font-mono">{reportStats?.daysNeeded || 0}</span>
                         </div>
+                        {reportStats?.deadlineStats && (
+                            <div className="flex justify-between items-center border-b border-slate-800 pb-4">
+                                <span className="text-xl font-bold text-blue-400 uppercase">Dias Disponíveis (Meta)</span>
+                                <span className="text-4xl font-bold text-blue-400 font-mono">{reportStats.deadlineStats.daysUntilDeadline}</span>
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>

@@ -210,13 +210,15 @@ const Dashboard: React.FC<DashboardProps> = ({
         const daysUntilDeadline = getWorkingDaysBetween(start, end, prodSettings?.globalConfig.workOnWeekends);
         
         if (daysUntilDeadline > 0) {
-            const requiredDailyOutput = totalLength / daysUntilDeadline; // meters/day
-            const requiredDailyHH = finalTotalHH / daysUntilDeadline; // HH/day
-            const currentDailyOutput = (dailyCapacity / finalTotalHH) * totalLength; // Approximate meters/day based on capacity
+            const requiredDailyPiping = pipingRemainingLength / daysUntilDeadline;
+            const requiredDailyInsulation = insulationRemainingLength / daysUntilDeadline;
+            const requiredDailyHH = finalTotalHH / daysUntilDeadline;
+            const currentDailyOutput = (dailyCapacity / finalTotalHH) * totalLength;
             
             deadlineStats = {
                 daysUntilDeadline,
-                requiredDailyOutput,
+                requiredDailyPiping,
+                requiredDailyInsulation,
                 requiredDailyHH,
                 currentDailyOutput,
                 isFeasible: requiredDailyHH <= dailyCapacity,
@@ -289,9 +291,9 @@ const Dashboard: React.FC<DashboardProps> = ({
 
             // Milestones
             let milestone = null;
-            if (i === Math.round(plotDays * 0.25)) milestone = "25%";
-            if (i === Math.round(plotDays * 0.50)) milestone = "50%";
-            if (i === Math.round(plotDays * 0.75)) milestone = "75%";
+            if (i === Math.round(plotDays * 0.25)) milestone = planned.toFixed(2) + "%";
+            if (i === Math.round(plotDays * 0.50)) milestone = planned.toFixed(2) + "%";
+            if (i === Math.round(plotDays * 0.75)) milestone = planned.toFixed(2) + "%";
             if (i === plotDays) milestone = "100%";
 
             const dp = dailyProduction.find(d => d.date === dateStr);
@@ -1087,10 +1089,26 @@ const Dashboard: React.FC<DashboardProps> = ({
                                           </div>
                                           <div className="bg-slate-800/30 p-4 rounded-xl border border-slate-800 hover:border-purple-500/30 transition-colors">
                                               <div className="text-[8px] font-mono text-slate-500 uppercase mb-1 flex items-center gap-1">
-                                                  <Timer size={8} className="text-purple-400" /> Término Estimado
+                                                  <Timer size={8} className="text-purple-400" /> {stats.deadlineStats ? 'Meta Diária (Deadline)' : 'Término Estimado'}
                                               </div>
-                                              <div className="text-xl font-bold text-white mt-1 uppercase tracking-tight">{stats.projectedEnd}</div>
-                                              <div className="text-[7px] font-mono text-slate-600 mt-1 uppercase tracking-tighter">Projeção de entrega</div>
+                                              {stats.deadlineStats ? (
+                                                   <div className="flex flex-col gap-1">
+                                                       <div className="text-xl font-bold text-white tabular-nums tracking-tight">
+                                                           {new Date(deadlineDate + 'T12:00:00').toLocaleDateString('pt-BR')}
+                                                       </div>
+                                                       <div className="flex flex-col gap-0.5">
+                                                           <div className="text-[9px] font-mono font-bold text-blue-400 uppercase">
+                                                               Tubulação: {stats.deadlineStats.requiredDailyPiping.toFixed(1)}m/dia
+                                                           </div>
+                                                           <div className="text-[9px] font-mono font-bold text-amber-400 uppercase">
+                                                               Isolamento: {stats.deadlineStats.requiredDailyInsulation.toFixed(1)}m/dia
+                                                           </div>
+                                                       </div>
+                                                   </div>
+                                               ) : (
+                                                   <div className="text-xl font-bold text-white mt-1 uppercase tracking-tight">{stats.projectedEnd}</div>
+                                               )}
+                                              {!stats.deadlineStats && <div className="text-[7px] font-mono text-slate-600 mt-1 uppercase tracking-tighter">Projeção de entrega</div>}
                                           </div>
                                       </div>
                                   </>

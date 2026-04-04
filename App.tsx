@@ -416,6 +416,32 @@ function AppContent() {
           }
       });
 
+      // Deadline Calculation
+      let deadlineStats = null;
+      if (deadlineDate) {
+          const start = new Date((activityDate || new Date().toISOString().split('T')[0]) + 'T12:00:00');
+          const end = new Date(deadlineDate + 'T12:00:00');
+          const daysUntilDeadline = getWorkingDaysBetween(start, end, prodSettings?.globalConfig.workOnWeekends);
+          
+          if (daysUntilDeadline > 0) {
+              const requiredDailyPiping = pipingRemainingLength / daysUntilDeadline;
+              const requiredDailyInsulation = insulationRemainingLength / daysUntilDeadline;
+              const requiredDailyHH = totalHH / daysUntilDeadline;
+              const currentDailyOutput = (dailyCapacity / totalHH) * totalLength;
+              
+              deadlineStats = {
+                  daysUntilDeadline,
+                  requiredDailyPiping,
+                  requiredDailyInsulation,
+                  requiredDailyHH,
+                  currentDailyOutput,
+                  isFeasible: requiredDailyHH <= dailyCapacity,
+                  ratio: (requiredDailyHH / dailyCapacity) * 100,
+                  efficiencyScore: Math.min(100, (dailyCapacity / requiredDailyHH) * 100)
+              };
+          }
+      }
+
       return {
           totalLength,
           totalPipingHH: pPipeHH,
@@ -431,7 +457,7 @@ function AppContent() {
           insulationLengths,
           annotationBreakdown,
           total: pipes.length,
-          deadlineStats: null,
+          deadlineStats,
           pipingTotalLength,
           pipingRemainingLength,
           pipingExecutedLength: pipingTotalLength - pipingRemainingLength,
