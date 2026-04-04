@@ -3,7 +3,7 @@ import React, { useMemo, useRef, useState } from 'react';
 import { PipeSegment, ProductivitySettings, Annotation, DailyProduction, AccessoryStatus } from '../types';
 import { ProjectData } from '../utils/db';
 import { STATUS_COLORS, STATUS_LABELS, ALL_STATUSES, INSULATION_COLORS, INSULATION_LABELS, ALL_INSULATION_STATUSES, PIPING_REMAINING_FACTOR, INSULATION_REMAINING_FACTOR, HOURS_PER_DAY } from '../constants';
-import { Activity, FileDown, Upload, Image as ImageIcon, Map as MapIcon, Layers, Shield, Ruler, Package, AlertCircle, Search, Filter, ClipboardList, UserCog, Calendar, CheckSquare, TrendingUp, Timer, Users, Target, BarChart3, Database, ChevronDown, Check, Zap, Calculator } from 'lucide-react';
+import { Activity, FileDown, Upload, Image as ImageIcon, Map as MapIcon, Layers, Shield, Ruler, Package, AlertCircle, Search, Filter, ClipboardList, UserCog, Calendar, CheckSquare, TrendingUp, Timer, Users, Target, BarChart3, Database, ChevronDown, Check, Zap, Calculator, LayoutDashboard } from 'lucide-react';
 import SmartInsights from './SmartInsights';
 import ProjectTimeline from './ProjectTimeline';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area, ReferenceDot, BarChart, Bar, Cell, ComposedChart } from 'recharts';
@@ -1035,7 +1035,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                                           }}
                                       />
                                       <Area type="monotone" dataKey="planned" stroke="#3b82f6" strokeWidth={3} fillOpacity={1} fill="url(#colorPlanned)" dot={false} />
-                                      <Area type="monotone" dataKey="actual" stroke="#22c55e" strokeWidth={3} fillOpacity={1} fill="url(#colorActual)" dot={{ r: 4, fill: '#22c55e' }} />
+                                      <Area type="monotone" dataKey="actual" stroke="#22c55e" strokeWidth={3} fillOpacity={1} fill="url(#colorActual)" dot={false} />
                                       
                                       {/* Today Reference Line */}
                                       <ReferenceDot 
@@ -1073,46 +1073,58 @@ const Dashboard: React.FC<DashboardProps> = ({
                           </div>
                       </div>
 
-                      {dailyProduction.length > 0 && (
-                        <div className="bg-slate-900 rounded-xl border border-slate-800 p-6 shadow-2xl">
-                            <div className="flex justify-between items-center mb-6">
-                                <h3 className="text-[10px] font-mono font-bold text-emerald-400 uppercase tracking-widest flex items-center gap-2">
-                                    <TrendingUp size={14}/> CURVA S DETALHADA (TUBULAÇÃO VS ISOLAMENTO)
-                                </h3>
-                                <div className="flex gap-4 items-center">
-                                    <div className="flex items-center gap-2">
-                                        <div className="w-3 h-1 bg-blue-500"></div>
-                                        <span className="text-[8px] font-mono text-slate-500 uppercase">Previsto (Azul)</span>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <div className="w-3 h-1 bg-amber-500"></div>
-                                        <span className="text-[8px] font-mono text-slate-500 uppercase">Automático</span>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <div className="w-3 h-1 bg-emerald-500"></div>
-                                        <span className="text-[8px] font-mono text-slate-500 uppercase">Real</span>
-                                    </div>
-                                </div>
-                            </div>
-                            <div className="h-[300px] w-full">
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <ComposedChart data={stats.sCurveData}>
-                                        <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-                                        <XAxis dataKey="date" stroke="#475569" fontSize={10} tickLine={false} axisLine={false} />
-                                        <YAxis stroke="#475569" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(value) => `${value}%`} domain={[0, 100]} />
-                                        <Tooltip 
-                                            contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', fontSize: '10px' }}
-                                            itemStyle={{ color: '#f1f5f9' }}
-                                        />
-                                        <Legend verticalAlign="top" height={36}/>
-                                        <Line type="monotone" dataKey="plannedTotalProgress" name="Previsto (%)" stroke="#3b82f6" strokeWidth={2} dot={false} strokeDasharray="5 5" />
-                                        <Line type="monotone" dataKey="autoProgress" name="Automático (%)" stroke="#f59e0b" strokeWidth={2} dot={{ r: 2 }} />
-                                        <Line type="monotone" dataKey="actual" name="Real (%)" stroke="#10b981" strokeWidth={3} dot={{ r: 4 }} />
-                                    </ComposedChart>
-                                </ResponsiveContainer>
-                            </div>
-                        </div>
-                      )}
+                      <div className="bg-slate-900 rounded-xl border border-slate-800 p-6 shadow-2xl">
+                          {(() => {
+                              const todayData = stats.sCurveData.find(d => d.isLastActual) || stats.sCurveData[stats.sCurveData.length - 1];
+                              const plannedToday = todayData?.planned || 0;
+                              const actualToday = todayData?.actual || 0;
+                              const gap = actualToday - plannedToday;
+                              return (
+                                  <>
+                                      <div className="flex justify-between items-center mb-6">
+                                          <h3 className="text-[10px] font-mono font-bold text-emerald-400 uppercase tracking-widest flex items-center gap-2">
+                                              <LayoutDashboard size={14}/> DASHBOARD DE PERFORMANCE (KPIs)
+                                          </h3>
+                                          <div className="text-[8px] font-mono text-slate-500 uppercase">Status em: {todayData?.date}</div>
+                                      </div>
+                                      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                                          <div className="bg-slate-800/30 p-4 rounded-xl border border-slate-800 hover:border-emerald-500/30 transition-colors">
+                                              <div className="text-[8px] font-mono text-slate-500 uppercase mb-1 flex items-center gap-1">
+                                                  <Target size={8} className="text-emerald-400" /> Avanço Real
+                                              </div>
+                                              <div className="text-3xl font-bold text-emerald-400 tabular-nums">{actualToday.toFixed(1)}%</div>
+                                              <div className="text-[7px] font-mono text-slate-600 mt-1 uppercase tracking-tighter">Executado acumulado</div>
+                                          </div>
+                                          <div className="bg-slate-800/30 p-4 rounded-xl border border-slate-800 hover:border-blue-500/30 transition-colors">
+                                              <div className="text-[8px] font-mono text-slate-500 uppercase mb-1 flex items-center gap-1">
+                                                  <TrendingUp size={8} className="text-blue-400" /> Planejado
+                                              </div>
+                                              <div className="text-3xl font-bold text-blue-400 tabular-nums">{plannedToday.toFixed(1)}%</div>
+                                              <div className="text-[7px] font-mono text-slate-600 mt-1 uppercase tracking-tighter">Meta da Curva S</div>
+                                          </div>
+                                          <div className="bg-slate-800/30 p-4 rounded-xl border border-slate-800 hover:border-slate-500/30 transition-colors">
+                                              <div className="text-[8px] font-mono text-slate-500 uppercase mb-1 flex items-center gap-1">
+                                                  <Zap size={8} className={gap >= 0 ? 'text-emerald-400' : 'text-rose-400'} /> Desvio (Gap)
+                                              </div>
+                                              <div className={`text-3xl font-bold tabular-nums ${gap >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                                  {gap > 0 ? '+' : ''}{gap.toFixed(1)}%
+                                              </div>
+                                              <div className="text-[7px] font-mono text-slate-600 mt-1 uppercase tracking-tighter">
+                                                  {gap >= 0 ? 'Adiantado' : 'Atrasado'}
+                                              </div>
+                                          </div>
+                                          <div className="bg-slate-800/30 p-4 rounded-xl border border-slate-800 hover:border-purple-500/30 transition-colors">
+                                              <div className="text-[8px] font-mono text-slate-500 uppercase mb-1 flex items-center gap-1">
+                                                  <Timer size={8} className="text-purple-400" /> Término Estimado
+                                              </div>
+                                              <div className="text-xl font-bold text-white mt-1 uppercase tracking-tight">{stats.projectedEnd}</div>
+                                              <div className="text-[7px] font-mono text-slate-600 mt-1 uppercase tracking-tighter">Projeção de entrega</div>
+                                          </div>
+                                      </div>
+                                  </>
+                              );
+                          })()}
+                      </div>
 
                       <div className="bg-slate-900 rounded-xl border border-slate-800 p-6 shadow-2xl">
                           <div className="flex justify-between items-center mb-6">
