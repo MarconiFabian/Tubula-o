@@ -16,19 +16,22 @@ interface ExportContainerProps {
   pipes: PipeSegment[];
   prodSettings: ProductivitySettings;
   startDate: string;
-  dailyProduction?: any[];
   annotations?: Annotation[];
   deadlineDate?: string | null;
 }
 
 export const ExportContainer: React.FC<ExportContainerProps> = ({
-  viewMode, reportStats, sceneScreenshot, secondaryImage, mapImage, projectClient, projectLocation, activityDate, pipes, prodSettings, startDate, dailyProduction = [], annotations = [], deadlineDate
+  viewMode, reportStats, sceneScreenshot, secondaryImage, mapImage, projectClient, projectLocation, activityDate, pipes, prodSettings, startDate, annotations = [], deadlineDate
 }) => {
   const progress = useMemo(() => {
       const pipingTotalLength = pipes.reduce((acc, p) => acc + (p.length || 0), 0);
       const completedWeight = pipes.reduce((acc, p) => {
-          const pipingDone = 1 - (PIPING_REMAINING_FACTOR[p.status] ?? 1);
-          return acc + (p.length * pipingDone);
+          const isCompleted = ['WELDED', 'HYDROTEST', 'FINISHED'].includes(p.status);
+          if (isCompleted) {
+              const weight = (p.status === 'WELDED' ? 0.8 : p.status === 'HYDROTEST' ? 1.0 : 0.3) * (p.length || 0);
+              return acc + weight;
+          }
+          return acc;
       }, 0);
       return pipingTotalLength > 0 ? (completedWeight / pipingTotalLength) * 100 : 0;
   }, [pipes]);
@@ -41,7 +44,7 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
     const startStr = (startDate || new Date().toISOString().split('T')[0]);
     const todayStr = new Date().toISOString().split('T')[0];
     
-    const initialCumulativeActual = pipes
+    let cumulativeActual = pipes
         .filter(p => {
             const d = p.welderInfo?.weldDate || todayStr;
             return d < startStr;
@@ -51,16 +54,8 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
             return acc + (p.length * pipingDone);
         }, 0);
 
-    // 1. Calculate Total Executed so far (from all pipes)
-    const totalExecutedMeters = pipes.reduce((acc, p) => {
-        const pipingDone = 1 - (PIPING_REMAINING_FACTOR[p.status] ?? 1);
-        return acc + (p.length * pipingDone);
-    }, 0);
-    const totalProgressPct = totalLengthValue > 0 ? (totalExecutedMeters / totalLengthValue * 100) : 0;
-
-    // 2. Dates and Duration
+    const days = reportStats.daysNeeded || 30;
     const start = new Date(startStr + 'T12:00:00');
-    const today = new Date(todayStr + 'T12:00:00');
     
     let plotDays = reportStats.daysNeeded || 30;
     if (deadlineDate) {
@@ -69,61 +64,52 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
         plotDays = Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
     }
 
-    // Days since start to today (for actual distribution)
+    const today = new Date(todayStr + 'T12:00:00');
     const daysSinceStart = Math.max(1, Math.floor((today.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
-
-    let cumulativePlanned = 0;
-    let cumulativeActualMeters = 0;
 
     for (let i = 0; i <= plotDays; i++) {
         const d = new Date(start);
         d.setDate(d.getDate() + i);
         const dateStr = d.toISOString().split('T')[0];
-        const isFuture = dateStr > todayStr;
         
-        // Actual (Realizado): Use table data if available, otherwise linear fallback
-        let actual = null;
-        if (!isFuture) {
-            const dpForDate = dailyProduction.find(d => d.date === dateStr);
-            if (dpForDate) {
-                cumulativeActualMeters += dpForDate.pipeMeters;
-                actual = totalLengthValue > 0 ? (cumulativeActualMeters / totalLengthValue * 100) : 0;
-            } else {
-                // Fallback to linear if no data in table for this past date
-                const linearFactor = daysSinceStart > 0 ? Math.min(i / daysSinceStart, 1) : 1;
-                actual = parseFloat((linearFactor * totalProgressPct).toFixed(2));
-            }
+        const dayProd = pipes.filter(p => {
+            const d = p.welderInfo?.weldDate || todayStr;
+            return d === dateStr;
+        }).reduce((acc, p) => {
+            const pipingDone = 1 - (PIPING_REMAINING_FACTOR[p.status] ?? 1);
+            return acc + (p.length * pipingDone);
+        }, 0);
+        cumulativeActual += dayProd;
+
+        const x = (i / (plotDays || 1)) * 12 - 6;
+        const sigmoid = 1 / (1 + Math.exp(-x));
+        const planned = sigmoid * 100; // Percentage
+
+        let autoProgress = null;
+        if (dateStr <= todayStr) {
+            autoProgress = parseFloat((Math.min(i / daysSinceStart, 1) * progress).toFixed(2));
         }
 
-        // Planned (Planejado): ALWAYS Sigmoid S-Curve (Baseline)
-        // Rule: Affected by start/end date, reprogrammed if dates change, stable shape.
-        const progressRatio = plotDays > 0 ? (i / plotDays) : 1;
-        const x = progressRatio * 10 - 5; // Range -5 to 5 for Sigmoid
-        const sigmoid = 1 / (1 + Math.exp(-x));
-        const sMin = 1 / (1 + Math.exp(5));
-        const sMax = 1 / (1 + Math.exp(-5));
-        const normalizedSigmoid = (sigmoid - sMin) / (sMax - sMin);
-        const planned = normalizedSigmoid * 100;
-
-        // Milestones
         let milestone = null;
-        if (i === Math.round(plotDays * 0.25)) milestone = planned.toFixed(2) + "%";
-        if (i === Math.round(plotDays * 0.50)) milestone = planned.toFixed(2) + "%";
-        if (i === Math.round(plotDays * 0.75)) milestone = planned.toFixed(2) + "%";
+        if (i === Math.round(plotDays * 0.25)) milestone = "25%";
+        if (i === Math.round(plotDays * 0.50)) milestone = "50%";
+        if (i === Math.round(plotDays * 0.75)) milestone = "75%";
         if (i === plotDays) milestone = "100%";
+
+        const isFuture = dateStr > todayStr;
 
         const [y, m, day] = dateStr.split('-');
         data.push({
             date: `${day}/${m}/${y.slice(2)}`,
-            actual: actual,
+            actual: !isFuture && totalLengthValue && totalLengthValue > 0 ? parseFloat(((cumulativeActual || 0) / totalLengthValue * 100).toFixed(2)) : null,
             planned: parseFloat(planned.toFixed(2)),
-            actualMeters: actual ? parseFloat(((actual / 100) * totalLengthValue).toFixed(2)) : 0,
+            autoProgress: autoProgress,
+            actualMeters: parseFloat((cumulativeActual || 0).toFixed(2)),
             plannedMeters: parseFloat(((planned / 100) * totalLengthValue).toFixed(2)),
             milestone,
             isLastActual: dateStr === todayStr
         });
     }
-
     return data;
   }, [pipes, startDate, reportStats.daysNeeded]);
 
@@ -568,15 +554,6 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
                                 <Area type="monotone" dataKey="planned" stroke="#3b82f6" strokeWidth={4} fillOpacity={1} fill="url(#colorPlannedExp)" dot={false} strokeDasharray="5 5" />
                                 <Area type="monotone" dataKey="autoProgress" stroke="#f59e0b" strokeWidth={4} fillOpacity={1} fill="url(#colorAutoExp)" dot={{ r: 4, fill: '#f59e0b' }} />
                                 <Area type="monotone" dataKey="actual" stroke="#22c55e" strokeWidth={4} fillOpacity={1} fill="url(#colorActualExp)" dot={{ r: 6, fill: '#22c55e' }} />
-                                
-                                {/* Today Reference Line */}
-                                <ReferenceDot 
-                                    x={sCurveData.find(d => d.isLastActual)?.date} 
-                                    y={0} 
-                                    r={0} 
-                                    label={{ position: 'top', value: 'HOJE', fill: '#ef4444', fontSize: 14, fontWeight: 'bold' }} 
-                                />
-
                                 {sCurveData.filter(d => d.milestone).map((d, idx) => (
                                     <ReferenceDot 
                                         key={idx} 
@@ -727,11 +704,7 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
                         )}
                         <div className="p-6 rounded-xl border border-blue-500/20" style={{ backgroundColor: 'rgba(59, 130, 246, 0.1)' }}>
                             <p className="text-xl text-blue-200 leading-relaxed font-medium">
-                                <span className="font-bold text-blue-400">INFO:</span> {reportStats?.deadlineStats ? (
-                                    <>Produtividade diária necessária para o prazo: <span className="text-white">{reportStats.deadlineStats.requiredDailyPiping.toFixed(2)}m (Tubo)</span> e <span className="text-white">{reportStats.deadlineStats.requiredDailyInsulation.toFixed(2)}m (Isolamento)</span>.</>
-                                ) : (
-                                    <>Produtividade média linear recomendada: <span className="text-white">{( (reportStats?.totalLength || 0) / Math.max(1, reportStats?.daysNeeded || 1)).toFixed(2)}m/dia</span>.</>
-                                )}
+                                <span className="font-bold text-blue-400">INFO:</span> Produtividade média linear necessária para conclusão no prazo: <span className="text-white">{( (reportStats?.totalLength || 0) / Math.max(1, reportStats?.daysNeeded || 1)).toFixed(2)}m/dia</span>.
                             </p>
                         </div>
                         <div className="p-6 rounded-xl border border-purple-500/20" style={{ backgroundColor: 'rgba(168, 85, 247, 0.1)' }}>
@@ -755,16 +728,10 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
                             <span className="text-xl font-bold text-slate-400 uppercase">H/H por Metro</span>
                             <span className="text-4xl font-bold text-white font-mono">{( (reportStats?.totalHH || 0) / Math.max(1, reportStats?.totalLength || 1)).toFixed(2)}</span>
                         </div>
-                        <div className="flex justify-between items-center border-b border-slate-800 pb-4">
-                            <span className="text-xl font-bold text-slate-400 uppercase">Dias para Término (Est.)</span>
+                        <div className="flex justify-between items-center">
+                            <span className="text-xl font-bold text-slate-400 uppercase">Dias para Término</span>
                             <span className="text-4xl font-bold text-yellow-400 font-mono">{reportStats?.daysNeeded || 0}</span>
                         </div>
-                        {reportStats?.deadlineStats && (
-                            <div className="flex justify-between items-center border-b border-slate-800 pb-4">
-                                <span className="text-xl font-bold text-blue-400 uppercase">Dias Disponíveis (Meta)</span>
-                                <span className="text-4xl font-bold text-blue-400 font-mono">{reportStats.deadlineStats.daysUntilDeadline}</span>
-                            </div>
-                        )}
                     </div>
                 </div>
             </div>
