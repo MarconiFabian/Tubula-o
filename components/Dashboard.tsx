@@ -857,7 +857,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                       </div>
                       <div className="text-3xl font-bold text-white font-mono tracking-tighter">
                           {stats.deadlineStats 
-                              ? stats.deadlineStats.requiredDailyPiping.toFixed(1) 
+                              ? stats.deadlineStats.requiredDailyOutput.toFixed(1) 
                               : (stats.totalLength / Math.max(1, stats.daysNeeded)).toFixed(1)}
                           <span className="text-xs text-slate-500 ml-1">m/dia</span>
                       </div>

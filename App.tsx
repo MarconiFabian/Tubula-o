@@ -982,15 +982,13 @@ function AppContent() {
                 const totalLength = pipesToExport.reduce((acc, p) => acc + p.length, 0);
                 
                 if (daysUntilDeadline > 0) {
-                    const requiredDailyPiping = pipingRemainingLength / daysUntilDeadline;
-                    const requiredDailyInsulation = insulationRemainingLength / daysUntilDeadline;
+                    const requiredDailyOutput = totalLength / daysUntilDeadline;
                     const requiredDailyHH = totalHH / daysUntilDeadline;
                     const currentDailyOutput = (dailyCapacity / totalHH) * totalLength;
                     
                     deadlineStats = {
                         daysUntilDeadline,
-                        requiredDailyPiping,
-                        requiredDailyInsulation,
+                        requiredDailyOutput,
                         requiredDailyHH,
                         currentDailyOutput,
                         isFeasible: requiredDailyHH <= dailyCapacity,
