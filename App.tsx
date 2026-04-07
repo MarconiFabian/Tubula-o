@@ -6,9 +6,9 @@ import Dashboard from './components/Dashboard';
 import Sidebar from './components/Sidebar';
 import { TopNav } from './components/TopNav';
 import { ExportContainer } from './components/ExportContainer';
-import { Login } from './components/Login';
 import { DatabaseModal } from './components/DatabaseModal';
-import { saveProjectToDB, getAllProjects, deleteProjectFromDB } from './utils/db';
+import { auth, onAuthStateChanged } from './firebase';
+import { saveProjectToDB, getAllProjects, deleteProjectFromDB, ProjectData } from './utils/db';
 import { INITIAL_PIPES, STATUS_LABELS, STATUS_COLORS, INSULATION_LABELS, PIPE_DIAMETERS, AVAILABLE_DIAMETERS, ALL_STATUSES, ALL_INSULATION_STATUSES, INSULATION_COLORS, BASE_PRODUCTIVITY, DIFFICULTY_WEIGHTS, PIPING_REMAINING_FACTOR, INSULATION_REMAINING_FACTOR, HOURS_PER_DAY, DEFAULT_PROD_SETTINGS } from './constants';
 import { PipeSegment, PipeStatus, Annotation, AnnotationType, Accessory, AccessoryType, AccessoryStatus, ProductivitySettings, DailyProduction, ProjectCalendar } from './types';
 import { LayoutDashboard, Cuboid, PenTool, XCircle, FileDown, Save, FolderOpen, FilePlus, Loader2, MapPin, Database, Undo, Redo, Wrench, Grid as GridIcon, CircleDot, MousePointer2, Ruler, Calendar, Lock, LogOut, ChevronRight, Copy, ClipboardPaste, Activity, Package, AlertCircle, Image as ImageIcon, Shield, Building2, Timer, FileCode, X, HelpCircle, FileSpreadsheet, Trash2 } from 'lucide-react';
@@ -260,6 +260,30 @@ function AppContent() {
   const [isDBModalOpen, setIsDBModalOpen] = useState(false);
   const [savedProjects, setSavedProjects] = useState<any[]>([]);
   const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>([]);
+
+  const aggregatedData = useMemo(() => {
+    if (selectedProjectIds.length === 0) {
+      return { pipes, annotations };
+    }
+
+    let allPipes = [...pipes];
+    let allAnnotations = [...annotations];
+
+    selectedProjectIds.forEach(id => {
+      const project = savedProjects.find(p => p.id === id);
+      if (project) {
+        const projectPipes = project.pipes.map(p => ({
+          ...p,
+          name: `[${project.name}] ${p.name}`,
+          id: `${project.id}-${p.id}`
+        }));
+        allPipes = [...allPipes, ...projectPipes];
+        allAnnotations = [...allAnnotations, ...project.annotations];
+      }
+    });
+
+    return { pipes: allPipes, annotations: allAnnotations };
+  }, [pipes, annotations, selectedProjectIds, savedProjects]);
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(() => {
     return safeStorage.getItem('iso-manager-current-project-id');
   });
@@ -287,27 +311,21 @@ function AppContent() {
     if (currentProjectName) safeStorage.setItem('iso-manager-current-project-name', currentProjectName);
     else safeStorage.removeItem('iso-manager-current-project-name');
   }, [currentProjectName]);
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
-    return safeStorage.getItem('iso-manager-auth') === 'true';
-  });
-  const [currentUser, setCurrentUser] = useState<string | null>(() => {
-    return safeStorage.getItem('iso-manager-user');
-  });
+  const [isAuthenticated] = useState<boolean>(true);
+  const [currentUser, setCurrentUser] = useState<string | null>('marconi-default');
+  const [isAuthReady] = useState(true);
   const [dynamicZoom, setDynamicZoom] = useState(true);
 
-  const handleLogin = (user: string) => {
-    setIsAuthenticated(true);
-    setCurrentUser(user);
-    safeStorage.setItem('iso-manager-auth', 'true');
-    safeStorage.setItem('iso-manager-user', user);
-  };
-
-  const handleLogout = () => {
-    setIsAuthenticated(false);
-    setCurrentUser(null);
-    safeStorage.removeItem('iso-manager-auth');
-    safeStorage.removeItem('iso-manager-user');
-  };
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        setCurrentUser(user.uid);
+      } else {
+        setCurrentUser('marconi-default');
+      }
+    });
+    return () => unsubscribe();
+  }, []);
 
   const selectedPipes = useMemo(() => pipes.filter(p => selectedIds.includes(p.id)), [pipes, selectedIds]);
 
@@ -398,6 +416,32 @@ function AppContent() {
           }
       });
 
+      // Deadline Calculation
+      let deadlineStats = null;
+      if (deadlineDate) {
+          const start = new Date((activityDate || new Date().toISOString().split('T')[0]) + 'T12:00:00');
+          const end = new Date(deadlineDate + 'T12:00:00');
+          const daysUntilDeadline = getWorkingDaysBetween(start, end, prodSettings?.globalConfig.workOnWeekends);
+          
+          if (daysUntilDeadline > 0) {
+              const requiredDailyPiping = pipingRemainingLength / daysUntilDeadline;
+              const requiredDailyInsulation = insulationRemainingLength / daysUntilDeadline;
+              const requiredDailyHH = totalHH / daysUntilDeadline;
+              const currentDailyOutput = (dailyCapacity / totalHH) * totalLength;
+              
+              deadlineStats = {
+                  daysUntilDeadline,
+                  requiredDailyPiping,
+                  requiredDailyInsulation,
+                  requiredDailyHH,
+                  currentDailyOutput,
+                  isFeasible: requiredDailyHH <= dailyCapacity,
+                  ratio: (requiredDailyHH / dailyCapacity) * 100,
+                  efficiencyScore: Math.min(100, (dailyCapacity / requiredDailyHH) * 100)
+              };
+          }
+      }
+
       return {
           totalLength,
           totalPipingHH: pPipeHH,
@@ -413,7 +457,7 @@ function AppContent() {
           insulationLengths,
           annotationBreakdown,
           total: pipes.length,
-          deadlineStats: null,
+          deadlineStats,
           pipingTotalLength,
           pipingRemainingLength,
           pipingExecutedLength: pipingTotalLength - pipingRemainingLength,
@@ -619,6 +663,10 @@ function AppContent() {
   }, [currentUser]);
 
   useEffect(() => {
+      refreshProjects();
+  }, [refreshProjects]);
+
+  useEffect(() => {
       if (isDBModalOpen) {
           refreshProjects();
       }
@@ -642,7 +690,8 @@ function AppContent() {
               dailyProduction: overrides?.dailyProduction || dailyProduction,
               activityDate: overrides?.activityDate || activityDate,
               deadlineDate: overrides?.deadlineDate || deadlineDate,
-              projectCalendar: overrides?.projectCalendar || projectCalendar
+              projectCalendar: overrides?.projectCalendar || projectCalendar,
+              prodSettings: overrides?.prodSettings || prodSettings
           };
           await saveProjectToDB(projectData);
           await refreshProjects();
@@ -664,6 +713,7 @@ function AppContent() {
           setSecondaryImage(project.secondaryImage || null);
           setMapImage(project.mapImage || null);
           setDailyProduction(project.dailyProduction || []);
+          setProdSettings(project.prodSettings || DEFAULT_PROD_SETTINGS);
           setActivityDate(project.activityDate || new Date().toISOString().split('T')[0]);
           setDeadlineDate(project.deadlineDate || new Date(new Date().getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
           setProjectCalendar(project.projectCalendar || null);
@@ -685,25 +735,6 @@ function AppContent() {
       } catch (error) {
           console.error("Erro ao excluir projeto:", error);
           showToast("Erro ao excluir projeto.", 'error');
-      }
-  };
-
-  const handleDBAction_Export = (project: any) => {
-      try {
-          const dataStr = JSON.stringify(project, null, 2);
-          const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
-          
-          const exportFileDefaultName = `projeto-${project.name.replace(/\s+/g, '-')}-${new Date().toISOString().split('T')[0]}.json`;
-          
-          const linkElement = document.createElement('a');
-          linkElement.setAttribute('href', dataUri);
-          linkElement.setAttribute('download', exportFileDefaultName);
-          linkElement.click();
-          
-          showToast("Projeto exportado com sucesso!", 'success');
-      } catch (error) {
-          console.error("Erro ao exportar projeto:", error);
-          showToast("Erro ao exportar projeto.", 'error');
       }
   };
 
@@ -1331,10 +1362,7 @@ function AppContent() {
     );
   };
 
-  if (!isAuthenticated) {
-    return <Login onLogin={handleLogin} />;
-  }
-
+  // Removido o bloqueio de login para acesso direto
   return (
     <div className="h-screen w-screen bg-slate-950 text-slate-100 flex flex-col overflow-hidden font-sans">
         {toast && (
@@ -1365,7 +1393,6 @@ function AppContent() {
             onSave={handleDBAction_Save} 
             onLoad={handleDBAction_Load} 
             onDelete={handleDBAction_Delete}
-            onExport={handleDBAction_Export}
             selectedProjectIds={selectedProjectIds}
             onToggleProjectSelection={handleToggleProjectSelection}
             currentProjectId={currentProjectId}
@@ -1379,8 +1406,6 @@ function AppContent() {
             setProjectLocation={setProjectLocation}
             activityDate={activityDate}
             setActivityDate={setActivityDate}
-            currentUser={currentUser}
-            handleLogout={handleLogout}
             setIsDBModalOpen={setIsDBModalOpen}
             viewMode={viewMode}
             setViewMode={setViewMode}
@@ -1399,11 +1424,11 @@ function AppContent() {
         <DailyProductionModal 
             isOpen={isDailyProductionModalOpen}
             onClose={() => setIsDailyProductionModalOpen(false)}
-            currentPipes={pipes}
+            currentPipes={aggregatedData.pipes}
             dailyProduction={dailyProduction}
             projectCalendar={projectCalendar}
             prodSettings={prodSettings}
-            annotations={annotations}
+            annotations={aggregatedData.annotations}
             onSave={(data, calendar) => {
                 setDailyProduction(data);
                 setProjectCalendar(calendar);
@@ -1444,6 +1469,7 @@ function AppContent() {
                     pipes={pipes}
                     prodSettings={prodSettings}
                     startDate={activityDate}
+                    dailyProduction={dailyProduction}
                     annotations={annotations}
                     deadlineDate={deadlineDate}
                 />
@@ -1503,7 +1529,7 @@ function AppContent() {
                         </div>
                     </div>
                 </div>
-                {viewMode === 'dashboard' && (<div className="absolute inset-0 z-50 bg-slate-950/95 backdrop-blur-sm overflow-y-auto p-4 animate-in fade-in"><div className="max-w-[1600px] mx-auto h-full"><Dashboard pipes={pipes} annotations={annotations} onExportPDF={handleExportPDF} isExporting={isExporting} secondaryImage={secondaryImage} onUploadSecondary={setSecondaryImage} mapImage={mapImage} onUploadMap={setMapImage} sceneScreenshot={sceneScreenshot} onSelectPipe={handleSelectPipe} selectedIds={selectedIds} onSetSelection={handleSetSelection} prodSettings={prodSettings} startDate={activityDate} deadlineDate={deadlineDate} savedProjects={savedProjects} selectedProjectIds={selectedProjectIds} onSetSelectedProjectIds={setSelectedProjectIds} dailyProduction={dailyProduction} onUpdateDailyProduction={setDailyProduction} onOpenDailyProduction={() => setIsDailyProductionModalOpen(true)} /></div></div>)}
+                {viewMode === 'dashboard' && (<div className="absolute inset-0 z-50 bg-slate-950/95 backdrop-blur-sm overflow-y-auto p-4 animate-in fade-in"><div className="max-w-[1600px] mx-auto h-full"><Dashboard pipes={aggregatedData.pipes} annotations={aggregatedData.annotations} onExportPDF={handleExportPDF} isExporting={isExporting} secondaryImage={secondaryImage} onUploadSecondary={setSecondaryImage} mapImage={mapImage} onUploadMap={setMapImage} sceneScreenshot={sceneScreenshot} onSelectPipe={handleSelectPipe} selectedIds={selectedIds} onSetSelection={handleSetSelection} prodSettings={prodSettings} startDate={activityDate} deadlineDate={deadlineDate} savedProjects={savedProjects} selectedProjectIds={selectedProjectIds} onSetSelectedProjectIds={setSelectedProjectIds} dailyProduction={dailyProduction} onUpdateDailyProduction={setDailyProduction} onOpenDailyProduction={() => setIsDailyProductionModalOpen(true)} /></div></div>)}
             </div>
             {selectedPipes.length > 0 && !isDrawing && !pastePreview && (
                 <div className="w-96 relative z-20 shadow-2xl border-l border-slate-700">
