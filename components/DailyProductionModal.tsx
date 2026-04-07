@@ -101,71 +101,68 @@ const DailyProductionModal: React.FC<DailyProductionModalProps> = ({
     }, [calendar]);
 
     const handleCalculate = () => {
-        if (workedDaysList.length === 0) {
-            alert("Nenhum dia de trabalho selecionado no período.");
-            return;
-        }
-
-        // Paso A: Calcular esforço total (HH)
-        // Usamos os tubos que já foram executados para o "Realizado"
-        // E usamos todos os tubos para o "Planejado" (ideal)
+        const todayStr = new Date().toISOString().split('T')[0];
         
-        let totalPipingHH = 0;
-        let totalInsulationHH = 0;
+        // 1. Totais de Tubulação e Isolamento (Executado vs Remanescente)
+        const totalPipingMeters = currentPipes.reduce((acc, p) => acc + (p.length || 0), 0);
+        const totalExecutedPiping = currentPipes.reduce((acc, p) => {
+            const pipingDone = 1 - (PIPING_REMAINING_FACTOR[p.status] ?? 1);
+            return acc + (p.length * pipingDone);
+        }, 0);
+        const totalRemainingPiping = totalPipingMeters - totalExecutedPiping;
 
-        currentPipes.forEach(p => {
-            // Esforço total do item (como se estivesse pendente)
-            const fullPipingHH = calculatePipeHH({ ...p, status: 'PENDING' as any }, prodSettings, true);
-            const fullInsulationHH = calculatePipeHH({ ...p, insulationStatus: 'PENDING' as any }, prodSettings, false);
-            
-            // Quanto já foi feito (Realizado)
-            const pipingDoneFactor = 1 - (PIPING_REMAINING_FACTOR[p.status] ?? 1);
-            const insulationDoneFactor = 1 - (INSULATION_REMAINING_FACTOR[p.insulationStatus || 'NONE'] ?? 1);
-            
-            totalPipingHH += fullPipingHH * pipingDoneFactor;
-            totalInsulationHH += fullInsulationHH * insulationDoneFactor;
-        });
+        const totalInsulationMeters = currentPipes.filter(p => p.insulationStatus && p.insulationStatus !== 'NONE')
+            .reduce((acc, p) => acc + (p.length || 0), 0);
+        const totalExecutedInsulation = currentPipes.reduce((acc, p) => {
+            const insDone = 1 - (INSULATION_REMAINING_FACTOR[p.insulationStatus || 'NONE'] ?? 1);
+            return acc + (p.length * insDone);
+        }, 0);
+        const totalRemainingInsulation = totalInsulationMeters - totalExecutedInsulation;
 
-        // Aplicar margem de segurança global (15%)
-        totalPipingHH *= (1 + prodSettings.globalConfig.safetyBuffer);
-        totalInsulationHH *= (1 + prodSettings.globalConfig.safetyBuffer);
+        // 2. Identificar dias de trabalho (Passado e Futuro)
+        const allWorkedDays = workedDaysList;
+        const pastWorkedDays = allWorkedDays.filter(d => d <= todayStr);
+        const futureWorkedDays = allWorkedDays.filter(d => d > todayStr);
 
-        // Paso B: Capacidade Diária
-        const dailyCapacityHH = calendar.teamCount * netHoursPerDay;
-        
-        // Paso C: Distribuir
-        // Lógica: Primeiro Piping, depois Insulation.
-        
-        let remainingPipingHH = totalPipingHH;
-        let remainingInsulationHH = totalInsulationHH;
-        
-        const newData: DailyProduction[] = workedDaysList.map(date => {
-            let dayPipingHH = Math.min(remainingPipingHH, dailyCapacityHH);
-            remainingPipingHH -= dayPipingHH;
-            
-            let dayInsulationHH = 0;
-            let remainingCapacity = dailyCapacityHH - dayPipingHH;
-            
-            if (remainingCapacity > 0 && remainingPipingHH <= 0) {
-                dayInsulationHH = Math.min(remainingInsulationHH, remainingCapacity);
-                remainingInsulationHH -= dayInsulationHH;
-            }
-            
-            // Converter HH de volta para metros proporcionais
-            const totalPipeMeters = currentPipes.reduce((acc, p) => acc + (p.length * (1 - (PIPING_REMAINING_FACTOR[p.status] ?? 1))), 0);
-            const totalInsMeters = currentPipes.reduce((acc, p) => acc + (p.length * (1 - (INSULATION_REMAINING_FACTOR[p.insulationStatus || 'NONE'] ?? 1))), 0);
-            
-            const pipeMeters = totalPipingHH > 0 ? (dayPipingHH / totalPipingHH) * totalPipeMeters : 0;
-            const insulationMeters = totalInsulationHH > 0 ? (dayInsulationHH / totalInsulationHH) * totalInsMeters : 0;
+        // 3. Distribuição do PASSADO (Linear do que já foi feito)
+        const pastData: DailyProduction[] = pastWorkedDays.map(date => ({
+            date,
+            pipeMeters: pastWorkedDays.length > 0 ? parseFloat((totalExecutedPiping / pastWorkedDays.length).toFixed(2)) : 0,
+            insulationMeters: pastWorkedDays.length > 0 ? parseFloat((totalExecutedInsulation / pastWorkedDays.length).toFixed(2)) : 0
+        }));
 
-            return {
-                date,
-                pipeMeters: parseFloat(((pipeMeters || 0).toFixed(2))),
-                insulationMeters: parseFloat(((insulationMeters || 0).toFixed(2)))
+        // 4. Distribuição do FUTURO (Curva S / Sigmoide do que falta fazer)
+        const start = new Date(calendar.startDate + 'T12:00:00');
+        const end = new Date(calendar.endDate + 'T12:00:00');
+        const totalDays = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
+
+        const getPlannedWeight = (dateStr: string) => {
+            const d = new Date(dateStr + 'T12:00:00');
+            const dayIdx = Math.floor((d.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+            
+            const getSigmoid = (idx: number) => {
+                const progressRatio = Math.max(0, Math.min(1, idx / totalDays));
+                const x = progressRatio * 10 - 5;
+                const sigmoid = 1 / (1 + Math.exp(-x));
+                const sMin = 1 / (1 + Math.exp(5));
+                const sMax = 1 / (1 + Math.exp(-5));
+                return (sigmoid - sMin) / (sMax - sMin);
             };
-        });
 
-        setEditedProduction(newData);
+            return getSigmoid(dayIdx) - getSigmoid(dayIdx - 1);
+        };
+
+        // Calcular pesos totais dos dias futuros para normalização
+        const futureWeights = futureWorkedDays.map(d => getPlannedWeight(d));
+        const totalFutureWeight = futureWeights.reduce((acc, w) => acc + w, 0) || 1;
+
+        const futureData: DailyProduction[] = futureWorkedDays.map((date, idx) => ({
+            date,
+            pipeMeters: parseFloat(((futureWeights[idx] / totalFutureWeight) * totalRemainingPiping).toFixed(2)),
+            insulationMeters: parseFloat(((futureWeights[idx] / totalFutureWeight) * totalRemainingInsulation).toFixed(2))
+        }));
+
+        setEditedProduction([...pastData, ...futureData]);
         setActiveTab('PREVIEW');
     };
 
@@ -464,11 +461,23 @@ const DailyProductionModal: React.FC<DailyProductionModalProps> = ({
                                     <span className="text-xl font-mono font-bold text-blue-400">{((workedDaysList.length * (netHoursPerDay || 0) * (calendar.teamCount || 0)).toFixed(1))} HH</span>
                                 </div>
                                 <div className="bg-slate-950 border border-slate-800 rounded-xl p-4">
-                                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Esforço Realizado (Saldo)</span>
-                                    <span className="text-xl font-mono font-bold text-emerald-400">
+                                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Esforço Pendente (Saldo)</span>
+                                    <span className={`text-xl font-mono font-bold ${currentPipes.length === 0 ? 'text-red-500' : 'text-emerald-400'}`}>
                                         {((calculateTotalHH(currentPipes, annotations, prodSettings).totalHH || 0).toFixed(1))} HH
                                     </span>
+                                    {currentPipes.length === 0 && (
+                                        <span className="text-[8px] text-red-400 block mt-1 uppercase font-bold">Nenhum tubo carregado no projeto</span>
+                                    )}
                                 </div>
+                            </div>
+
+                            <div className="bg-slate-900/50 border border-slate-800 p-4 rounded-xl">
+                                <h4 className="text-[10px] font-bold text-blue-400 uppercase tracking-widest mb-2 flex items-center gap-2">
+                                    <Calculator size={14} /> MOTOR DE CÁLCULO NATIVO
+                                </h4>
+                                <p className="text-[10px] text-slate-500 leading-relaxed">
+                                    A distribuição de HH é realizada através de algoritmos matemáticos locais (Curva Sigmóide para o futuro e Linear para o passado). Não há uso de inteligência artificial externa para estes cálculos, garantindo estabilidade e precisão no ambiente de produção (Vercel).
+                                </p>
                             </div>
 
                             {editedProduction.length > 0 ? (

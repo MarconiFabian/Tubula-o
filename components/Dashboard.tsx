@@ -3,8 +3,7 @@ import React, { useMemo, useRef, useState } from 'react';
 import { PipeSegment, ProductivitySettings, Annotation, DailyProduction, AccessoryStatus } from '../types';
 import { ProjectData } from '../utils/db';
 import { STATUS_COLORS, STATUS_LABELS, ALL_STATUSES, INSULATION_COLORS, INSULATION_LABELS, ALL_INSULATION_STATUSES, PIPING_REMAINING_FACTOR, INSULATION_REMAINING_FACTOR, HOURS_PER_DAY } from '../constants';
-import { Activity, FileDown, Upload, Image as ImageIcon, Map as MapIcon, Layers, Shield, Ruler, Package, AlertCircle, Search, Filter, ClipboardList, UserCog, Calendar, CheckSquare, TrendingUp, Timer, Users, Target, BarChart3, Database, ChevronDown, Check, Zap, Calculator } from 'lucide-react';
-import SmartInsights from './SmartInsights';
+import { Activity, FileDown, Upload, Image as ImageIcon, Map as MapIcon, Layers, Shield, Ruler, Package, AlertCircle, Search, Filter, ClipboardList, UserCog, Calendar, CheckSquare, TrendingUp, Timer, Users, Target, BarChart3, Database, ChevronDown, Check, Zap, Calculator, LayoutDashboard } from 'lucide-react';
 import ProjectTimeline from './ProjectTimeline';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area, ReferenceDot, BarChart, Bar, Cell, ComposedChart } from 'recharts';
 import { getWorkingEndDate, getWorkingDaysBetween } from '../utils/planning';
@@ -68,31 +67,6 @@ const Dashboard: React.FC<DashboardProps> = ({
   const secInputRef = useRef<HTMLInputElement>(null);
   const mapInputRef = useRef<HTMLInputElement>(null);
 
-  const aggregatedData = useMemo(() => {
-    if (selectedProjectIds.length === 0) {
-      return { pipes, annotations };
-    }
-
-    let allPipes = [...pipes];
-    let allAnnotations = [...annotations];
-
-    selectedProjectIds.forEach(id => {
-      const project = savedProjects.find(p => p.id === id);
-      if (project) {
-        // Add project name as prefix to pipe names to distinguish them
-        const projectPipes = project.pipes.map(p => ({
-          ...p,
-          name: `[${project.name}] ${p.name}`,
-          id: `${project.id}-${p.id}` // Ensure unique IDs
-        }));
-        allPipes = [...allPipes, ...projectPipes];
-        allAnnotations = [...allAnnotations, ...project.annotations];
-      }
-    });
-
-    return { pipes: allPipes, annotations: allAnnotations };
-  }, [pipes, annotations, selectedProjectIds, savedProjects]);
-
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>, setter?: (val: string | null) => void) => {
       const file = e.target.files?.[0];
       if (file && setter) {
@@ -102,9 +76,11 @@ const Dashboard: React.FC<DashboardProps> = ({
       }
   };
 
+  const todayStr = new Date().toISOString().split('T')[0];
+
   const stats = useMemo(() => {
-    const currentPipes = aggregatedData.pipes;
-    const currentAnnotations = aggregatedData.annotations;
+    const currentPipes = pipes;
+    const currentAnnotations = annotations;
 
     const totalLength = currentPipes.reduce((acc, p) => acc + (p?.length || 0), 0);
     const totalPipes = currentPipes.length;
@@ -147,7 +123,6 @@ const Dashboard: React.FC<DashboardProps> = ({
 
     // Daily Productivity Calculation
     const dailyProd: Record<string, number> = {};
-    const todayStr = new Date().toISOString().split('T')[0];
     currentPipes.forEach(p => {
         const isCompleted = ['WELDED', 'HYDROTEST', 'FINISHED'].includes(p.status);
         if (isCompleted) {
@@ -235,13 +210,15 @@ const Dashboard: React.FC<DashboardProps> = ({
         const daysUntilDeadline = getWorkingDaysBetween(start, end, prodSettings?.globalConfig.workOnWeekends);
         
         if (daysUntilDeadline > 0) {
-            const requiredDailyOutput = totalLength / daysUntilDeadline; // meters/day
-            const requiredDailyHH = finalTotalHH / daysUntilDeadline; // HH/day
-            const currentDailyOutput = (dailyCapacity / finalTotalHH) * totalLength; // Approximate meters/day based on capacity
+            const requiredDailyPiping = pipingRemainingLength / daysUntilDeadline;
+            const requiredDailyInsulation = insulationRemainingLength / daysUntilDeadline;
+            const requiredDailyHH = finalTotalHH / daysUntilDeadline;
+            const currentDailyOutput = (dailyCapacity / finalTotalHH) * totalLength;
             
             deadlineStats = {
                 daysUntilDeadline,
-                requiredDailyOutput,
+                requiredDailyPiping,
+                requiredDailyInsulation,
                 requiredDailyHH,
                 currentDailyOutput,
                 isFeasible: requiredDailyHH <= dailyCapacity,
@@ -255,20 +232,16 @@ const Dashboard: React.FC<DashboardProps> = ({
     if (currentPipes.length > 0) {
         const startStr = (startDate || new Date().toISOString().split('T')[0]);
         const todayStr = new Date().toISOString().split('T')[0];
-        
-        // Initial cumulative: everything before start date
-        const initialCumulativeActual = (dailyProduction && dailyProduction.length > 0) 
-            ? dailyProduction.filter(dp => dp.date < startStr).reduce((acc, dp) => acc + dp.pipeMeters, 0)
-            : currentPipes.filter(p => (p.welderInfo?.weldDate || todayStr) < startStr).reduce((acc, p) => {
-                const pipingDone = 1 - (PIPING_REMAINING_FACTOR[p.status] ?? 1);
-                return acc + (p.length * pipingDone);
-            }, 0);
-
-        let cumulativeActual = initialCumulativeActual;
         const totalLengthValue = totalLength;
-        const initialProgressPct = totalLengthValue > 0 ? (initialCumulativeActual / totalLengthValue * 100) : 0;
+        
+        // 1. Calculate Total Executed so far (from all pipes)
+        const totalExecutedMeters = currentPipes.reduce((acc, p) => {
+            const pipingDone = 1 - (PIPING_REMAINING_FACTOR[p.status] ?? 1);
+            return acc + (p.length * pipingDone);
+        }, 0);
+        const totalProgressPct = totalLengthValue > 0 ? (totalExecutedMeters / totalLengthValue * 100) : 0;
 
-        // Theoretical Planned Curve
+        // 2. Dates and Duration
         const start = new Date(startStr + 'T12:00:00');
         const today = new Date(todayStr + 'T12:00:00');
         
@@ -279,77 +252,61 @@ const Dashboard: React.FC<DashboardProps> = ({
             plotDays = Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
         }
 
-        // Calculate Automatic Progression (Linear from start to today based on current total progress)
-        const totalProgressValue = progress; // Current total %
+        // Days since start to today (for actual distribution)
         const daysSinceStart = Math.max(1, Math.floor((today.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
+
+        let cumulativePlanned = 0;
+        let cumulativeActualMeters = 0;
 
         for (let i = 0; i <= plotDays; i++) {
             const d = new Date(start);
             d.setDate(d.getDate() + i);
             const dateStr = d.toISOString().split('T')[0];
+            const isFuture = dateStr > todayStr;
             
-            // Actual production on this specific day
-            let dayProd = 0;
-            if (dailyProduction && dailyProduction.length > 0) {
-                const dp = dailyProduction.find(d => d.date === dateStr);
-                dayProd = dp ? dp.pipeMeters : 0;
-            } else {
-                dayProd = currentPipes.filter(p => {
-                    const d = p.welderInfo?.weldDate || todayStr;
-                    return d === dateStr;
-                }).reduce((acc, p) => {
-                    const pipingDone = 1 - (PIPING_REMAINING_FACTOR[p.status] ?? 1);
-                    return acc + (p.length * pipingDone);
-                }, 0);
+            // 1. Actual (Realizado): Use table data if available, otherwise linear fallback
+            // Rule: Ends exactly on the current date (today)
+            let actual = null;
+            if (!isFuture) {
+                const dpForDate = dailyProduction.find(d => d.date === dateStr);
+                if (dpForDate) {
+                    cumulativeActualMeters += dpForDate.pipeMeters;
+                    actual = totalLengthValue > 0 ? (cumulativeActualMeters / totalLengthValue * 100) : 0;
+                } else {
+                    // Fallback to linear if no data in table for this past date
+                    const linearFactor = daysSinceStart > 0 ? Math.min(i / daysSinceStart, 1) : 1;
+                    actual = parseFloat((linearFactor * totalProgressPct).toFixed(2));
+                }
             }
-            cumulativeActual += dayProd;
 
-            // Planned (Sigmoid Curve) - Adjusted to start from initial progress
-            // We use a slightly less aggressive sigmoid for better realism
-            // If plotDays is 0, we avoid division by zero
+            // 2. Planned (Planejado): ALWAYS Sigmoid S-Curve (Baseline)
+            // Rule: Affected by start/end date, reprogrammed if dates change, stable shape.
             const progressRatio = plotDays > 0 ? (i / plotDays) : 1;
-            const x = progressRatio * 10 - 5; // Range -5 to 5
+            const x = progressRatio * 10 - 5; // Range -5 to 5 for Sigmoid
             const sigmoid = 1 / (1 + Math.exp(-x));
-            
-            // Normalize sigmoid to start at 0 and end at 1 within the plot window
-            const s0 = 1 / (1 + Math.exp(5)); // sigmoid(-5)
-            const s1 = 1 / (1 + Math.exp(-5)); // sigmoid(5)
-            const normalizedSigmoid = (sigmoid - s0) / (s1 - s0);
-            
-            const planned = initialProgressPct + (normalizedSigmoid * (100 - initialProgressPct));
-
-            // Automatic Progression: Linear from initial progress to current total progress
-            let autoProgress = null;
-            if (dateStr <= todayStr) {
-                const linearFactor = Math.min(i / daysSinceStart, 1);
-                autoProgress = parseFloat((initialProgressPct + (linearFactor * (totalProgressValue - initialProgressPct))).toFixed(2));
-            }
+            const sMin = 1 / (1 + Math.exp(5));
+            const sMax = 1 / (1 + Math.exp(-5));
+            const normalizedSigmoid = (sigmoid - sMin) / (sMax - sMin);
+            const planned = normalizedSigmoid * 100;
 
             // Milestones
             let milestone = null;
-            if (i === Math.round(plotDays * 0.25)) milestone = "25%";
-            if (i === Math.round(plotDays * 0.50)) milestone = "50%";
-            if (i === Math.round(plotDays * 0.75)) milestone = "75%";
+            if (i === Math.round(plotDays * 0.25)) milestone = planned.toFixed(2) + "%";
+            if (i === Math.round(plotDays * 0.50)) milestone = planned.toFixed(2) + "%";
+            if (i === Math.round(plotDays * 0.75)) milestone = planned.toFixed(2) + "%";
             if (i === plotDays) milestone = "100%";
-
-            // Only show actual if date is <= today
-            const isFuture = dateStr > todayStr;
 
             const dp = dailyProduction.find(d => d.date === dateStr);
 
             const [y, m, day] = dateStr.split('-');
             sCurveData.push({
                 date: `${day}/${m}/${y.slice(2)}`,
-                actual: !isFuture && totalLengthValue && totalLengthValue > 0 ? parseFloat(((cumulativeActual || 0) / totalLengthValue * 100).toFixed(2)) : null,
+                actual: actual,
                 planned: parseFloat(planned.toFixed(2)),
-                autoProgress: autoProgress,
-                actualMeters: parseFloat((cumulativeActual || 0).toFixed(2)),
+                actualMeters: actual ? parseFloat(((actual / 100) * totalLengthValue).toFixed(2)) : 0,
                 plannedMeters: parseFloat(((planned / 100) * totalLengthValue).toFixed(2)),
                 pipingProgress: dp?.pipingProgress ?? null,
-                insulationProgress: dp?.insulationProgress ?? null,
-                totalProgress: dp?.totalProgress ?? null,
-                plannedTotalProgress: parseFloat(planned.toFixed(2)),
-                milestone,
+                milestone: milestone,
                 isLastActual: dateStr === todayStr
             });
         }
@@ -383,10 +340,10 @@ const Dashboard: React.FC<DashboardProps> = ({
     });
 
     return { totalLength, totalPipes, pipeCounts, pipeLengths, insulationCounts, insulationLengths, bom, progress, sortedDailyProd, sCurveData, totalHH: finalTotalHH, annotationHH, annotationBreakdown, totalTeams: avgTeams, projectedEnd, daysNeeded, deadlineStats, pipingTotalLength, pipingRemainingLength, pipingExecutedLength, insulationTotalLength, insulationRemainingLength, insulationExecutedLength, componentStats };
-  }, [pipes, annotations, startDate, prodSettings, deadlineDate, aggregatedData]);
+  }, [pipes, annotations, startDate, prodSettings, deadlineDate]);
 
   const filteredPipes = useMemo(() => {
-      return aggregatedData.pipes.filter(p => {
+      return pipes.filter(p => {
           const matchesSearch = 
             p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
             p.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -395,7 +352,7 @@ const Dashboard: React.FC<DashboardProps> = ({
           const matchesStatus = statusFilter === 'ALL' || p.status === statusFilter;
           return matchesSearch && matchesStatus;
       });
-  }, [aggregatedData.pipes, searchTerm, statusFilter]);
+  }, [pipes, searchTerm, statusFilter]);
 
   const allFilteredSelected = filteredPipes.length > 0 && filteredPipes.every(p => selectedIds.includes(p.id));
   
@@ -422,10 +379,18 @@ const Dashboard: React.FC<DashboardProps> = ({
                  </div>
                  <div>
                      <h2 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">CONTROLE DE MISSÃO <span className="text-[10px] bg-blue-600 px-1.5 py-0.5 rounded text-white font-mono">LIVE</span></h2>
-                     <p className="text-slate-500 text-[10px] font-mono uppercase tracking-widest">Sistema de Gerenciamento de Tubulação Industrial v2.0</p>
+                     <p className="text-slate-500 text-[10px] font-mono uppercase tracking-widest">Sistema Nativo de Gerenciamento Industrial (Cálculos Matemáticos Locais)</p>
                  </div>
              </div>
              <div className="flex gap-4 items-center">
+                  <button 
+                    onClick={() => window.location.reload()} 
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg border border-slate-800 bg-slate-950 text-slate-500 hover:text-blue-400 hover:border-blue-500/30 transition-all h-10 font-mono text-[10px] uppercase tracking-widest"
+                    title="Recarregar dados e forçar recálculo nativo"
+                  >
+                    <Calculator size={14} />
+                    Recalcular
+                  </button>
                   {/* PROJECT MULTI-SELECTOR */}
                   {!exportMode && savedProjects.length > 0 && (
                       <div className="relative">
@@ -892,7 +857,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                       </div>
                       <div className="text-3xl font-bold text-white font-mono tracking-tighter">
                           {stats.deadlineStats 
-                              ? stats.deadlineStats.requiredDailyOutput.toFixed(1) 
+                              ? stats.deadlineStats.requiredDailyPiping.toFixed(1) 
                               : (stats.totalLength / Math.max(1, stats.daysNeeded)).toFixed(1)}
                           <span className="text-xs text-slate-500 ml-1">m/dia</span>
                       </div>
@@ -930,17 +895,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
               {!exportMode && (
                 <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
-                  <div className="col-span-12 md:col-span-8">
-                    <SmartInsights 
-                      pipes={pipes}
-                      annotations={annotations || []}
-                      settings={prodSettings || ({} as any)}
-                      production={dailyProduction || []}
-                      progress={stats.progress}
-                      totalHH={stats.totalHH}
-                    />
-                  </div>
-                  <div className="col-span-12 md:col-span-4">
+                  <div className="col-span-12 md:col-span-12">
                     <ProjectTimeline pipes={pipes} />
                   </div>
                 </div>
@@ -1054,7 +1009,16 @@ const Dashboard: React.FC<DashboardProps> = ({
                                           }}
                                       />
                                       <Area type="monotone" dataKey="planned" stroke="#3b82f6" strokeWidth={3} fillOpacity={1} fill="url(#colorPlanned)" dot={false} />
-                                      <Area type="monotone" dataKey="actual" stroke="#22c55e" strokeWidth={3} fillOpacity={1} fill="url(#colorActual)" dot={{ r: 4, fill: '#22c55e' }} />
+                                      <Area type="monotone" dataKey="actual" stroke="#22c55e" strokeWidth={3} fillOpacity={1} fill="url(#colorActual)" dot={false} />
+                                      
+                                      {/* Today Reference Line */}
+                                      <ReferenceDot 
+                                          x={stats.sCurveData.find(d => d.isLastActual)?.date} 
+                                          y={0} 
+                                          r={0} 
+                                          label={{ position: 'top', value: 'HOJE', fill: '#ef4444', fontSize: 10, fontWeight: 'bold' }} 
+                                      />
+
                                       {stats.sCurveData.filter(d => d.milestone).map((d, idx) => (
                                           <ReferenceDot 
                                               key={idx} 
@@ -1083,46 +1047,74 @@ const Dashboard: React.FC<DashboardProps> = ({
                           </div>
                       </div>
 
-                      {dailyProduction.length > 0 && (
-                        <div className="bg-slate-900 rounded-xl border border-slate-800 p-6 shadow-2xl">
-                            <div className="flex justify-between items-center mb-6">
-                                <h3 className="text-[10px] font-mono font-bold text-emerald-400 uppercase tracking-widest flex items-center gap-2">
-                                    <TrendingUp size={14}/> CURVA S DETALHADA (TUBULAÇÃO VS ISOLAMENTO)
-                                </h3>
-                                <div className="flex gap-4 items-center">
-                                    <div className="flex items-center gap-2">
-                                        <div className="w-3 h-1 bg-blue-500"></div>
-                                        <span className="text-[8px] font-mono text-slate-500 uppercase">Previsto (Azul)</span>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <div className="w-3 h-1 bg-amber-500"></div>
-                                        <span className="text-[8px] font-mono text-slate-500 uppercase">Automático</span>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <div className="w-3 h-1 bg-emerald-500"></div>
-                                        <span className="text-[8px] font-mono text-slate-500 uppercase">Real</span>
-                                    </div>
-                                </div>
-                            </div>
-                            <div className="h-[300px] w-full">
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <ComposedChart data={stats.sCurveData}>
-                                        <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-                                        <XAxis dataKey="date" stroke="#475569" fontSize={10} tickLine={false} axisLine={false} />
-                                        <YAxis stroke="#475569" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(value) => `${value}%`} domain={[0, 100]} />
-                                        <Tooltip 
-                                            contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', fontSize: '10px' }}
-                                            itemStyle={{ color: '#f1f5f9' }}
-                                        />
-                                        <Legend verticalAlign="top" height={36}/>
-                                        <Line type="monotone" dataKey="plannedTotalProgress" name="Previsto (%)" stroke="#3b82f6" strokeWidth={2} dot={false} strokeDasharray="5 5" />
-                                        <Line type="monotone" dataKey="autoProgress" name="Automático (%)" stroke="#f59e0b" strokeWidth={2} dot={{ r: 2 }} />
-                                        <Line type="monotone" dataKey="actual" name="Real (%)" stroke="#10b981" strokeWidth={3} dot={{ r: 4 }} />
-                                    </ComposedChart>
-                                </ResponsiveContainer>
-                            </div>
-                        </div>
-                      )}
+                      <div className="bg-slate-900 rounded-xl border border-slate-800 p-6 shadow-2xl">
+                          {(() => {
+                              const todayData = stats.sCurveData.find(d => d.isLastActual) || stats.sCurveData[stats.sCurveData.length - 1];
+                              const plannedToday = todayData?.planned || 0;
+                              const actualToday = todayData?.actual || 0;
+                              const gap = actualToday - plannedToday;
+                              return (
+                                  <>
+                                      <div className="flex justify-between items-center mb-6">
+                                          <h3 className="text-[10px] font-mono font-bold text-emerald-400 uppercase tracking-widest flex items-center gap-2">
+                                              <LayoutDashboard size={14}/> DASHBOARD DE PERFORMANCE (KPIs)
+                                          </h3>
+                                          <div className="text-[8px] font-mono text-slate-500 uppercase">Status em: {todayData?.date}</div>
+                                      </div>
+                                      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                                          <div className="bg-slate-800/30 p-4 rounded-xl border border-slate-800 hover:border-emerald-500/30 transition-colors">
+                                              <div className="text-[8px] font-mono text-slate-500 uppercase mb-1 flex items-center gap-1">
+                                                  <Target size={8} className="text-emerald-400" /> Avanço Real
+                                              </div>
+                                              <div className="text-3xl font-bold text-emerald-400 tabular-nums">{actualToday.toFixed(1)}%</div>
+                                              <div className="text-[7px] font-mono text-slate-600 mt-1 uppercase tracking-tighter">Executado acumulado</div>
+                                          </div>
+                                          <div className="bg-slate-800/30 p-4 rounded-xl border border-slate-800 hover:border-blue-500/30 transition-colors">
+                                              <div className="text-[8px] font-mono text-slate-500 uppercase mb-1 flex items-center gap-1">
+                                                  <TrendingUp size={8} className="text-blue-400" /> Planejado
+                                              </div>
+                                              <div className="text-3xl font-bold text-blue-400 tabular-nums">{plannedToday.toFixed(1)}%</div>
+                                              <div className="text-[7px] font-mono text-slate-600 mt-1 uppercase tracking-tighter">Meta da Curva S</div>
+                                          </div>
+                                          <div className="bg-slate-800/30 p-4 rounded-xl border border-slate-800 hover:border-slate-500/30 transition-colors">
+                                              <div className="text-[8px] font-mono text-slate-500 uppercase mb-1 flex items-center gap-1">
+                                                  <Zap size={8} className={gap >= 0 ? 'text-emerald-400' : 'text-rose-400'} /> Desvio (Gap)
+                                              </div>
+                                              <div className={`text-3xl font-bold tabular-nums ${gap >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                                  {gap > 0 ? '+' : ''}{gap.toFixed(1)}%
+                                              </div>
+                                              <div className="text-[7px] font-mono text-slate-600 mt-1 uppercase tracking-tighter">
+                                                  {gap >= 0 ? 'Adiantado' : 'Atrasado'}
+                                              </div>
+                                          </div>
+                                          <div className="bg-slate-800/30 p-4 rounded-xl border border-slate-800 hover:border-purple-500/30 transition-colors">
+                                              <div className="text-[8px] font-mono text-slate-500 uppercase mb-1 flex items-center gap-1">
+                                                  <Timer size={8} className="text-purple-400" /> {stats.deadlineStats ? 'Meta Diária (Deadline)' : 'Término Estimado'}
+                                              </div>
+                                              {stats.deadlineStats ? (
+                                                   <div className="flex flex-col gap-1">
+                                                       <div className="text-xl font-bold text-white tabular-nums tracking-tight">
+                                                           {new Date(deadlineDate + 'T12:00:00').toLocaleDateString('pt-BR')}
+                                                       </div>
+                                                       <div className="flex flex-col gap-0.5">
+                                                           <div className="text-[9px] font-mono font-bold text-blue-400 uppercase">
+                                                               Tubulação: {stats.deadlineStats.requiredDailyPiping.toFixed(1)}m/dia
+                                                           </div>
+                                                           <div className="text-[9px] font-mono font-bold text-amber-400 uppercase">
+                                                               Isolamento: {stats.deadlineStats.requiredDailyInsulation.toFixed(1)}m/dia
+                                                           </div>
+                                                       </div>
+                                                   </div>
+                                               ) : (
+                                                   <div className="text-xl font-bold text-white mt-1 uppercase tracking-tight">{stats.projectedEnd}</div>
+                                               )}
+                                              {!stats.deadlineStats && <div className="text-[7px] font-mono text-slate-600 mt-1 uppercase tracking-tighter">Projeção de entrega</div>}
+                                          </div>
+                                      </div>
+                                  </>
+                              );
+                          })()}
+                      </div>
 
                       <div className="bg-slate-900 rounded-xl border border-slate-800 p-6 shadow-2xl">
                           <div className="flex justify-between items-center mb-6">
@@ -1155,7 +1147,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                               <Calendar size={14}/> CRONOGRAMA DE EXECUÇÃO (GANTT SIMPLIFICADO)
                           </h3>
                           <div className="space-y-2 max-h-64 overflow-y-auto pr-2">
-                              {aggregatedData.pipes.slice(0, 15).map((p, idx) => {
+                              {pipes.slice(0, 15).map((p, idx) => {
                                   const pipingF = PIPING_REMAINING_FACTOR[p.status] ?? 1;
                                   const hasInsulation = p.insulationStatus && p.insulationStatus !== 'NONE';
                                   const insF = hasInsulation ? (INSULATION_REMAINING_FACTOR[p.insulationStatus] ?? 1) : 0;
@@ -1189,9 +1181,9 @@ const Dashboard: React.FC<DashboardProps> = ({
                                       </div>
                                   );
                               })}
-                              {aggregatedData.pipes.length > 15 && (
+                              {pipes.length > 15 && (
                                   <div className="text-center text-[9px] text-slate-600 font-mono uppercase pt-2">
-                                      + {aggregatedData.pipes.length - 15} itens ocultos
+                                      + {pipes.length - 15} itens ocultos
                                   </div>
                               )}
                           </div>
@@ -1326,14 +1318,14 @@ const Dashboard: React.FC<DashboardProps> = ({
                                   </div>
                               )}
 
-                              {aggregatedData.pipes.some(p => p.planningFactors?.weatherExposed) && (
+                              {pipes.some(p => p.planningFactors?.weatherExposed) && (
                                   <div className="bg-cyan-500/10 border border-cyan-500/20 p-3 rounded-lg flex gap-3">
                                       <Activity className="text-cyan-500 shrink-0" size={16} />
                                       <p className="text-[10px] text-cyan-200 leading-relaxed">Exposição climática detectada. Fator de produtividade reduzido em {((prodSettings?.globalConfig.weatherFactor || 0) * 100).toFixed(0)}%.</p>
                                   </div>
                               )}
 
-                              {aggregatedData.pipes.some(p => p.planningFactors?.materialAvailable === false) && (
+                              {pipes.some(p => p.planningFactors?.materialAvailable === false) && (
                                   <div className="bg-orange-500/10 border border-orange-500/20 p-3 rounded-lg flex gap-3">
                                       <Package className="text-orange-500 shrink-0" size={16} />
                                       <p className="text-[10px] text-orange-200 leading-relaxed">Falta de material em campo. Impacto crítico no cronograma (+{((prodSettings?.globalConfig.materialDelayFactor || 0) * 100).toFixed(0)}%).</p>

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Save, FolderOpen, Trash2, X, Database, Clock, Calendar, Cloud, CloudOff, Info } from 'lucide-react';
+import { Save, FolderOpen, Trash2, X, Database, Clock, Calendar, Cloud, CloudOff, Info, Download, Upload } from 'lucide-react';
 import { isSupabaseConfigured } from '../lib/supabase';
 
 interface ProjectSummary {
@@ -14,9 +14,10 @@ interface DatabaseModalProps {
   isOpen: boolean;
   onClose: () => void;
   projects: any[];
-  onSave: (name: string, overwriteId?: string) => void;
+  onSave: (name: string, overwriteId?: string, overrides?: any) => void;
   onLoad: (project: any) => void;
   onDelete: (id: string) => void;
+  onExport: (project: any) => void;
   selectedProjectIds: string[];
   onToggleProjectSelection: (id: string) => void;
   currentProjectId?: string | null;
@@ -24,7 +25,7 @@ interface DatabaseModalProps {
 }
 
 export const DatabaseModal: React.FC<DatabaseModalProps> = ({ 
-    isOpen, onClose, projects, onSave, onLoad, onDelete,
+    isOpen, onClose, projects, onSave, onLoad, onDelete, onExport,
     selectedProjectIds, onToggleProjectSelection,
     currentProjectId, currentProjectName
 }) => {
@@ -33,6 +34,28 @@ export const DatabaseModal: React.FC<DatabaseModalProps> = ({
     const [confirmAction, setConfirmAction] = useState<{type: 'LOAD' | 'DELETE' | 'OVERWRITE', project: any} | null>(null);
 
     if (!isOpen) return null;
+
+    const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            try {
+                const project = JSON.parse(event.target?.result as string);
+                if (project && project.name && project.pipes) {
+                    // Import as a new project
+                    onSave(project.name + " (Importado)", undefined, project);
+                } else {
+                    alert("Arquivo JSON inválido.");
+                }
+            } catch (err) {
+                console.error("Erro ao importar projeto:", err);
+                alert("Erro ao ler o arquivo JSON.");
+            }
+        };
+        reader.readAsText(file);
+    };
 
     const formatDate = (date: Date) => {
         return new Date(date).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute:'2-digit' });
@@ -128,6 +151,22 @@ export const DatabaseModal: React.FC<DatabaseModalProps> = ({
                         >
                             <Save size={18} /> Salvar Projeto Atual
                         </button>
+                        <div className="relative">
+                            <input 
+                                type="file" 
+                                accept=".json" 
+                                onChange={handleImport} 
+                                className="hidden" 
+                                id="import-project" 
+                            />
+                            <label 
+                                htmlFor="import-project"
+                                className="h-full px-4 py-3 bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-emerald-400 rounded-lg font-bold flex items-center gap-2 cursor-pointer transition-all"
+                                title="Importar projeto do computador (.json)"
+                            >
+                                <Upload size={18} /> Importar
+                            </label>
+                        </div>
                     </div>
 
                     {mode === 'SAVE' && (
@@ -216,6 +255,13 @@ export const DatabaseModal: React.FC<DatabaseModalProps> = ({
                                                 </div>
                                             </div>
                                             <div className="flex gap-2">
+                                                <button 
+                                                    onClick={() => onExport(proj)}
+                                                    className="px-3 py-2 bg-emerald-600/20 hover:bg-emerald-600 text-emerald-500 hover:text-white rounded-lg font-bold text-sm transition-colors flex items-center gap-1"
+                                                    title="Baixar projeto para o computador (.json)"
+                                                >
+                                                    <Download size={16} />
+                                                </button>
                                                 <button 
                                                     onClick={() => setConfirmAction({ type: 'OVERWRITE', project: proj })}
                                                     className="px-3 py-2 bg-amber-600/20 hover:bg-amber-600 text-amber-500 hover:text-white rounded-lg font-bold text-sm transition-colors flex items-center gap-1"

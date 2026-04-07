@@ -688,6 +688,25 @@ function AppContent() {
       }
   };
 
+  const handleDBAction_Export = (project: any) => {
+      try {
+          const dataStr = JSON.stringify(project, null, 2);
+          const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+          
+          const exportFileDefaultName = `projeto-${project.name.replace(/\s+/g, '-')}-${new Date().toISOString().split('T')[0]}.json`;
+          
+          const linkElement = document.createElement('a');
+          linkElement.setAttribute('href', dataUri);
+          linkElement.setAttribute('download', exportFileDefaultName);
+          linkElement.click();
+          
+          showToast("Projeto exportado com sucesso!", 'success');
+      } catch (error) {
+          console.error("Erro ao exportar projeto:", error);
+          showToast("Erro ao exportar projeto.", 'error');
+      }
+  };
+
   const [confirmNewProject, setConfirmNewProject] = useState(false);
   const [toast, setToast] = useState<{message: string, type: 'success' | 'error'} | null>(null);
 
@@ -1346,6 +1365,7 @@ function AppContent() {
             onSave={handleDBAction_Save} 
             onLoad={handleDBAction_Load} 
             onDelete={handleDBAction_Delete}
+            onExport={handleDBAction_Export}
             selectedProjectIds={selectedProjectIds}
             onToggleProjectSelection={handleToggleProjectSelection}
             currentProjectId={currentProjectId}

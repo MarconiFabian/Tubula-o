@@ -1,0 +1,80 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: projects
+    // Document ID: projectId
+    // Fields:
+    //   - id: string (required) - Unique project ID
+    //   - name: string (required) - Project name
+    //   - updatedAt: timestamp (required) - Last update time
+    //   - pipes: list (optional) - Array of pipe segments
+    //   - annotations: list (optional) - Array of annotations
+    //   - location: string (optional) - Project location
+    //   - client: string (optional) - Client name
+    //   - secondaryImage: string (optional) - Base64 or URL for secondary image
+    //   - mapImage: string (optional) - Base64 or URL for map image
+    //   - userId: string (required) - Owner UID
+    //   - dailyProduction: list (optional) - Production history
+    //   - activityDate: string (optional) - Current activity date
+    //   - deadlineDate: string (optional) - Project deadline
+    //   - projectCalendar: map (optional) - Calendar settings
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && 
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+         (request.auth.token.email == "marconifabiano@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    function isValidProject(data) {
+      return data.id is string && data.id.size() > 0 &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.userId is string && data.userId.size() > 0;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /projects/{projectId} {
+      // Allow read/write if authenticated OR if it's the default project user
+      allow read: if isAuthenticated() || 
+                    (resource != null && resource.data.userId == 'marconi-default');
+      
+      allow create: if (isAuthenticated() && isValidProject(request.resource.data)) || 
+                    (request.resource.data.userId == 'marconi-default' && isValidProject(request.resource.data));
+      
+      allow update: if (isAuthenticated() && isValidProject(request.resource.data)) || 
+                    (resource.data.userId == 'marconi-default' && isValidProject(request.resource.data));
+      
+      allow delete: if (isAuthenticated() && (isOwner(resource.data.userId) || isAdmin())) || 
+                    (resource.data.userId == 'marconi-default');
+    }
+
+    match /users/{userId} {
+      allow read: if isAuthenticated() && (isOwner(userId) || isAdmin());
+      allow write: if isAdmin();
+    }
+  }
+}

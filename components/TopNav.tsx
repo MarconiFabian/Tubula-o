@@ -100,19 +100,6 @@ export const TopNav: React.FC<TopNavProps> = ({
       </div>
 
       <div className="flex items-center gap-2 flex-shrink-0">
-        <div className="hidden xl:flex flex-col items-end mr-2">
-          <span className="text-[9px] text-slate-600 font-black uppercase tracking-widest">Operador</span>
-          <span className="text-xs font-bold text-blue-400 leading-none">{currentUser}</span>
-        </div>
-        
-        <button 
-          onClick={handleLogout}
-          className="p-2 text-slate-500 hover:text-red-400 hover:bg-red-400/10 rounded-xl transition-all border border-transparent hover:border-red-400/20"
-          title="Sair do Sistema"
-        >
-          <LogOut size={18} />
-        </button>
-        
         <div className="h-6 w-px bg-slate-800 mx-1"></div>
         
         <button 
@@ -181,6 +168,22 @@ export const TopNav: React.FC<TopNavProps> = ({
         </div>
 
         <div className="h-6 w-px bg-slate-800 mx-1"></div>
+
+        {currentUser && (
+          <div className="flex items-center gap-3 px-3 py-1.5 bg-slate-950/50 border border-slate-800/50 rounded-xl">
+            <div className="flex flex-col items-end">
+              <span className="text-[8px] font-black text-slate-600 uppercase tracking-tighter">Usuário Ativo</span>
+              <span className="text-[10px] font-bold text-blue-400">{currentUser}</span>
+            </div>
+            <button 
+              onClick={handleLogout}
+              className="p-1.5 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all"
+              title="Sair"
+            >
+              <LogOut size={16} />
+            </button>
+          </div>
+        )}
 
         <div className="flex gap-1.5">
           <button onClick={handleExportDXF} className="bg-slate-950 hover:bg-slate-800 border border-slate-800 text-slate-300 px-3 py-1.5 rounded-xl font-bold flex items-center gap-2 text-[10px] uppercase tracking-widest transition-all" title="Exportar para AutoCAD">
