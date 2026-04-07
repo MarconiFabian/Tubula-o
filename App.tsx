@@ -154,7 +154,13 @@ function AppContent() {
   const [projectLocation, setProjectLocation] = useState('ÁREA / SETOR 01');
   const [projectClient, setProjectClient] = useState('VALE'); 
   const [activityDate, setActivityDate] = useState(new Date().toISOString().split('T')[0]);
-  const [deadlineDate, setDeadlineDate] = useState<string | null>(null);
+  const [deadlineDate, setDeadlineDate] = useState<string | null>("2026-07-31");
+
+  useEffect(() => {
+    const handleUpdateDeadline = (e: any) => setDeadlineDate(e.detail);
+    window.addEventListener('update-deadline', handleUpdateDeadline);
+    return () => window.removeEventListener('update-deadline', handleUpdateDeadline);
+  }, []);
 
   const [prodSettings, setProdSettings] = useState<ProductivitySettings>(DEFAULT_PROD_SETTINGS);
   
@@ -427,6 +433,7 @@ function AppContent() {
               const requiredDailyPiping = pipingRemainingLength / daysUntilDeadline;
               const requiredDailyInsulation = insulationRemainingLength / daysUntilDeadline;
               const requiredDailyHH = totalHH / daysUntilDeadline;
+              const requiredDailyOutput = totalLength / daysUntilDeadline;
               const currentDailyOutput = (dailyCapacity / totalHH) * totalLength;
               
               deadlineStats = {
@@ -434,6 +441,7 @@ function AppContent() {
                   requiredDailyPiping,
                   requiredDailyInsulation,
                   requiredDailyHH,
+                  requiredDailyOutput,
                   currentDailyOutput,
                   isFeasible: requiredDailyHH <= dailyCapacity,
                   ratio: (requiredDailyHH / dailyCapacity) * 100,
@@ -441,6 +449,9 @@ function AppContent() {
               };
           }
       }
+
+      const currentDailyPiping = daysNeeded > 0 ? pipingRemainingLength / daysNeeded : 0;
+      const currentDailyInsulation = daysNeeded > 0 ? insulationRemainingLength / daysNeeded : 0;
 
       return {
           totalLength,
@@ -464,7 +475,9 @@ function AppContent() {
           insulationTotalLength,
           insulationRemainingLength,
           insulationExecutedLength: insulationTotalLength - insulationRemainingLength,
-          componentStats
+          componentStats,
+          currentDailyPiping,
+          currentDailyInsulation
       };
   }, [pipes, annotations, prodSettings, activityDate]);
 

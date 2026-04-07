@@ -179,17 +179,33 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
             </div>
             <div className="p-6 rounded-2xl flex flex-col items-center" style={{ backgroundColor: 'rgba(30, 41, 59, 0.4)', border: '1px solid #334155' }}>
             <Calendar style={{ color: '#4ade80', marginBottom: '8px' }} size={32} />
-            <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#64748b' }}>Progresso Total</span>
-            <div className="text-3xl font-bold mt-1" style={{ color: '#4ade80' }}>{progress.toFixed(1)}%</div>
-            {deadlineDate && (
-                <div className="text-[10px] font-bold mt-2 uppercase px-2 py-1 rounded" style={{ 
-                    color: reportStats?.deadlineStats?.isFeasible ? '#4ade80' : '#f87171',
-                    backgroundColor: reportStats?.deadlineStats?.isFeasible ? 'rgba(74, 222, 128, 0.1)' : 'rgba(248, 113, 113, 0.1)',
-                    border: `1px solid ${reportStats?.deadlineStats?.isFeasible ? 'rgba(74, 222, 128, 0.2)' : 'rgba(248, 113, 113, 0.2)'}`
-                }}>
-                    Meta: {deadlineDate.split('-').reverse().join('/')}
+            <div className="flex justify-between w-full items-center mb-1">
+                <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#64748b' }}>{deadlineDate ? 'Meta Diária' : 'Término'}</span>
+                <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#4ade80' }}>{progress.toFixed(1)}%</span>
+            </div>
+            <div className="text-3xl font-bold mt-1" style={{ color: deadlineDate ? '#d8b4fe' : '#4ade80' }}>{deadlineDate ? deadlineDate.split('-').reverse().join('/') : reportStats?.projectedEnd}</div>
+            <div className="flex flex-col gap-1 mt-3 w-full border-t border-slate-700 pt-3">
+                <div className="flex justify-between text-[10px] font-bold uppercase" style={{ color: '#94a3b8' }}>
+                    <span>Dias {deadlineDate ? 'Úteis' : 'Necessários'}:</span>
+                    <span style={{ color: '#ffffff' }}>{deadlineDate ? reportStats?.deadlineStats?.daysUntilDeadline : reportStats?.daysNeeded} dias</span>
                 </div>
-            )}
+                <div className="flex justify-between text-[10px] font-bold uppercase" style={{ color: '#94a3b8' }}>
+                    <span>Saldo Tubulação:</span>
+                    <span style={{ color: '#ffffff' }}>{reportStats?.pipingRemainingLength.toFixed(1)}m</span>
+                </div>
+                <div className="flex justify-between text-[10px] font-bold uppercase" style={{ color: '#94a3b8' }}>
+                    <span>Saldo Isolamento:</span>
+                    <span style={{ color: '#ffffff' }}>{reportStats?.insulationRemainingLength.toFixed(1)}m</span>
+                </div>
+                <div className="flex justify-between text-[10px] font-bold uppercase mt-1 pt-1 border-t border-slate-800" style={{ color: '#60a5fa' }}>
+                    <span>Meta Tubulação:</span>
+                    <span>{deadlineDate ? reportStats?.deadlineStats?.requiredDailyPiping.toFixed(1) : reportStats?.currentDailyPiping.toFixed(1)}m/dia</span>
+                </div>
+                <div className="flex justify-between text-[10px] font-bold uppercase" style={{ color: '#fbbf24' }}>
+                    <span>Meta Isolamento:</span>
+                    <span>{deadlineDate ? reportStats?.deadlineStats?.requiredDailyInsulation.toFixed(1) : reportStats?.currentDailyInsulation.toFixed(1)}m/dia</span>
+                </div>
+            </div>
             </div>
         </div>
 
@@ -728,7 +744,7 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
                         <div className="p-6 rounded-xl border border-blue-500/20" style={{ backgroundColor: 'rgba(59, 130, 246, 0.1)' }}>
                             <p className="text-xl text-blue-200 leading-relaxed font-medium">
                                 <span className="font-bold text-blue-400">INFO:</span> {reportStats?.deadlineStats ? (
-                                    <>Produtividade diária necessária para o prazo: <span className="text-white">{reportStats.deadlineStats.requiredDailyPiping.toFixed(2)}m (Tubo)</span> e <span className="text-white">{reportStats.deadlineStats.requiredDailyInsulation.toFixed(2)}m (Isolamento)</span>.</>
+                                    <>Produtividade diária necessária para o prazo ({reportStats.deadlineStats.daysUntilDeadline} dias úteis): <span className="text-white">{reportStats.deadlineStats.requiredDailyPiping.toFixed(2)}m (Tubo)</span> e <span className="text-white">{reportStats.deadlineStats.requiredDailyInsulation.toFixed(2)}m (Isolamento)</span>.</>
                                 ) : (
                                     <>Produtividade média linear recomendada: <span className="text-white">{( (reportStats?.totalLength || 0) / Math.max(1, reportStats?.daysNeeded || 1)).toFixed(2)}m/dia</span>.</>
                                 )}

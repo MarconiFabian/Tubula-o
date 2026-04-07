@@ -3,7 +3,7 @@ import React, { useMemo, useRef, useState } from 'react';
 import { PipeSegment, ProductivitySettings, Annotation, DailyProduction, AccessoryStatus } from '../types';
 import { ProjectData } from '../utils/db';
 import { STATUS_COLORS, STATUS_LABELS, ALL_STATUSES, INSULATION_COLORS, INSULATION_LABELS, ALL_INSULATION_STATUSES, PIPING_REMAINING_FACTOR, INSULATION_REMAINING_FACTOR, HOURS_PER_DAY } from '../constants';
-import { Activity, FileDown, Upload, Image as ImageIcon, Map as MapIcon, Layers, Shield, Ruler, Package, AlertCircle, Search, Filter, ClipboardList, UserCog, Calendar, CheckSquare, TrendingUp, Timer, Users, Target, BarChart3, Database, ChevronDown, Check, Zap, Calculator, LayoutDashboard } from 'lucide-react';
+import { Activity, FileDown, Upload, Image as ImageIcon, Map as MapIcon, Layers, Shield, Ruler, Package, AlertCircle, Search, Filter, ClipboardList, UserCog, Calendar, CheckSquare, TrendingUp, Timer, Users, Target, BarChart3, Database, ChevronDown, Check, Zap, Calculator, LayoutDashboard, Wrench, History } from 'lucide-react';
 import ProjectTimeline from './ProjectTimeline';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area, ReferenceDot, BarChart, Bar, Cell, ComposedChart } from 'recharts';
 import { getWorkingEndDate, getWorkingDaysBetween } from '../utils/planning';
@@ -122,20 +122,32 @@ const Dashboard: React.FC<DashboardProps> = ({
     });
 
     // Daily Productivity Calculation
-    const dailyProd: Record<string, number> = {};
+    const dailyProd: Record<string, { piping: number; insulation: number }> = {};
     currentPipes.forEach(p => {
-        const isCompleted = ['WELDED', 'HYDROTEST', 'FINISHED'].includes(p.status);
-        if (isCompleted) {
-            const date = p.welderInfo?.weldDate || todayStr;
-            dailyProd[date] = (dailyProd[date] || 0) + (p.length || 0);
+        const pipingCompleted = ['WELDED', 'HYDROTEST', 'FINISHED'].includes(p.status);
+        const insulationCompleted = p.insulationStatus === 'FINISHED';
+        
+        const date = p.welderInfo?.weldDate || todayStr;
+        if (!dailyProd[date]) dailyProd[date] = { piping: 0, insulation: 0 };
+        
+        if (pipingCompleted) {
+            dailyProd[date].piping += (p.length || 0);
+        }
+        if (insulationCompleted) {
+            dailyProd[date].insulation += (p.length || 0);
         }
     });
+
     const sortedDailyProd = Object.entries(dailyProd)
         .sort((a, b) => new Date(a[0]).getTime() - new Date(b[0]).getTime())
-        .slice(-7); // Last 7 days
+        .map(([date, meters]) => ({
+            date,
+            pipingMeters: meters.piping,
+            insulationMeters: meters.insulation
+        }));
 
     const completedWeight = (pipeLengths['WELDED'] * 0.8) + (pipeLengths['HYDROTEST'] * 1.0) + (pipeLengths['MOUNTED'] * 0.3);
-    const progress = pipingTotalLength > 0 ? (completedWeight / pipingTotalLength) * 100 : 0;
+    const progress = pipingTotalLength > 0 ? parseFloat(((completedWeight / pipingTotalLength) * 100).toFixed(1)) : 0;
 
     // Planning Data for S-Curve and Projected End
     const totalHH = currentPipes.reduce((acc, p) => {
@@ -205,7 +217,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     // Deadline Calculation
     let deadlineStats = null;
     if (deadlineDate) {
-        const start = new Date((startDate || new Date().toISOString().split('T')[0]) + 'T12:00:00');
+        const start = new Date(new Date().toISOString().split('T')[0] + 'T12:00:00');
         const end = new Date(deadlineDate + 'T12:00:00');
         const daysUntilDeadline = getWorkingDaysBetween(start, end, prodSettings?.globalConfig.workOnWeekends);
         
@@ -213,6 +225,7 @@ const Dashboard: React.FC<DashboardProps> = ({
             const requiredDailyPiping = pipingRemainingLength / daysUntilDeadline;
             const requiredDailyInsulation = insulationRemainingLength / daysUntilDeadline;
             const requiredDailyHH = finalTotalHH / daysUntilDeadline;
+            const requiredDailyOutput = totalLength / daysUntilDeadline;
             const currentDailyOutput = (dailyCapacity / finalTotalHH) * totalLength;
             
             deadlineStats = {
@@ -220,6 +233,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                 requiredDailyPiping,
                 requiredDailyInsulation,
                 requiredDailyHH,
+                requiredDailyOutput,
                 currentDailyOutput,
                 isFeasible: requiredDailyHH <= dailyCapacity,
                 ratio: (requiredDailyHH / dailyCapacity) * 100,
@@ -271,7 +285,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                 const dpForDate = dailyProduction.find(d => d.date === dateStr);
                 if (dpForDate) {
                     cumulativeActualMeters += dpForDate.pipeMeters;
-                    actual = totalLengthValue > 0 ? (cumulativeActualMeters / totalLengthValue * 100) : 0;
+                    actual = totalLengthValue > 0 ? parseFloat((cumulativeActualMeters / totalLengthValue * 100).toFixed(1)) : 0;
                 } else {
                     // Fallback to linear if no data in table for this past date
                     const linearFactor = daysSinceStart > 0 ? Math.min(i / daysSinceStart, 1) : 1;
@@ -312,6 +326,9 @@ const Dashboard: React.FC<DashboardProps> = ({
         }
     }
 
+    const currentDailyPiping = daysNeeded > 0 ? pipingRemainingLength / daysNeeded : 0;
+    const currentDailyInsulation = daysNeeded > 0 ? insulationRemainingLength / daysNeeded : 0;
+
     const componentStats = {
         supports: { total: 0, installed: 0 }
     };
@@ -339,7 +356,12 @@ const Dashboard: React.FC<DashboardProps> = ({
         }
     });
 
-    return { totalLength, totalPipes, pipeCounts, pipeLengths, insulationCounts, insulationLengths, bom, progress, sortedDailyProd, sCurveData, totalHH: finalTotalHH, annotationHH, annotationBreakdown, totalTeams: avgTeams, projectedEnd, daysNeeded, deadlineStats, pipingTotalLength, pipingRemainingLength, pipingExecutedLength, insulationTotalLength, insulationRemainingLength, insulationExecutedLength, componentStats };
+    const today = new Date();
+    today.setHours(12, 0, 0, 0);
+    const start = new Date(startDate + 'T12:00:00');
+    const daysElapsed = Math.max(0, Math.floor((today.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
+
+    return { totalLength, totalPipes, pipeCounts, pipeLengths, insulationCounts, insulationLengths, bom, progress, sortedDailyProd, sCurveData, totalHH: finalTotalHH, annotationHH, annotationBreakdown, totalTeams: avgTeams, projectedEnd, daysNeeded, deadlineStats, pipingTotalLength, pipingRemainingLength, pipingExecutedLength, insulationTotalLength, insulationRemainingLength, insulationExecutedLength, componentStats, currentDailyPiping, currentDailyInsulation, daysElapsed };
   }, [pipes, annotations, startDate, prodSettings, deadlineDate]);
 
   const filteredPipes = useMemo(() => {
@@ -757,13 +779,13 @@ const Dashboard: React.FC<DashboardProps> = ({
                             <Activity size={14}/> PRODUÇÃO_DIÁRIA_DE_SOLDA (m)
                         </h3>
                         <div className="flex items-end justify-around gap-1 h-24">
-                            {stats.sortedDailyProd.length > 0 ? stats.sortedDailyProd.map(([date, value]) => {
-                                const maxVal = Math.max(...stats.sortedDailyProd.map(d => d[1]), 1);
-                                const height = (value / maxVal) * 100;
+                            {stats.sortedDailyProd.length > 0 ? stats.sortedDailyProd.map((day) => {
+                                const maxVal = Math.max(...stats.sortedDailyProd.map(d => d.pipingMeters), 1);
+                                const height = (day.pipingMeters / maxVal) * 100;
                                 return (
-                                    <div key={date} className="flex flex-col items-center flex-1 h-full justify-end group">
+                                    <div key={day.date} className="flex flex-col items-center flex-1 h-full justify-end group">
                                         <div className="w-full bg-green-500/20 border-t border-green-500/50 transition-all group-hover:bg-green-500/40" style={{ height: `${Math.max(height, 10)}%` }}></div>
-                                        <span className="text-[6px] text-slate-600 font-mono uppercase text-center mt-2 tracking-tighter">{date.split('-').slice(1).join('/')}</span>
+                                        <span className="text-[6px] text-slate-600 font-mono uppercase text-center mt-2 tracking-tighter">{day.date.split('-').slice(1).join('/')}</span>
                                     </div>
                                 )
                             }) : (
@@ -791,7 +813,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                                         {Object.entries(stats.bom).map(([diameterInch, length]) => (
                                             <tr key={diameterInch} className="hover:bg-slate-800/20 transition-colors group">
                                                 <td className="p-3 text-slate-400 group-hover:text-slate-200 transition-colors">TUBO_DE_AÇO_CARBONO - <span className="text-blue-500 font-bold">{diameterInch}"</span></td>
-                                                <td className="p-3 text-right text-white font-bold">{((length as number) || 0).toFixed(3)}</td>
+                                                <td className="p-3 text-right text-white font-bold">{((length as number) || 0).toFixed(1)}</td>
                                                 <td className="p-3 text-right text-slate-600">METROS</td>
                                             </tr>
                                         ))}
@@ -857,7 +879,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                       </div>
                       <div className="text-3xl font-bold text-white font-mono tracking-tighter">
                           {stats.deadlineStats 
-                              ? stats.deadlineStats.requiredDailyPiping.toFixed(1) 
+                              ? stats.deadlineStats.requiredDailyOutput.toFixed(1) 
                               : (stats.totalLength / Math.max(1, stats.daysNeeded)).toFixed(1)}
                           <span className="text-xs text-slate-500 ml-1">m/dia</span>
                       </div>
@@ -1005,7 +1027,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                                           formatter={(value: any, name: string, props: any) => {
                                               const label = name === 'actual' ? 'Realizado' : 'Planejado';
                                               const meters = name === 'actual' ? props.payload.actualMeters : props.payload.plannedMeters;
-                                              return [`${value}% (${meters}m)`, label];
+                                              return [`${parseFloat(value).toFixed(1)}% (${parseFloat(meters).toFixed(1)}m)`, label];
                                           }}
                                       />
                                       <Area type="monotone" dataKey="planned" stroke="#3b82f6" strokeWidth={3} fillOpacity={1} fill="url(#colorPlanned)" dot={false} />
@@ -1061,7 +1083,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                                           </h3>
                                           <div className="text-[8px] font-mono text-slate-500 uppercase">Status em: {todayData?.date}</div>
                                       </div>
-                                      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                                      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
                                           <div className="bg-slate-800/30 p-4 rounded-xl border border-slate-800 hover:border-emerald-500/30 transition-colors">
                                               <div className="text-[8px] font-mono text-slate-500 uppercase mb-1 flex items-center gap-1">
                                                   <Target size={8} className="text-emerald-400" /> Avanço Real
@@ -1087,6 +1109,13 @@ const Dashboard: React.FC<DashboardProps> = ({
                                                   {gap >= 0 ? 'Adiantado' : 'Atrasado'}
                                               </div>
                                           </div>
+                                          <div className="bg-slate-800/30 p-4 rounded-xl border border-slate-800 hover:border-amber-500/30 transition-colors">
+                                              <div className="text-[8px] font-mono text-slate-500 uppercase mb-1 flex items-center gap-1">
+                                                  <Calendar size={8} className="text-amber-400" /> Dias de Execução
+                                              </div>
+                                              <div className="text-3xl font-bold text-amber-400 tabular-nums">{stats.daysElapsed}</div>
+                                              <div className="text-[7px] font-mono text-slate-600 mt-1 uppercase tracking-tighter">Desde o início ({new Date(startDate + 'T12:00:00').toLocaleDateString('pt-BR')})</div>
+                                          </div>
                                           <div className="bg-slate-800/30 p-4 rounded-xl border border-slate-800 hover:border-purple-500/30 transition-colors">
                                               <div className="text-[8px] font-mono text-slate-500 uppercase mb-1 flex items-center gap-1">
                                                   <Timer size={8} className="text-purple-400" /> {stats.deadlineStats ? 'Meta Diária (Deadline)' : 'Término Estimado'}
@@ -1097,18 +1126,124 @@ const Dashboard: React.FC<DashboardProps> = ({
                                                            {new Date(deadlineDate + 'T12:00:00').toLocaleDateString('pt-BR')}
                                                        </div>
                                                        <div className="flex flex-col gap-0.5">
-                                                           <div className="text-[9px] font-mono font-bold text-blue-400 uppercase">
-                                                               Tubulação: {stats.deadlineStats.requiredDailyPiping.toFixed(1)}m/dia
+                                                           <div className="text-[9px] font-mono font-bold text-purple-400 uppercase">
+                                                               Dias Úteis: {stats.deadlineStats.daysUntilDeadline} dias
+                                                           </div>
+                                                           <div className="text-[9px] font-mono font-bold text-slate-400 uppercase border-t border-slate-800/50 mt-1 pt-1">
+                                                               Saldo Tubulação: {stats.pipingRemainingLength.toFixed(1)}m
+                                                           </div>
+                                                           <div className="text-[9px] font-mono font-bold text-slate-400 uppercase">
+                                                               Saldo Isolamento: {stats.insulationRemainingLength.toFixed(1)}m
+                                                           </div>
+                                                           <div className="text-[9px] font-mono font-bold text-blue-400 uppercase mt-1">
+                                                               TUBULAÇÃO: {stats.deadlineStats.requiredDailyPiping.toFixed(1)}M/DIA
                                                            </div>
                                                            <div className="text-[9px] font-mono font-bold text-amber-400 uppercase">
-                                                               Isolamento: {stats.deadlineStats.requiredDailyInsulation.toFixed(1)}m/dia
+                                                               ISOLAMENTO: {stats.deadlineStats.requiredDailyInsulation.toFixed(1)}M/DIA
                                                            </div>
                                                        </div>
                                                    </div>
                                                ) : (
-                                                   <div className="text-xl font-bold text-white mt-1 uppercase tracking-tight">{stats.projectedEnd}</div>
+                                                   <div className="flex flex-col gap-1">
+                                                       <div className="text-xl font-bold text-white mt-1 uppercase tracking-tight">{stats.projectedEnd}</div>
+                                                       <div className="flex flex-col gap-0.5">
+                                                           <div className="text-[9px] font-mono font-bold text-purple-400 uppercase">
+                                                               Dias Necessários: {stats.daysNeeded} dias
+                                                           </div>
+                                                           <div className="text-[9px] font-mono font-bold text-slate-400 uppercase border-t border-slate-800/50 mt-1 pt-1">
+                                                               Saldo Tubulação: {stats.pipingRemainingLength.toFixed(1)}m
+                                                           </div>
+                                                           <div className="text-[9px] font-mono font-bold text-slate-400 uppercase">
+                                                               Saldo Isolamento: {stats.insulationRemainingLength.toFixed(1)}m
+                                                           </div>
+                                                           <div className="text-[9px] font-mono font-bold text-blue-400 uppercase mt-1">
+                                                               TUBULAÇÃO: {stats.currentDailyPiping.toFixed(1)}M/DIA
+                                                           </div>
+                                                           <div className="text-[9px] font-mono font-bold text-amber-400 uppercase">
+                                                               ISOLAMENTO: {stats.currentDailyInsulation.toFixed(1)}M/DIA
+                                                           </div>
+                                                       </div>
+                                                   </div>
                                                )}
                                               {!stats.deadlineStats && <div className="text-[7px] font-mono text-slate-600 mt-1 uppercase tracking-tighter">Projeção de entrega</div>}
+                                          </div>
+                                      </div>
+
+                                      <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                          <div className="bg-slate-800/20 p-4 rounded-xl border border-slate-800/50">
+                                              <h4 className="text-[9px] font-mono font-bold text-slate-400 uppercase mb-3 flex items-center gap-2">
+                                                  <History size={10} /> Histórico Recente de Execução (Metros)
+                                              </h4>
+                                              <div className="space-y-2">
+                                                  {stats.sortedDailyProd.slice(-5).reverse().map((day, idx) => (
+                                                      <div key={idx} className="flex justify-between items-center p-2 bg-slate-900/50 rounded border border-slate-800/50">
+                                                          <div className="text-[10px] font-mono text-slate-300">{new Date(day.date + 'T12:00:00').toLocaleDateString('pt-BR')}</div>
+                                                          <div className="flex gap-4">
+                                                              <div className="flex flex-col items-end">
+                                                                  <span className="text-[8px] text-blue-400 uppercase font-bold">Tubulação</span>
+                                                                  <span className="text-[11px] font-bold text-white">{(day.pipingMeters || 0).toFixed(1)}m</span>
+                                                              </div>
+                                                              <div className="flex flex-col items-end">
+                                                                  <span className="text-[8px] text-amber-400 uppercase font-bold">Isolamento</span>
+                                                                  <span className="text-[11px] font-bold text-white">{(day.insulationMeters || 0).toFixed(1)}m</span>
+                                                              </div>
+                                                          </div>
+                                                      </div>
+                                                  ))}
+                                                  {stats.sortedDailyProd.length === 0 && (
+                                                      <div className="text-[10px] font-mono text-slate-500 text-center py-4 italic">Nenhuma produção registrada ainda.</div>
+                                                  )}
+                                              </div>
+                                          </div>
+                                          <div className="bg-slate-800/20 p-4 rounded-xl border border-slate-800/50">
+                                              <h4 className="text-[9px] font-mono font-bold text-slate-400 uppercase mb-3 flex items-center justify-between gap-2">
+                                                  <div className="flex items-center gap-2">
+                                                      <TrendingUp size={10} /> Meta Diária para Conclusão
+                                                  </div>
+                                                  <div className="flex items-center gap-2">
+                                                      {stats.deadlineStats && (
+                                                          <span className="text-orange-400 bg-orange-400/10 px-2 py-0.5 rounded border border-orange-400/20">
+                                                              {stats.deadlineStats.daysUntilDeadline} dias restantes
+                                                          </span>
+                                                      )}
+                                                      <div className="flex items-center gap-1 bg-slate-700 rounded px-2 py-0.5 border border-slate-600">
+                                                          <Calendar size={10} className="text-slate-400" />
+                                                          <input 
+                                                              type="date"
+                                                              value={deadlineDate || ""}
+                                                              onChange={(e) => {
+                                                                  const newDate = e.target.value;
+                                                                  if (newDate) {
+                                                                      window.dispatchEvent(new CustomEvent('update-deadline', { detail: newDate }));
+                                                                  }
+                                                              }}
+                                                              className="bg-transparent text-[10px] text-white focus:outline-none cursor-pointer [color-scheme:dark]"
+                                                          />
+                                                      </div>
+                                                  </div>
+                                              </h4>
+                                              <div className="flex flex-col gap-4 h-full justify-center">
+                                                  <div className="flex items-center gap-4">
+                                                      <div className="w-12 h-12 rounded-full bg-blue-500/10 flex items-center justify-center border border-blue-500/20">
+                                                          <Wrench size={20} className="text-blue-400" />
+                                                      </div>
+                                                      <div>
+                                                          <div className="text-[10px] font-mono text-slate-400 uppercase">Tubulação Restante</div>
+                                                          <div className="text-xl font-bold text-white">{stats.pipingRemainingLength.toFixed(1)}m</div>
+                                                          <div className="text-[10px] font-bold text-blue-400 uppercase">Meta: {(stats.deadlineStats?.requiredDailyPiping || stats.currentDailyPiping).toFixed(1)}m / dia</div>
+                                                      </div>
+                                                  </div>
+                                                  <div className="flex items-center gap-4">
+                                                      <div className="w-12 h-12 rounded-full bg-amber-500/10 flex items-center justify-center border border-amber-500/20">
+                                                          <Shield size={20} className="text-amber-400" />
+                                                      </div>
+                                                      <div>
+                                                          <div className="text-[10px] font-mono text-slate-400 uppercase">Isolamento Restante</div>
+                                                          <div className="text-xl font-bold text-white">{stats.insulationRemainingLength.toFixed(1)}m</div>
+                                                          <div className="text-[10px] font-bold text-amber-400 uppercase">Meta: {(stats.deadlineStats?.requiredDailyInsulation || stats.currentDailyInsulation).toFixed(1)}m / dia</div>
+                                                      </div>
+                                                  </div>
+                                              </div>
                                           </div>
                                       </div>
                                   </>
@@ -1131,6 +1266,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                                       <Tooltip 
                                           contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', fontSize: '10px' }}
                                           itemStyle={{ color: '#f1f5f9' }}
+                                          formatter={(value: any) => [`${parseFloat(value).toFixed(1)}m`, 'Produção']}
                                       />
                                       <Bar dataKey="planned" fill="#f97316" radius={[4, 4, 0, 0]} opacity={0.6}>
                                           {stats.sCurveData.map((entry, index) => (

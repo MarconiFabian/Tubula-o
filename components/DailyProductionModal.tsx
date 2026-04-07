@@ -495,8 +495,8 @@ const DailyProductionModal: React.FC<DailyProductionModalProps> = ({
                                             {editedProduction.map((data, idx) => (
                                                 <tr key={data.date} className="hover:bg-slate-800/30 transition-colors">
                                                     <td className="p-3 text-slate-300">{data.date.split('-').reverse().join('/')}</td>
-                                                    <td className="p-3 text-blue-400">{((data.pipeMeters || 0).toFixed(2))}m</td>
-                                                    <td className="p-3 text-purple-400">{((data.insulationMeters || 0).toFixed(2))}m</td>
+                                                    <td className="p-3 text-blue-400">{((data.pipeMeters || 0).toFixed(1))}m</td>
+                                                    <td className="p-3 text-purple-400">{((data.insulationMeters || 0).toFixed(1))}m</td>
                                                     <td className="p-3">
                                                         <div className="flex items-center gap-2">
                                                             <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden">

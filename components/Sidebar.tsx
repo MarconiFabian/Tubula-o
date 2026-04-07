@@ -377,11 +377,11 @@ const Sidebar: React.FC<SidebarProps> = ({
                     <div className="grid grid-cols-2 gap-2 border-t border-blue-500/20 pt-3 mt-1">
                         <div>
                             <span className="text-[9px] uppercase font-bold opacity-70 block mb-1">Comp. Total</span>
-                            <div className="text-xl font-mono font-bold text-white leading-none">{(totalLength || 0).toFixed(2)}<span className="text-xs ml-0.5 text-blue-400">m</span></div>
+                            <div className="text-xl font-mono font-bold text-white leading-none">{(totalLength || 0).toFixed(1)}<span className="text-xs ml-0.5 text-blue-400">m</span></div>
                         </div>
                         <div>
                             <span className="text-[9px] uppercase font-bold opacity-70 block mb-1">Área Sup.</span>
-                            <div className="text-xl font-mono font-bold text-white leading-none">{(totalArea || 0).toFixed(2)}<span className="text-xs ml-0.5 text-blue-400">m²</span></div>
+                            <div className="text-xl font-mono font-bold text-white leading-none">{(totalArea || 0).toFixed(1)}<span className="text-xs ml-0.5 text-blue-400">m²</span></div>
                         </div>
                     </div>
                 </div>
@@ -543,7 +543,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             </div>
             <div className="grid grid-cols-2 gap-4">
                 <div><label className="text-[10px] font-bold text-slate-500 uppercase">ID Linha</label><div className="text-blue-400 font-mono text-xs">{singlePipe.id}</div></div>
-                <div><label className="text-[10px] font-bold text-slate-500 uppercase">Comp.</label><div className="text-white font-bold text-xs">{(singlePipe.length || 0).toFixed(2)}m</div></div>
+                <div><label className="text-[10px] font-bold text-slate-500 uppercase">Comp.</label><div className="text-white font-bold text-xs">{(singlePipe.length || 0).toFixed(1)}m</div></div>
                 
                 {/* Spool ID Input */}
                 <div className="col-span-2">
@@ -559,7 +559,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 
                 <div className="col-span-2 border-t border-slate-800 pt-2 flex justify-between items-center">
                     <label className="text-[10px] font-bold text-slate-500 uppercase">Área Superfície</label>
-                    <div className="text-white font-mono text-xs font-bold">{(Math.PI * (singlePipe.diameter || 0) * (singlePipe.length || 0)).toFixed(2)}m²</div>
+                    <div className="text-white font-mono text-xs font-bold">{(Math.PI * (singlePipe.diameter || 0) * (singlePipe.length || 0)).toFixed(1)}m²</div>
                 </div>
             </div>
             <div><label className="text-[10px] font-bold text-slate-500 uppercase">Status Montagem</label><div className="grid grid-cols-2 gap-2">{ALL_STATUSES.map(s => (<button key={s} onClick={() => onUpdateSingle({ ...singlePipe, status: s as PipeStatus })} className={`p-2 rounded font-bold text-[9px] border transition-all ${singlePipe.status === s ? 'ring-2 ring-white scale-105 opacity-100' : 'opacity-40'}`} style={{ backgroundColor: STATUS_COLORS[s], color: '#fff' }}>{STATUS_LABELS[s]}</button>))}</div></div>
