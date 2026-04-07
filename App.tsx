@@ -738,6 +738,29 @@ function AppContent() {
       }
   };
 
+  const handleDBAction_Import = async (projectData: any) => {
+      try {
+          if (!projectData || !projectData.pipes) {
+              throw new Error("Formato de arquivo inválido.");
+          }
+
+          const newId = `PROJ-IMPORT-${Date.now()}`;
+          const importedProject = {
+              ...projectData,
+              id: newId,
+              name: `${projectData.name || 'Importado'} (Importado)`,
+              updatedAt: new Date()
+          };
+
+          await saveProjectToDB(importedProject);
+          await refreshProjects();
+          showToast("Projeto importado com sucesso!", 'success');
+      } catch (error) {
+          console.error("Erro ao importar projeto:", error);
+          showToast("Erro ao importar projeto: " + (error instanceof Error ? error.message : "Formato inválido"), 'error');
+      }
+  };
+
   const [confirmNewProject, setConfirmNewProject] = useState(false);
   const [toast, setToast] = useState<{message: string, type: 'success' | 'error'} | null>(null);
 
@@ -1393,6 +1416,7 @@ function AppContent() {
             onSave={handleDBAction_Save} 
             onLoad={handleDBAction_Load} 
             onDelete={handleDBAction_Delete}
+            onImport={handleDBAction_Import}
             selectedProjectIds={selectedProjectIds}
             onToggleProjectSelection={handleToggleProjectSelection}
             currentProjectId={currentProjectId}

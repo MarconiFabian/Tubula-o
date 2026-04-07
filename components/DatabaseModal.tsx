@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Save, FolderOpen, Trash2, X, Database, Clock, Calendar, Cloud, CloudOff, Info } from 'lucide-react';
+import { Save, FolderOpen, Trash2, X, Database, Clock, Calendar, Cloud, CloudOff, Info, Download, Upload } from 'lucide-react';
 import { isSupabaseConfigured } from '../lib/supabase';
 
 interface ProjectSummary {
@@ -17,6 +17,7 @@ interface DatabaseModalProps {
   onSave: (name: string, overwriteId?: string) => void;
   onLoad: (project: any) => void;
   onDelete: (id: string) => void;
+  onImport: (project: any) => void;
   selectedProjectIds: string[];
   onToggleProjectSelection: (id: string) => void;
   currentProjectId?: string | null;
@@ -24,7 +25,7 @@ interface DatabaseModalProps {
 }
 
 export const DatabaseModal: React.FC<DatabaseModalProps> = ({ 
-    isOpen, onClose, projects, onSave, onLoad, onDelete,
+    isOpen, onClose, projects, onSave, onLoad, onDelete, onImport,
     selectedProjectIds, onToggleProjectSelection,
     currentProjectId, currentProjectName
 }) => {
@@ -33,6 +34,35 @@ export const DatabaseModal: React.FC<DatabaseModalProps> = ({
     const [confirmAction, setConfirmAction] = useState<{type: 'LOAD' | 'DELETE' | 'OVERWRITE', project: any} | null>(null);
 
     if (!isOpen) return null;
+
+    const handleDownload = (project: any) => {
+        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(project, null, 2));
+        const downloadAnchorNode = document.createElement('a');
+        downloadAnchorNode.setAttribute("href",     dataStr);
+        downloadAnchorNode.setAttribute("download", `${project.name || 'projeto'}.json`);
+        document.body.appendChild(downloadAnchorNode);
+        downloadAnchorNode.click();
+        downloadAnchorNode.remove();
+    };
+
+    const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const json = JSON.parse(e.target?.result as string);
+                onImport(json);
+            } catch (err) {
+                console.error("Erro ao ler arquivo JSON:", err);
+                alert("Arquivo inválido. Certifique-se de que é um arquivo .json de projeto válido.");
+            }
+        };
+        reader.readAsText(file);
+        // Reset input
+        event.target.value = '';
+    };
 
     const formatDate = (date: Date) => {
         return new Date(date).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute:'2-digit' });
@@ -128,6 +158,20 @@ export const DatabaseModal: React.FC<DatabaseModalProps> = ({
                         >
                             <Save size={18} /> Salvar Projeto Atual
                         </button>
+                        <div className="relative flex-1">
+                            <input 
+                                type="file" 
+                                accept=".json" 
+                                onChange={handleFileUpload}
+                                className="absolute inset-0 opacity-0 cursor-pointer z-10"
+                                title="Importar projeto do computador"
+                            />
+                            <button 
+                                className="w-full py-3 rounded-lg font-bold flex justify-center items-center gap-2 transition-all bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-emerald-400"
+                            >
+                                <Upload size={18} /> Importar Arquivo
+                            </button>
+                        </div>
                     </div>
 
                     {mode === 'SAVE' && (
@@ -142,9 +186,21 @@ export const DatabaseModal: React.FC<DatabaseModalProps> = ({
                                     </p>
                                     <button 
                                         onClick={() => { onSave(currentProjectName, currentProjectId); setMode('LIST'); }}
-                                        className="w-full bg-blue-600 hover:bg-blue-500 text-white py-3 rounded-lg font-bold flex justify-center items-center gap-2 transition-colors"
+                                        className="w-full bg-blue-600 hover:bg-blue-500 text-white py-3 rounded-lg font-bold flex justify-center items-center gap-2 transition-colors mb-2"
                                     >
                                         <Save size={18} /> Salvar Alterações em "{currentProjectName}"
+                                    </button>
+                                    <button 
+                                        onClick={() => {
+                                            // Create a temporary object with current state to download
+                                            // This is a bit tricky because we don't have the full project object here easily
+                                            // But we can just trigger the save first or assume the user wants to download what's in the DB
+                                            // Actually, it's better to just download the 'proj' from the list.
+                                            // For the 'current' one, we'd need to pass the full current state.
+                                            // Let's stick to downloading from the list for now as it's cleaner.
+                                        }}
+                                        className="hidden"
+                                    >
                                     </button>
                                 </div>
                             )}
@@ -216,6 +272,13 @@ export const DatabaseModal: React.FC<DatabaseModalProps> = ({
                                                 </div>
                                             </div>
                                             <div className="flex gap-2">
+                                                <button 
+                                                    onClick={() => handleDownload(proj)}
+                                                    className="p-2 bg-slate-700 hover:bg-slate-600 text-slate-300 hover:text-white rounded-lg transition-colors"
+                                                    title="Baixar arquivo do projeto (.json)"
+                                                >
+                                                    <Download size={18} />
+                                                </button>
                                                 <button 
                                                     onClick={() => setConfirmAction({ type: 'OVERWRITE', project: proj })}
                                                     className="px-3 py-2 bg-amber-600/20 hover:bg-amber-600 text-amber-500 hover:text-white rounded-lg font-bold text-sm transition-colors flex items-center gap-1"

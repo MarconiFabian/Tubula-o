@@ -8,6 +8,8 @@ interface TopNavProps {
   setProjectLocation: (v: string) => void;
   activityDate: string;
   setActivityDate: (v: string) => void;
+  currentUser: string | null;
+  handleLogout: () => void;
   setIsDBModalOpen: (v: boolean) => void;
   viewMode: '3d' | 'dashboard' | 'planning';
   setViewMode: (v: '3d' | 'dashboard' | 'planning') => void;
@@ -27,6 +29,7 @@ export const TopNav: React.FC<TopNavProps> = ({
   projectClient, setProjectClient,
   projectLocation, setProjectLocation,
   activityDate, setActivityDate,
+  currentUser, handleLogout,
   setIsDBModalOpen,
   viewMode, setViewMode,
   setIsDrawing,
@@ -165,6 +168,22 @@ export const TopNav: React.FC<TopNavProps> = ({
         </div>
 
         <div className="h-6 w-px bg-slate-800 mx-1"></div>
+
+        {currentUser && (
+          <div className="flex items-center gap-3 px-3 py-1.5 bg-slate-950/50 border border-slate-800/50 rounded-xl">
+            <div className="flex flex-col items-end">
+              <span className="text-[8px] font-black text-slate-600 uppercase tracking-tighter">Usuário Ativo</span>
+              <span className="text-[10px] font-bold text-blue-400">{currentUser}</span>
+            </div>
+            <button 
+              onClick={handleLogout}
+              className="p-1.5 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all"
+              title="Sair"
+            >
+              <LogOut size={16} />
+            </button>
+          </div>
+        )}
 
         <div className="flex gap-1.5">
           <button onClick={handleExportDXF} className="bg-slate-950 hover:bg-slate-800 border border-slate-800 text-slate-300 px-3 py-1.5 rounded-xl font-bold flex items-center gap-2 text-[10px] uppercase tracking-widest transition-all" title="Exportar para AutoCAD">
