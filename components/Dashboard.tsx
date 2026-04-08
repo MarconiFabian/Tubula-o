@@ -658,7 +658,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                             <div className="w-2 h-2 rounded-full bg-purple-500 shadow-[0_0_8px_rgba(168,85,247,0.5)]"></div>
                             <span className="text-slate-400 text-xs font-mono uppercase tracking-widest font-bold">Balanço de Proteção Térmica</span>
                         </div>
-                        <span className="text-purple-400 font-mono text-xs font-bold">{stats.insulationTotalLength > 0 ? ((stats.insulationExecutedLength / stats.insulationTotalLength) * 100).toFixed(1) : 0}%</span>
+                        <span className="text-purple-400 font-mono text-xs font-bold">{stats.insulationTotalLength > 0 ? (((stats.insulationLengths['FINISHED'] || 0) / stats.insulationTotalLength) * 100).toFixed(1) : 0}%</span>
                     </div>
                     <div className="grid grid-cols-3 gap-4">
                         <div className="flex flex-col">
@@ -667,7 +667,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                         </div>
                         <div className="flex flex-col">
                             <span className="text-slate-500 text-[10px] font-mono uppercase tracking-widest mb-1">Executado</span>
-                            <span className="text-xl font-bold text-green-400 font-mono">{(stats.insulationExecutedLength || 0).toFixed(1)}<span className="text-[10px] text-slate-500 ml-1">m</span></span>
+                            <span className="text-xl font-bold text-green-400 font-mono">{(stats.insulationLengths['FINISHED'] || 0).toFixed(1)}<span className="text-[10px] text-slate-500 ml-1">m</span></span>
                             <div className="mt-2 space-y-1">
                                 <div className="flex justify-between text-[8px] font-mono text-slate-400">
                                     <span>Concluído:</span>
@@ -677,7 +677,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                         </div>
                         <div className="flex flex-col">
                             <span className="text-slate-500 text-[10px] font-mono uppercase tracking-widest mb-1">A Executar</span>
-                            <span className="text-xl font-bold text-yellow-400 font-mono">{(stats.insulationRemainingLength || 0).toFixed(1)}<span className="text-[10px] text-slate-500 ml-1">m</span></span>
+                            <span className="text-xl font-bold text-yellow-400 font-mono">{(stats.insulationTotalLength - (stats.insulationLengths['FINISHED'] || 0)).toFixed(1)}<span className="text-[10px] text-slate-500 ml-1">m</span></span>
                             <div className="mt-2 space-y-1">
                                 <div className="flex justify-between text-[8px] font-mono text-slate-400">
                                     <span>P/ Concluir:</span>
@@ -687,7 +687,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                         </div>
                     </div>
                     <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden mt-2">
-                        <div className="h-full bg-purple-500" style={{ width: `${stats.insulationTotalLength > 0 ? (stats.insulationExecutedLength / stats.insulationTotalLength) * 100 : 0}%` }}></div>
+                        <div className="h-full bg-purple-500" style={{ width: `${stats.insulationTotalLength > 0 ? ((stats.insulationLengths['FINISHED'] || 0) / stats.insulationTotalLength) * 100 : 0}%` }}></div>
                     </div>
                 </div>
 
@@ -1021,7 +1021,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                               <div className="w-2 h-2 rounded-full bg-purple-500 shadow-[0_0_8px_rgba(168,85,247,0.5)]"></div>
                               <span className="text-slate-400 text-xs font-mono uppercase tracking-widest font-bold">Balanço de Proteção Térmica</span>
                           </div>
-                          <span className="text-purple-400 font-mono text-xs font-bold">{stats.insulationTotalLength > 0 ? ((stats.insulationExecutedLength / stats.insulationTotalLength) * 100).toFixed(1) : 0}%</span>
+                          <span className="text-purple-400 font-mono text-xs font-bold">{stats.insulationTotalLength > 0 ? (((stats.insulationLengths['FINISHED'] || 0) / stats.insulationTotalLength) * 100).toFixed(1) : 0}%</span>
                       </div>
                       <div className="grid grid-cols-3 gap-4">
                           <div className="flex flex-col">
@@ -1030,15 +1030,15 @@ const Dashboard: React.FC<DashboardProps> = ({
                           </div>
                           <div className="flex flex-col">
                               <span className="text-slate-500 text-[10px] font-mono uppercase tracking-widest mb-1">Executado</span>
-                              <span className="text-xl font-bold text-green-400 font-mono">{(stats.insulationExecutedLength || 0).toFixed(1)}<span className="text-[10px] text-slate-500 ml-1">m</span></span>
+                              <span className="text-xl font-bold text-green-400 font-mono">{(stats.insulationLengths['FINISHED'] || 0).toFixed(1)}<span className="text-[10px] text-slate-500 ml-1">m</span></span>
                           </div>
                           <div className="flex flex-col">
                               <span className="text-slate-500 text-[10px] font-mono uppercase tracking-widest mb-1">A Executar</span>
-                              <span className="text-xl font-bold text-yellow-400 font-mono">{(stats.insulationRemainingLength || 0).toFixed(1)}<span className="text-[10px] text-slate-500 ml-1">m</span></span>
+                              <span className="text-xl font-bold text-yellow-400 font-mono">{(stats.insulationTotalLength - (stats.insulationLengths['FINISHED'] || 0)).toFixed(1)}<span className="text-[10px] text-slate-500 ml-1">m</span></span>
                           </div>
                       </div>
                       <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden mt-2">
-                          <div className="h-full bg-purple-500" style={{ width: `${stats.insulationTotalLength > 0 ? (stats.insulationExecutedLength / stats.insulationTotalLength) * 100 : 0}%` }}></div>
+                          <div className="h-full bg-purple-500" style={{ width: `${stats.insulationTotalLength > 0 ? ((stats.insulationLengths['FINISHED'] || 0) / stats.insulationTotalLength) * 100 : 0}%` }}></div>
                       </div>
                   </div>
               </div>
