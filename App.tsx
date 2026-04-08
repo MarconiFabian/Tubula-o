@@ -333,6 +333,11 @@ function AppContent() {
     return () => unsubscribe();
   }, []);
 
+  const handleLogout = () => {
+    auth.signOut();
+    setCurrentUser(null);
+  };
+
   const selectedPipes = useMemo(() => pipes.filter(p => selectedIds.includes(p.id)), [pipes, selectedIds]);
 
   const handleSwitchToDashboard = () => { setViewMode('dashboard'); setIsDrawing(false); };
@@ -1443,6 +1448,8 @@ function AppContent() {
             setProjectLocation={setProjectLocation}
             activityDate={activityDate}
             setActivityDate={setActivityDate}
+            currentUser={currentUser}
+            handleLogout={handleLogout}
             setIsDBModalOpen={setIsDBModalOpen}
             viewMode={viewMode}
             setViewMode={setViewMode}

@@ -305,9 +305,9 @@ const Dashboard: React.FC<DashboardProps> = ({
 
             // Milestones
             let milestone = null;
-            if (i === Math.round(plotDays * 0.25)) milestone = planned.toFixed(2) + "%";
-            if (i === Math.round(plotDays * 0.50)) milestone = planned.toFixed(2) + "%";
-            if (i === Math.round(plotDays * 0.75)) milestone = planned.toFixed(2) + "%";
+            if (i === Math.round(plotDays * 0.25)) milestone = planned.toFixed(1) + "%";
+            if (i === Math.round(plotDays * 0.50)) milestone = planned.toFixed(1) + "%";
+            if (i === Math.round(plotDays * 0.75)) milestone = planned.toFixed(1) + "%";
             if (i === plotDays) milestone = "100%";
 
             const dp = dailyProduction.find(d => d.date === dateStr);
@@ -361,7 +361,10 @@ const Dashboard: React.FC<DashboardProps> = ({
     const start = new Date(startDate + 'T12:00:00');
     const daysElapsed = Math.max(0, Math.floor((today.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
 
-    return { totalLength, totalPipes, pipeCounts, pipeLengths, insulationCounts, insulationLengths, bom, progress, sortedDailyProd, sCurveData, totalHH: finalTotalHH, annotationHH, annotationBreakdown, totalTeams: avgTeams, projectedEnd, daysNeeded, deadlineStats, pipingTotalLength, pipingRemainingLength, pipingExecutedLength, insulationTotalLength, insulationRemainingLength, insulationExecutedLength, componentStats, currentDailyPiping, currentDailyInsulation, daysElapsed };
+    const avgPipingAchieved = daysElapsed > 0 ? pipingExecutedLength / daysElapsed : 0;
+    const avgInsulationAchieved = daysElapsed > 0 ? insulationExecutedLength / daysElapsed : 0;
+
+    return { totalLength, totalPipes, pipeCounts, pipeLengths, insulationCounts, insulationLengths, bom, progress, sortedDailyProd, sCurveData, totalHH: finalTotalHH, annotationHH, annotationBreakdown, totalTeams: avgTeams, projectedEnd, daysNeeded, deadlineStats, pipingTotalLength, pipingRemainingLength, pipingExecutedLength, insulationTotalLength, insulationRemainingLength, insulationExecutedLength, componentStats, currentDailyPiping, currentDailyInsulation, daysElapsed, avgPipingAchieved, avgInsulationAchieved };
   }, [pipes, annotations, startDate, prodSettings, deadlineDate]);
 
   const filteredPipes = useMemo(() => {
@@ -543,7 +546,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                         <div className="w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)]"></div>
                         <span className="text-slate-500 text-[10px] font-mono uppercase tracking-widest">Comprimento Total</span>
                     </div>
-                    <div className="text-3xl font-bold text-white font-mono tracking-tighter">{(stats.totalLength || 0).toFixed(2)}<span className="text-xs text-slate-500 ml-1">m</span></div>
+                    <div className="text-3xl font-bold text-white font-mono tracking-tighter">{(stats.totalLength || 0).toFixed(1)}<span className="text-xs text-slate-500 ml-1">m</span></div>
                 </div>
                 <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 p-5 rounded-xl flex flex-col justify-between relative overflow-hidden group hover:border-purple-500/30 transition-colors">
                     <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity"><Package size={64} className="text-purple-500" /></div>
@@ -571,7 +574,8 @@ const Dashboard: React.FC<DashboardProps> = ({
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {/* Balanço de Tubulação */}
                 <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 p-5 rounded-xl flex flex-col gap-4 relative overflow-hidden group hover:border-blue-500/30 transition-colors">
                     <div className="flex items-center justify-between mb-2 border-b border-slate-800 pb-3">
                         <div className="flex items-center gap-2">
@@ -583,33 +587,33 @@ const Dashboard: React.FC<DashboardProps> = ({
                     <div className="grid grid-cols-3 gap-4">
                         <div className="flex flex-col">
                             <span className="text-slate-500 text-[10px] font-mono uppercase tracking-widest mb-1">Total</span>
-                            <span className="text-xl font-bold text-white font-mono">{(stats.pipingTotalLength || 0).toFixed(2)}<span className="text-[10px] text-slate-500 ml-1">m</span></span>
+                            <span className="text-xl font-bold text-white font-mono">{(stats.pipingTotalLength || 0).toFixed(1)}<span className="text-[10px] text-slate-500 ml-1">m</span></span>
                         </div>
                         <div className="flex flex-col">
                             <span className="text-slate-500 text-[10px] font-mono uppercase tracking-widest mb-1">Executado</span>
-                            <span className="text-xl font-bold text-green-400 font-mono">{(stats.pipingExecutedLength || 0).toFixed(2)}<span className="text-[10px] text-slate-500 ml-1">m</span></span>
+                            <span className="text-xl font-bold text-green-400 font-mono">{(stats.pipingExecutedLength || 0).toFixed(1)}<span className="text-[10px] text-slate-500 ml-1">m</span></span>
                             <div className="mt-2 space-y-1">
                                 <div className="flex justify-between text-[8px] font-mono text-slate-400">
                                     <span>Soldado:</span>
-                                    <span className="text-white">{((stats.pipeLengths['WELDED'] || 0) + (stats.pipeLengths['HYDROTEST'] || 0)).toFixed(2)}m</span>
+                                    <span className="text-white">{((stats.pipeLengths['WELDED'] || 0) + (stats.pipeLengths['HYDROTEST'] || 0)).toFixed(1)}m</span>
                                 </div>
                                 <div className="flex justify-between text-[8px] font-mono text-slate-400">
                                     <span>Testado:</span>
-                                    <span className="text-white">{(stats.pipeLengths['HYDROTEST'] || 0).toFixed(2)}m</span>
+                                    <span className="text-white">{(stats.pipeLengths['HYDROTEST'] || 0).toFixed(1)}m</span>
                                 </div>
                             </div>
                         </div>
                         <div className="flex flex-col">
                             <span className="text-slate-500 text-[10px] font-mono uppercase tracking-widest mb-1">A Executar</span>
-                            <span className="text-xl font-bold text-yellow-400 font-mono">{(stats.pipingRemainingLength || 0).toFixed(2)}<span className="text-[10px] text-slate-500 ml-1">m</span></span>
+                            <span className="text-xl font-bold text-yellow-400 font-mono">{(stats.pipingRemainingLength || 0).toFixed(1)}<span className="text-[10px] text-slate-500 ml-1">m</span></span>
                             <div className="mt-2 space-y-1">
                                 <div className="flex justify-between text-[8px] font-mono text-slate-400">
                                     <span>P/ Soldar:</span>
-                                    <span className="text-white">{((stats.pipeLengths['PENDING'] || 0) + (stats.pipeLengths['MOUNTED'] || 0)).toFixed(2)}m</span>
+                                    <span className="text-white">{((stats.pipeLengths['PENDING'] || 0) + (stats.pipeLengths['MOUNTED'] || 0)).toFixed(1)}m</span>
                                 </div>
                                 <div className="flex justify-between text-[8px] font-mono text-slate-400">
                                     <span>P/ Testar:</span>
-                                    <span className="text-white">{(stats.pipingTotalLength - (stats.pipeLengths['HYDROTEST'] || 0)).toFixed(2)}m</span>
+                                    <span className="text-white">{(stats.pipingTotalLength - (stats.pipeLengths['HYDROTEST'] || 0)).toFixed(1)}m</span>
                                 </div>
                             </div>
                         </div>
@@ -619,6 +623,35 @@ const Dashboard: React.FC<DashboardProps> = ({
                     </div>
                 </div>
 
+                {/* Balanço de Testado */}
+                <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 p-5 rounded-xl flex flex-col gap-4 relative overflow-hidden group hover:border-emerald-500/30 transition-colors">
+                    <div className="flex items-center justify-between mb-2 border-b border-slate-800 pb-3">
+                        <div className="flex items-center gap-2">
+                            <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]"></div>
+                            <span className="text-slate-400 text-xs font-mono uppercase tracking-widest font-bold">Balanço de Testado</span>
+                        </div>
+                        <span className="text-emerald-400 font-mono text-xs font-bold">{stats.pipingTotalLength > 0 ? ((stats.pipeLengths['HYDROTEST'] / stats.pipingTotalLength) * 100).toFixed(1) : 0}%</span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-4">
+                        <div className="flex flex-col">
+                            <span className="text-slate-500 text-[10px] font-mono uppercase tracking-widest mb-1">Total</span>
+                            <span className="text-xl font-bold text-white font-mono">{(stats.pipingTotalLength || 0).toFixed(1)}<span className="text-[10px] text-slate-500 ml-1">m</span></span>
+                        </div>
+                        <div className="flex flex-col">
+                            <span className="text-slate-500 text-[10px] font-mono uppercase tracking-widest mb-1">Testado</span>
+                            <span className="text-xl font-bold text-emerald-400 font-mono">{(stats.pipeLengths['HYDROTEST'] || 0).toFixed(1)}<span className="text-[10px] text-slate-500 ml-1">m</span></span>
+                        </div>
+                        <div className="flex flex-col">
+                            <span className="text-slate-500 text-[10px] font-mono uppercase tracking-widest mb-1">P/ Testar</span>
+                            <span className="text-xl font-bold text-yellow-400 font-mono">{(stats.pipingTotalLength - (stats.pipeLengths['HYDROTEST'] || 0)).toFixed(1)}<span className="text-[10px] text-slate-500 ml-1">m</span></span>
+                        </div>
+                    </div>
+                    <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden mt-2">
+                        <div className="h-full bg-emerald-500" style={{ width: `${stats.pipingTotalLength > 0 ? (stats.pipeLengths['HYDROTEST'] / stats.pipingTotalLength) * 100 : 0}%` }}></div>
+                    </div>
+                </div>
+
+                {/* Balanço de Proteção Térmica */}
                 <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 p-5 rounded-xl flex flex-col gap-4 relative overflow-hidden group hover:border-purple-500/30 transition-colors">
                     <div className="flex items-center justify-between mb-2 border-b border-slate-800 pb-3">
                         <div className="flex items-center gap-2">
@@ -630,25 +663,25 @@ const Dashboard: React.FC<DashboardProps> = ({
                     <div className="grid grid-cols-3 gap-4">
                         <div className="flex flex-col">
                             <span className="text-slate-500 text-[10px] font-mono uppercase tracking-widest mb-1">Total</span>
-                            <span className="text-xl font-bold text-white font-mono">{(stats.insulationTotalLength || 0).toFixed(2)}<span className="text-[10px] text-slate-500 ml-1">m</span></span>
+                            <span className="text-xl font-bold text-white font-mono">{(stats.insulationTotalLength || 0).toFixed(1)}<span className="text-[10px] text-slate-500 ml-1">m</span></span>
                         </div>
                         <div className="flex flex-col">
                             <span className="text-slate-500 text-[10px] font-mono uppercase tracking-widest mb-1">Executado</span>
-                            <span className="text-xl font-bold text-green-400 font-mono">{(stats.insulationExecutedLength || 0).toFixed(2)}<span className="text-[10px] text-slate-500 ml-1">m</span></span>
+                            <span className="text-xl font-bold text-green-400 font-mono">{(stats.insulationExecutedLength || 0).toFixed(1)}<span className="text-[10px] text-slate-500 ml-1">m</span></span>
                             <div className="mt-2 space-y-1">
                                 <div className="flex justify-between text-[8px] font-mono text-slate-400">
                                     <span>Concluído:</span>
-                                    <span className="text-white">{stats.insulationLengths['FINISHED']?.toFixed(2) || '0.00'}m</span>
+                                    <span className="text-white">{stats.insulationLengths['FINISHED']?.toFixed(1) || '0.0'}m</span>
                                 </div>
                             </div>
                         </div>
                         <div className="flex flex-col">
                             <span className="text-slate-500 text-[10px] font-mono uppercase tracking-widest mb-1">A Executar</span>
-                            <span className="text-xl font-bold text-yellow-400 font-mono">{(stats.insulationRemainingLength || 0).toFixed(2)}<span className="text-[10px] text-slate-500 ml-1">m</span></span>
+                            <span className="text-xl font-bold text-yellow-400 font-mono">{(stats.insulationRemainingLength || 0).toFixed(1)}<span className="text-[10px] text-slate-500 ml-1">m</span></span>
                             <div className="mt-2 space-y-1">
                                 <div className="flex justify-between text-[8px] font-mono text-slate-400">
                                     <span>P/ Concluir:</span>
-                                    <span className="text-white">{(stats.insulationTotalLength - (stats.insulationLengths['FINISHED'] || 0)).toFixed(2)}m</span>
+                                    <span className="text-white">{(stats.insulationTotalLength - (stats.insulationLengths['FINISHED'] || 0)).toFixed(1)}m</span>
                                 </div>
                             </div>
                         </div>
@@ -658,7 +691,8 @@ const Dashboard: React.FC<DashboardProps> = ({
                     </div>
                 </div>
 
-                <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 p-5 rounded-xl flex flex-col gap-4 relative overflow-hidden group hover:border-amber-500/30 transition-colors md:col-span-2">
+                {/* Acessórios e Componentes */}
+                <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 p-5 rounded-xl flex flex-col gap-4 relative overflow-hidden group hover:border-amber-500/30 transition-colors lg:col-span-3 md:col-span-2">
                     <div className="flex items-center justify-between mb-2 border-b border-slate-800 pb-3">
                         <div className="flex items-center gap-2">
                             <div className="w-2 h-2 rounded-full bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)]"></div>
@@ -923,7 +957,8 @@ const Dashboard: React.FC<DashboardProps> = ({
                 </div>
               )}
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {/* Balanço de Tubulação */}
                   <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 p-5 rounded-xl flex flex-col gap-4 relative overflow-hidden group hover:border-blue-500/30 transition-colors">
                       <div className="flex items-center justify-between mb-2 border-b border-slate-800 pb-3">
                           <div className="flex items-center gap-2">
@@ -935,15 +970,15 @@ const Dashboard: React.FC<DashboardProps> = ({
                       <div className="grid grid-cols-3 gap-4">
                           <div className="flex flex-col">
                               <span className="text-slate-500 text-[10px] font-mono uppercase tracking-widest mb-1">Total</span>
-                              <span className="text-xl font-bold text-white font-mono">{stats.pipingTotalLength.toFixed(2)}<span className="text-[10px] text-slate-500 ml-1">m</span></span>
+                              <span className="text-xl font-bold text-white font-mono">{(stats.pipingTotalLength || 0).toFixed(1)}<span className="text-[10px] text-slate-500 ml-1">m</span></span>
                           </div>
                           <div className="flex flex-col">
                               <span className="text-slate-500 text-[10px] font-mono uppercase tracking-widest mb-1">Executado</span>
-                              <span className="text-xl font-bold text-green-400 font-mono">{stats.pipingExecutedLength.toFixed(2)}<span className="text-[10px] text-slate-500 ml-1">m</span></span>
+                              <span className="text-xl font-bold text-green-400 font-mono">{(stats.pipingExecutedLength || 0).toFixed(1)}<span className="text-[10px] text-slate-500 ml-1">m</span></span>
                           </div>
                           <div className="flex flex-col">
                               <span className="text-slate-500 text-[10px] font-mono uppercase tracking-widest mb-1">A Executar</span>
-                              <span className="text-xl font-bold text-yellow-400 font-mono">{stats.pipingRemainingLength.toFixed(2)}<span className="text-[10px] text-slate-500 ml-1">m</span></span>
+                              <span className="text-xl font-bold text-yellow-400 font-mono">{(stats.pipingRemainingLength || 0).toFixed(1)}<span className="text-[10px] text-slate-500 ml-1">m</span></span>
                           </div>
                       </div>
                       <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden mt-2">
@@ -951,6 +986,35 @@ const Dashboard: React.FC<DashboardProps> = ({
                       </div>
                   </div>
 
+                  {/* Balanço de Testado */}
+                  <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 p-5 rounded-xl flex flex-col gap-4 relative overflow-hidden group hover:border-emerald-500/30 transition-colors">
+                      <div className="flex items-center justify-between mb-2 border-b border-slate-800 pb-3">
+                          <div className="flex items-center gap-2">
+                              <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]"></div>
+                              <span className="text-slate-400 text-xs font-mono uppercase tracking-widest font-bold">Balanço de Testado</span>
+                          </div>
+                          <span className="text-emerald-400 font-mono text-xs font-bold">{stats.pipingTotalLength > 0 ? ((stats.pipeLengths['HYDROTEST'] / stats.pipingTotalLength) * 100).toFixed(1) : 0}%</span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-4">
+                          <div className="flex flex-col">
+                              <span className="text-slate-500 text-[10px] font-mono uppercase tracking-widest mb-1">Total</span>
+                              <span className="text-xl font-bold text-white font-mono">{(stats.pipingTotalLength || 0).toFixed(1)}<span className="text-[10px] text-slate-500 ml-1">m</span></span>
+                          </div>
+                          <div className="flex flex-col">
+                              <span className="text-slate-500 text-[10px] font-mono uppercase tracking-widest mb-1">Testado</span>
+                              <span className="text-xl font-bold text-emerald-400 font-mono">{(stats.pipeLengths['HYDROTEST'] || 0).toFixed(1)}<span className="text-[10px] text-slate-500 ml-1">m</span></span>
+                          </div>
+                          <div className="flex flex-col">
+                              <span className="text-slate-500 text-[10px] font-mono uppercase tracking-widest mb-1">P/ Testar</span>
+                              <span className="text-xl font-bold text-yellow-400 font-mono">{(stats.pipingTotalLength - (stats.pipeLengths['HYDROTEST'] || 0)).toFixed(1)}<span className="text-[10px] text-slate-500 ml-1">m</span></span>
+                          </div>
+                      </div>
+                      <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden mt-2">
+                          <div className="h-full bg-emerald-500" style={{ width: `${stats.pipingTotalLength > 0 ? (stats.pipeLengths['HYDROTEST'] / stats.pipingTotalLength) * 100 : 0}%` }}></div>
+                      </div>
+                  </div>
+
+                  {/* Balanço de Proteção Térmica */}
                   <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 p-5 rounded-xl flex flex-col gap-4 relative overflow-hidden group hover:border-purple-500/30 transition-colors">
                       <div className="flex items-center justify-between mb-2 border-b border-slate-800 pb-3">
                           <div className="flex items-center gap-2">
@@ -962,15 +1026,15 @@ const Dashboard: React.FC<DashboardProps> = ({
                       <div className="grid grid-cols-3 gap-4">
                           <div className="flex flex-col">
                               <span className="text-slate-500 text-[10px] font-mono uppercase tracking-widest mb-1">Total</span>
-                              <span className="text-xl font-bold text-white font-mono">{stats.insulationTotalLength.toFixed(2)}<span className="text-[10px] text-slate-500 ml-1">m</span></span>
+                              <span className="text-xl font-bold text-white font-mono">{(stats.insulationTotalLength || 0).toFixed(1)}<span className="text-[10px] text-slate-500 ml-1">m</span></span>
                           </div>
                           <div className="flex flex-col">
                               <span className="text-slate-500 text-[10px] font-mono uppercase tracking-widest mb-1">Executado</span>
-                              <span className="text-xl font-bold text-green-400 font-mono">{stats.insulationExecutedLength.toFixed(2)}<span className="text-[10px] text-slate-500 ml-1">m</span></span>
+                              <span className="text-xl font-bold text-green-400 font-mono">{(stats.insulationExecutedLength || 0).toFixed(1)}<span className="text-[10px] text-slate-500 ml-1">m</span></span>
                           </div>
                           <div className="flex flex-col">
                               <span className="text-slate-500 text-[10px] font-mono uppercase tracking-widest mb-1">A Executar</span>
-                              <span className="text-xl font-bold text-yellow-400 font-mono">{stats.insulationRemainingLength.toFixed(2)}<span className="text-[10px] text-slate-500 ml-1">m</span></span>
+                              <span className="text-xl font-bold text-yellow-400 font-mono">{(stats.insulationRemainingLength || 0).toFixed(1)}<span className="text-[10px] text-slate-500 ml-1">m</span></span>
                           </div>
                       </div>
                       <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden mt-2">
@@ -1116,56 +1180,29 @@ const Dashboard: React.FC<DashboardProps> = ({
                                               <div className="text-3xl font-bold text-amber-400 tabular-nums">{stats.daysElapsed}</div>
                                               <div className="text-[7px] font-mono text-slate-600 mt-1 uppercase tracking-tighter">Desde o início ({new Date(startDate + 'T12:00:00').toLocaleDateString('pt-BR')})</div>
                                           </div>
-                                          <div className="bg-slate-800/30 p-4 rounded-xl border border-slate-800 hover:border-purple-500/30 transition-colors">
+                                          <div className="bg-slate-800/30 p-4 rounded-xl border border-slate-800 hover:border-emerald-500/30 transition-colors">
                                               <div className="text-[8px] font-mono text-slate-500 uppercase mb-1 flex items-center gap-1">
-                                                  <Timer size={8} className="text-purple-400" /> {stats.deadlineStats ? 'Meta Diária (Deadline)' : 'Término Estimado'}
+                                                  <CheckSquare size={8} className="text-emerald-400" /> Produção Executada
                                               </div>
-                                              {stats.deadlineStats ? (
-                                                   <div className="flex flex-col gap-1">
-                                                       <div className="text-xl font-bold text-white tabular-nums tracking-tight">
-                                                           {new Date(deadlineDate + 'T12:00:00').toLocaleDateString('pt-BR')}
-                                                       </div>
-                                                       <div className="flex flex-col gap-0.5">
-                                                           <div className="text-[9px] font-mono font-bold text-purple-400 uppercase">
-                                                               Dias Úteis: {stats.deadlineStats.daysUntilDeadline} dias
-                                                           </div>
-                                                           <div className="text-[9px] font-mono font-bold text-slate-400 uppercase border-t border-slate-800/50 mt-1 pt-1">
-                                                               Saldo Tubulação: {stats.pipingRemainingLength.toFixed(1)}m
-                                                           </div>
-                                                           <div className="text-[9px] font-mono font-bold text-slate-400 uppercase">
-                                                               Saldo Isolamento: {stats.insulationRemainingLength.toFixed(1)}m
-                                                           </div>
-                                                           <div className="text-[9px] font-mono font-bold text-blue-400 uppercase mt-1">
-                                                               TUBULAÇÃO: {stats.deadlineStats.requiredDailyPiping.toFixed(1)}M/DIA
-                                                           </div>
-                                                           <div className="text-[9px] font-mono font-bold text-amber-400 uppercase">
-                                                               ISOLAMENTO: {stats.deadlineStats.requiredDailyInsulation.toFixed(1)}M/DIA
-                                                           </div>
-                                                       </div>
-                                                   </div>
-                                               ) : (
-                                                   <div className="flex flex-col gap-1">
-                                                       <div className="text-xl font-bold text-white mt-1 uppercase tracking-tight">{stats.projectedEnd}</div>
-                                                       <div className="flex flex-col gap-0.5">
-                                                           <div className="text-[9px] font-mono font-bold text-purple-400 uppercase">
-                                                               Dias Necessários: {stats.daysNeeded} dias
-                                                           </div>
-                                                           <div className="text-[9px] font-mono font-bold text-slate-400 uppercase border-t border-slate-800/50 mt-1 pt-1">
-                                                               Saldo Tubulação: {stats.pipingRemainingLength.toFixed(1)}m
-                                                           </div>
-                                                           <div className="text-[9px] font-mono font-bold text-slate-400 uppercase">
-                                                               Saldo Isolamento: {stats.insulationRemainingLength.toFixed(1)}m
-                                                           </div>
-                                                           <div className="text-[9px] font-mono font-bold text-blue-400 uppercase mt-1">
-                                                               TUBULAÇÃO: {stats.currentDailyPiping.toFixed(1)}M/DIA
-                                                           </div>
-                                                           <div className="text-[9px] font-mono font-bold text-amber-400 uppercase">
-                                                               ISOLAMENTO: {stats.currentDailyInsulation.toFixed(1)}M/DIA
-                                                           </div>
-                                                       </div>
-                                                   </div>
-                                               )}
-                                              {!stats.deadlineStats && <div className="text-[7px] font-mono text-slate-600 mt-1 uppercase tracking-tighter">Projeção de entrega</div>}
+                                              <div className="flex flex-col gap-1">
+                                                  <div className="text-xl font-bold text-white tabular-nums tracking-tight">
+                                                      {(stats.pipingExecutedLength + stats.insulationExecutedLength).toFixed(1)}m
+                                                  </div>
+                                                  <div className="flex flex-col gap-0.5">
+                                                      <div className="text-[9px] font-mono font-bold text-emerald-400 uppercase">
+                                                          Total acumulado
+                                                      </div>
+                                                      <div className="text-[9px] font-mono font-bold text-slate-400 uppercase border-t border-slate-800/50 mt-1 pt-1">
+                                                          Tubulação: {stats.pipingExecutedLength.toFixed(1)}m
+                                                      </div>
+                                                      <div className="text-[9px] font-mono font-bold text-slate-400 uppercase">
+                                                          Isolamento: {stats.insulationExecutedLength.toFixed(1)}m
+                                                      </div>
+                                                      <div className="text-[9px] font-mono font-bold text-blue-400 uppercase mt-1">
+                                                          Geral: {stats.pipingTotalLength + stats.insulationTotalLength > 0 ? (((stats.pipingExecutedLength + stats.insulationExecutedLength) / (stats.pipingTotalLength + stats.insulationTotalLength)) * 100).toFixed(1) : 0}%
+                                                      </div>
+                                                  </div>
+                                              </div>
                                           </div>
                                       </div>
 
@@ -1340,7 +1377,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                                       <div key={status} className="space-y-1">
                                           <div className="flex justify-between text-[9px] font-mono uppercase">
                                               <span className="text-slate-400">{STATUS_LABELS[status]}</span>
-                                              <span className="text-white">{length.toFixed(2)}m ({percentage.toFixed(1)}%)</span>
+                                              <span className="text-white">{length.toFixed(1)}m ({percentage.toFixed(1)}%)</span>
                                           </div>
                                           <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
                                               <div className="h-full transition-all duration-1000" style={{ width: `${percentage}%`, backgroundColor: STATUS_COLORS[status] }}></div>
@@ -1357,7 +1394,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                                       <div key={status} className="space-y-1">
                                           <div className="flex justify-between text-[9px] font-mono uppercase">
                                               <span className="text-slate-400">{INSULATION_LABELS[status]}</span>
-                                              <span className="text-white">{length.toFixed(2)}m ({percentage.toFixed(1)}%)</span>
+                                              <span className="text-white">{length.toFixed(1)}m ({percentage.toFixed(1)}%)</span>
                                           </div>
                                           <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
                                               <div className="h-full transition-all duration-1000" style={{ width: `${percentage}%`, backgroundColor: INSULATION_COLORS[status] }}></div>
@@ -1476,7 +1513,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                               )}
                               <div className="bg-blue-500/10 border border-blue-500/20 p-3 rounded-lg flex gap-3">
                                   <TrendingUp className="text-blue-500 shrink-0" size={16} />
-                                  <p className="text-[10px] text-blue-200 leading-relaxed">Produtividade média necessária: {(stats.totalLength / Math.max(1, stats.daysNeeded)).toFixed(2)}m/dia.</p>
+                                  <p className="text-[10px] text-blue-200 leading-relaxed">Produtividade média necessária: {(stats.totalLength / Math.max(1, stats.daysNeeded)).toFixed(1)}m/dia.</p>
                               </div>
                           </div>
                       </div>
