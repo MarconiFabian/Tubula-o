@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { flushSync } from 'react-dom';
 import * as THREE from 'three';
 import Scene from './components/3d/Scene';
 import Dashboard from './components/Dashboard';
@@ -267,13 +268,16 @@ function AppContent() {
   const [savedProjects, setSavedProjects] = useState<any[]>([]);
   const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>([]);
 
+  const [dailyProduction, setDailyProduction] = useState<DailyProduction[]>([]);
   const aggregatedData = useMemo(() => {
     if (selectedProjectIds.length === 0) {
-      return { pipes, annotations };
+      return { pipes, annotations, dailyProduction };
     }
 
     let allPipes = [...pipes];
     let allAnnotations = [...annotations];
+    // Criar cópia profunda dos objetos de produção diária para evitar mutação do estado original
+    let allDailyProd = dailyProduction.map(dp => ({ ...dp }));
 
     selectedProjectIds.forEach(id => {
       const project = savedProjects.find(p => p.id === id);
@@ -283,20 +287,43 @@ function AppContent() {
           name: `[${project.name}] ${p.name}`,
           id: `${project.id}-${p.id}`
         }));
+        const projectAnnotations = project.annotations.map(a => ({
+          ...a,
+          id: `${project.id}-${a.id}`,
+          text: `[${project.name}] ${a.text}`,
+        }));
         allPipes = [...allPipes, ...projectPipes];
-        allAnnotations = [...allAnnotations, ...project.annotations];
+        allAnnotations = [...allAnnotations, ...projectAnnotations];
+        if (project.dailyProduction) {
+            // Combinar produções diárias (somar metros para a mesma data)
+            project.dailyProduction.forEach(dp => {
+                const existingIndex = allDailyProd.findIndex(e => e.date === dp.date);
+                if (existingIndex !== -1) {
+                    allDailyProd[existingIndex] = {
+                        ...allDailyProd[existingIndex],
+                        pipeMeters: allDailyProd[existingIndex].pipeMeters + dp.pipeMeters,
+                        insulationMeters: allDailyProd[existingIndex].insulationMeters + dp.insulationMeters
+                    };
+                } else {
+                    allDailyProd.push({ ...dp });
+                }
+            });
+        }
       }
     });
 
-    return { pipes: allPipes, annotations: allAnnotations };
-  }, [pipes, annotations, selectedProjectIds, savedProjects]);
+    return { 
+        pipes: allPipes, 
+        annotations: allAnnotations, 
+        dailyProduction: allDailyProd.sort((a, b) => a.date.localeCompare(b.date)) 
+    };
+  }, [pipes, annotations, dailyProduction, selectedProjectIds, savedProjects]);
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(() => {
     return safeStorage.getItem('iso-manager-current-project-id');
   });
   const [currentProjectName, setCurrentProjectName] = useState<string | null>(() => {
     return safeStorage.getItem('iso-manager-current-project-name');
   });
-  const [dailyProduction, setDailyProduction] = useState<DailyProduction[]>([]);
     const [projectCalendar, setProjectCalendar] = useState<ProjectCalendar>({
     startDate: new Date().toISOString().split('T')[0],
     endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
@@ -358,18 +385,20 @@ function AppContent() {
 
       // Initialize counts
       ALL_STATUSES.forEach(s => { pipeCounts[s] = 0; pipeLengths[s] = 0; });
+      const todayStr = new Date().toISOString().split('T')[0];
+      const dailyProd: Record<string, { piping: number; insulation: number }> = {};
       ALL_INSULATION_STATUSES.forEach(s => { insulationCounts[s] = 0; insulationLengths[s] = 0; });
 
-      const { totalPipingHH: pPipeHH, totalInsulationHH: pInsulHH, annotationHH, totalHH } = calculateTotalHH(pipes, annotations, prodSettings);
+      const { totalPipingHH: pPipeHH, totalInsulationHH: pInsulHH, annotationHH, totalHH } = calculateTotalHH(aggregatedData.pipes, aggregatedData.annotations, prodSettings);
       
-      const annotationBreakdown = annotations.reduce((acc, ann) => {
+      const annotationBreakdown = aggregatedData.annotations.reduce((acc, ann) => {
           const type = ann.type || AnnotationType.COMMENT;
           acc[type] = (acc[type] || 0) + 1;
           return acc;
       }, {} as Record<string, number>);
       
       // Cálculo de capacidade total baseada em todas as equipes alocadas
-      const globalTeams = pipes.length > 0 ? Math.max(1, Math.round(pipes.reduce((acc, p) => acc + (p.planningFactors?.teamCount || 1), 0) / pipes.length)) : 1;
+      const globalTeams = aggregatedData.pipes.length > 0 ? Math.max(1, Math.round(aggregatedData.pipes.reduce((acc, p) => acc + (p.planningFactors?.teamCount || 1), 0) / aggregatedData.pipes.length)) : 1;
       const dailyCapacity = globalTeams * prodSettings.globalConfig.shiftHours; 
 
       const daysNeeded = Math.ceil(totalHH / dailyCapacity);
@@ -380,7 +409,7 @@ function AppContent() {
           supports: { total: 0, installed: 0 }
       };
 
-      pipes.forEach(p => {
+      aggregatedData.pipes.forEach(p => {
           const length = p.length || 0;
           totalLength += length;
           
@@ -404,6 +433,14 @@ function AppContent() {
               insulationCounts[p.insulationStatus] = (insulationCounts[p.insulationStatus] || 0) + 1;
               insulationLengths[p.insulationStatus] = (insulationLengths[p.insulationStatus] || 0) + length;
           }
+
+          // Daily Productivity
+          const pipingCompleted = ['WELDED', 'HYDROTEST', 'FINISHED'].includes(p.status);
+          const insulationCompleted = p.insulationStatus === 'FINISHED';
+          const date = p.welderInfo?.weldDate || todayStr;
+          if (!dailyProd[date]) dailyProd[date] = { piping: 0, insulation: 0 };
+          if (pipingCompleted) dailyProd[date].piping += length;
+          if (insulationCompleted) dailyProd[date].insulation += length;
 
           // Count accessories (modern way)
           let hasModernSupports = false;
@@ -458,6 +495,18 @@ function AppContent() {
       const currentDailyPiping = daysNeeded > 0 ? pipingRemainingLength / daysNeeded : 0;
       const currentDailyInsulation = daysNeeded > 0 ? insulationRemainingLength / daysNeeded : 0;
 
+      const sortedDailyProd = Object.entries(dailyProd)
+        .sort((a, b) => new Date(a[0]).getTime() - new Date(b[0]).getTime())
+        .map(([date, meters]) => ({
+            date,
+            pipingMeters: meters.piping,
+            insulationMeters: meters.insulation
+        }));
+
+      const completedWeight = (pipeLengths['WELDED'] * 0.8) + (pipeLengths['HYDROTEST'] * 1.0) + (pipeLengths['MOUNTED'] * 0.3);
+      const progress = pipingTotalLength > 0 ? parseFloat(((completedWeight / pipingTotalLength) * 100).toFixed(1)) : 0;
+      const daysElapsed = Math.max(0, Math.floor((new Date().getTime() - new Date(activityDate).getTime()) / (1000 * 60 * 60 * 24)));
+
       return {
           totalLength,
           totalPipingHH: pPipeHH,
@@ -472,7 +521,7 @@ function AppContent() {
           pipeLengths,
           insulationLengths,
           annotationBreakdown,
-          total: pipes.length,
+          total: aggregatedData.pipes.length,
           deadlineStats,
           pipingTotalLength,
           pipingRemainingLength,
@@ -482,9 +531,12 @@ function AppContent() {
           insulationExecutedLength: insulationTotalLength - insulationRemainingLength,
           componentStats,
           currentDailyPiping,
-          currentDailyInsulation
+          currentDailyInsulation,
+          sortedDailyProd,
+          progress,
+          daysElapsed
       };
-  }, [pipes, annotations, prodSettings, activityDate]);
+  }, [aggregatedData, prodSettings, activityDate, deadlineDate]);
 
   const handleSelectPipe = useCallback((id: string | null, multi: boolean = false) => { if (pastePreview) return; if (id === null) { if (!multi) setSelectedIds([]); return; } setSelectedIds(prev => multi ? (prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]) : [id]); }, [pastePreview]);
   const handleSetSelection = useCallback((ids: string[]) => { if (!pastePreview) setSelectedIds(ids); }, [pastePreview]);
@@ -907,8 +959,8 @@ function AppContent() {
     setIsExporting(true);
     console.log("Iniciando exportação de PDF...");
     try {
-        const pipesToExport = selectedIds.length > 0 ? pipes.filter(p => selectedIds.includes(p.id)) : pipes;
-        const annotationsToExport = selectedIds.length > 0 ? annotations.filter(a => selectedIds.includes(a.id)) : annotations;
+        const pipesToExport = selectedIds.length > 0 ? aggregatedData.pipes.filter(p => selectedIds.includes(p.id)) : aggregatedData.pipes;
+        const annotationsToExport = selectedIds.length > 0 ? aggregatedData.annotations.filter(a => selectedIds.includes(a.id)) : aggregatedData.annotations;
 
         // Recalcular estatísticas para a seleção (ou usar as globais se for tudo)
         let exportStats = reportStats;
@@ -1010,16 +1062,16 @@ function AppContent() {
 
             const totalHH = totalPipingHH + totalInsulationHH + annotationHH;
             const globalTeams = pipesToExport.length > 0 ? Math.max(1, Math.round(pipesToExport.reduce((acc, p) => acc + (p.planningFactors?.teamCount || 1), 0) / pipesToExport.length)) : 1;
-            const dailyCapacity = globalTeams * HOURS_PER_DAY; 
+            const dailyCapacity = globalTeams * (prodSettings.globalConfig.shiftHours || 8.8); 
             const daysNeeded = Math.ceil(totalHH / dailyCapacity);
-            const projectedEnd = getWorkingEndDate(new Date(activityDate + 'T12:00:00'), daysNeeded).toLocaleDateString('pt-BR');
+            const projectedEnd = getWorkingEndDate(new Date(activityDate + 'T12:00:00'), daysNeeded, prodSettings.globalConfig.workOnWeekends).toLocaleDateString('pt-BR');
 
             // Deadline Calculation for Export
             let deadlineStats = null;
             if (deadlineDate) {
                 const start = new Date(activityDate + 'T12:00:00');
                 const end = new Date(deadlineDate + 'T12:00:00');
-                const daysUntilDeadline = getWorkingDaysBetween(start, end);
+                const daysUntilDeadline = getWorkingDaysBetween(start, end, prodSettings.globalConfig.workOnWeekends);
                 const totalLength = pipesToExport.reduce((acc, p) => acc + p.length, 0);
                 
                 if (daysUntilDeadline > 0) {
@@ -1059,18 +1111,29 @@ function AppContent() {
             };
         }
 
-        const canvas = document.querySelector('canvas');
-        if (canvas) {
+        const canvas3d = document.querySelector('canvas');
+        let screenshotUrl = null;
+        if (canvas3d) {
             try {
-                const dataUrl = canvas.toDataURL('image/png');
-                setSceneScreenshot(dataUrl);
+                screenshotUrl = canvas3d.toDataURL('image/png');
             } catch (e) {
                 console.warn("Falha ao capturar screenshot do 3D:", e);
             }
         }
         
-        setPdfExportStats(exportStats);
-        await new Promise(r => setTimeout(r, 2000));
+        // Problema 5: Garantir ordem com flushSync
+        flushSync(() => {
+            if (screenshotUrl) setSceneScreenshot(screenshotUrl);
+            setPdfExportStats(exportStats);
+        });
+
+        console.log("Iniciando renderização do container de exportação...");
+        // Problema 2: Espera robusta com requestAnimationFrame e delay maior
+        await new Promise(resolve => {
+            setTimeout(() => {
+                requestAnimationFrame(() => requestAnimationFrame(resolve));
+            }, 1500);
+        });
 
         const pdf = new jsPDF('p', 'mm', 'a4');
         const pageWidth = pdf.internal.pageSize.getWidth();
@@ -1078,43 +1141,148 @@ function AppContent() {
         const margin = 10;
         let currentY = 20;
 
+        // Problema 3: Função para adicionar imagem dividindo em múltiplas páginas se necessário
+        const addImageToPDF = (canvas: HTMLCanvasElement) => {
+            const imgData = canvas.toDataURL('image/png', 1.0);
+            const imgWidth = pageWidth;
+            const imgHeight = (canvas.height * pageWidth) / canvas.width;
+            
+            let heightLeft = imgHeight;
+            let position = 0;
+            
+            // Primeira página
+            pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight, undefined, 'FAST');
+            heightLeft -= pageHeight;
+            
+            // Páginas subsequentes se a imagem for maior que A4
+            while (heightLeft > 0) {
+                position = heightLeft - imgHeight;
+                pdf.addPage();
+                pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight, undefined, 'FAST');
+                heightLeft -= pageHeight;
+            }
+        };
+
         const capturePage = async (id: string) => {
             const el = document.getElementById(id);
             if (!el) {
                 console.error(`Elemento ${id} não encontrado para PDF.`);
                 return null;
             }
+            
+            // Garantir que estamos no topo para evitar problemas de offset
+            window.scrollTo(0, 0);
+            
+            console.log(`Capturando ${id}...`);
             try {
-                return await html2canvas(el, { 
+                const canvas = await html2canvas(el, { 
                     backgroundColor: '#0f172a', 
-                    scale: 1.5, 
+                    scale: 2,
                     width: 1920, 
                     windowWidth: 1920,
                     useCORS: true,
                     allowTaint: false,
-                    logging: true, // Enabled logging for debugging
-                    imageTimeout: 15000,
+                    logging: true,
+                    imageTimeout: 30000,
                     onclone: (clonedDoc) => {
-                        const elements = clonedDoc.getElementsByTagName('*');
-                        for (let i = 0; i < elements.length; i++) {
-                            const el = elements[i] as HTMLElement;
-                            if (el.style && el.style.cssText.includes('oklch')) {
-                                el.style.cssText = el.style.cssText.replace(/oklch\([^)]+\)/g, '#888888');
-                            }
-                        }
                         const style = clonedDoc.createElement('style');
                         style.innerHTML = `
-                            * { color-interpolation: sRGB !important; }
-                            #${id} { background-color: #0f172a !important; color: #f1f5f9 !important; }
+                            * { 
+                                color-interpolation: sRGB !important; 
+                                -webkit-print-color-adjust: exact !important;
+                            }
+                            #${id} { 
+                                background-color: #0f172a !important; 
+                                color: #f1f5f9 !important;
+                                visibility: visible !important;
+                                display: flex !important;
+                                position: relative !important;
+                                left: 0 !important;
+                                top: 0 !important;
+                            }
+                            /* Forçar cores hex mais agressivamente */
                             .text-white { color: #ffffff !important; }
                             .text-blue-400 { color: #60a5fa !important; }
                             .text-slate-400 { color: #94a3b8 !important; }
-                            .bg-slate-800\\/40 { background-color: rgba(30, 41, 59, 0.4) !important; }
+                            .text-slate-500 { color: #64748b !important; }
+                            .text-green-400 { color: #4ade80 !important; }
+                            .text-yellow-400 { color: #facc15 !important; }
+                            .text-purple-400 { color: #c084fc !important; }
+                            .text-red-400 { color: #f87171 !important; }
+                            .bg-slate-900 { background-color: #0f172a !important; }
+                            .bg-slate-800 { background-color: #1e293b !important; }
                             .border-slate-700 { border-color: #334155 !important; }
+                            .border-slate-800 { border-color: #1e293b !important; }
+
+                            :root {
+                                --color-slate-50: #f8fafc !important;
+                                --color-slate-100: #f1f5f9 !important;
+                                --color-slate-200: #e2e8f0 !important;
+                                --color-slate-300: #cbd5e1 !important;
+                                --color-slate-400: #94a3b8 !important;
+                                --color-slate-500: #64748b !important;
+                                --color-slate-600: #475569 !important;
+                                --color-slate-700: #334155 !important;
+                                --color-slate-800: #1e293b !important;
+                                --color-slate-900: #0f172a !important;
+                                --color-slate-950: #020617 !important;
+                                --color-blue-400: #60a5fa !important;
+                                --color-blue-500: #3b82f6 !important;
+                                --color-blue-600: #2563eb !important;
+                                --color-green-400: #4ade80 !important;
+                                --color-green-500: #22c55e !important;
+                                --color-green-600: #16a34a !important;
+                                --color-emerald-400: #34d399 !important;
+                                --color-emerald-500: #10b981 !important;
+                                --color-red-400: #f87171 !important;
+                                --color-red-500: #ef4444 !important;
+                                --color-red-600: #dc2626 !important;
+                                --color-yellow-400: #facc15 !important;
+                                --color-yellow-500: #eab308 !important;
+                                --color-amber-400: #fbbf24 !important;
+                                --color-amber-500: #f59e0b !important;
+                                --color-purple-400: #c084fc !important;
+                                --color-purple-500: #a855f7 !important;
+                                --color-purple-600: #9333ea !important;
+                                --color-orange-500: #f97316 !important;
+                                --color-orange-400: #fb923c !important;
+                                --color-cyan-500: #06b6d4 !important;
+                                --color-cyan-400: #22d3ee !important;
+                                --color-white: #ffffff !important;
+                                --color-black: #000000 !important;
+                            }
+                            
+                            [class*="bg-"], [class*="text-"], [class*="border-"], [class*="ring-"] {
+                                --tw-bg-opacity: 1 !important;
+                                --tw-text-opacity: 1 !important;
+                                --tw-border-opacity: 1 !important;
+                            }
+
+                            * {
+                                outline-color: transparent !important;
+                                text-decoration-color: currentColor !important;
+                            }
                         `;
                         clonedDoc.head.appendChild(style);
+
+                        // Script otimizado para limpar oklch/oklab
+                        const elementsToFix = clonedDoc.querySelectorAll('[style*="oklch"], [style*="oklab"], [fill*="oklch"], [fill*="oklab"], [stroke*="oklch"], [stroke*="oklab"]');
+                        elementsToFix.forEach((el: any) => {
+                            const fill = el.getAttribute('fill');
+                            const stroke = el.getAttribute('stroke');
+                            if (fill && (fill.includes('oklch') || fill.includes('oklab'))) el.setAttribute('fill', '#3b82f6');
+                            if (stroke && (stroke.includes('oklch') || stroke.includes('oklab'))) el.setAttribute('stroke', '#3b82f6');
+
+                            if (el.style) {
+                                if (el.style.backgroundColor && (el.style.backgroundColor.includes('oklch') || el.style.backgroundColor.includes('oklab'))) el.style.backgroundColor = '#0f172a';
+                                if (el.style.borderColor && (el.style.borderColor.includes('oklch') || el.style.borderColor.includes('oklab'))) el.style.borderColor = '#334155';
+                                if (el.style.color && (el.style.color.includes('oklch') || el.style.color.includes('oklab'))) el.style.color = '#f1f5f9';
+                            }
+                        });
                     }
                 });
+                console.log(`Captura de ${id} concluída.`);
+                return canvas;
             } catch (err) {
                 console.error(`Erro ao capturar ${id}:`, err);
                 return null;
@@ -1123,30 +1291,14 @@ function AppContent() {
 
         const page1Canvas = await capturePage('export-page-1');
         if (page1Canvas) {
-            const imgData = page1Canvas.toDataURL('image/png', 1.0);
-            const imgProps = pdf.getImageProperties(imgData);
-            let pdfImgHeight = (imgProps.height * pageWidth) / imgProps.width;
-            let pdfImgWidth = pageWidth;
-            if (pdfImgHeight > pageHeight) {
-                pdfImgWidth = (imgProps.width * pageHeight) / imgProps.height;
-                pdfImgHeight = pageHeight;
-            }
-            pdf.addImage(imgData, 'PNG', (pageWidth - pdfImgWidth) / 2, 0, pdfImgWidth, pdfImgHeight, undefined, 'FAST');
+            addImageToPDF(page1Canvas);
             console.log("Página 1 (Técnica) adicionada.");
         }
 
         pdf.addPage();
         const page2Canvas = await capturePage('export-page-2');
         if (page2Canvas) {
-            const imgData = page2Canvas.toDataURL('image/png', 1.0);
-            const imgProps = pdf.getImageProperties(imgData);
-            let pdfImgHeight = (imgProps.height * pageWidth) / imgProps.width;
-            let pdfImgWidth = pageWidth;
-            if (pdfImgHeight > pageHeight) {
-                pdfImgWidth = (imgProps.width * pageHeight) / imgProps.height;
-                pdfImgHeight = pageHeight;
-            }
-            pdf.addImage(imgData, 'PNG', (pageWidth - pdfImgWidth) / 2, 0, pdfImgWidth, pdfImgHeight, undefined, 'FAST');
+            addImageToPDF(page2Canvas);
             console.log("Página 2 (Planejamento) adicionada.");
         }
 
@@ -1171,9 +1323,16 @@ function AppContent() {
 
         pdf.setFontSize(8); pdf.setFillColor(240, 240, 240); pdf.rect(margin, currentY, pageWidth - (margin * 2), 8, 'F');
         pdf.setTextColor(0); pdf.setFont(undefined, 'bold');
-        const col1 = margin + 2, col2 = margin + 22, col3 = margin + 47, col4 = margin + 95, col5 = margin + 115, col6 = margin + 140, col7 = margin + 172;
-        pdf.text("ID", col1, currentY + 5); pdf.text("Spool", col2, currentY + 5); pdf.text("Linha/Desc", col3, currentY + 5); pdf.text("Comp(m)", col4, currentY + 5); pdf.text("Status", col5, currentY + 5); pdf.text("Isolamento", col6, currentY + 5); 
-        pdf.text(isPlanning ? "Saldo(H/H)" : "Nível Esf.", col7, currentY + 5);
+        const col1 = margin + 2, col2 = margin + 18, col3 = margin + 38, col4 = margin + 80, col5 = margin + 95, col6 = margin + 115, col7 = margin + 140, col8 = margin + 165, col9 = margin + 185;
+        pdf.text("ID", col1, currentY + 5); 
+        pdf.text("Spool", col2, currentY + 5); 
+        pdf.text("Linha/Desc", col3, currentY + 5); 
+        pdf.text("Bit", col4, currentY + 5);
+        pdf.text("Comp(m)", col5, currentY + 5); 
+        pdf.text("Status", col6, currentY + 5); 
+        pdf.text("Isolamento", col7, currentY + 5); 
+        pdf.text("Suportes", col8, currentY + 5);
+        pdf.text(isPlanning ? "Saldo(H)" : "Nível", col9, currentY + 5);
         pdf.setFont(undefined, 'normal'); currentY += 10;
 
         pipesToExport.forEach((pipe) => {
@@ -1186,10 +1345,12 @@ function AppContent() {
                 pdf.text("ID", col1, currentY+5); 
                 pdf.text("Spool", col2, currentY+5);
                 pdf.text("Linha/Desc", col3, currentY+5);
-                pdf.text("Comp(m)", col4, currentY+5);
-                pdf.text("Status", col5, currentY+5);
-                pdf.text("Isolamento", col6, currentY+5);
-                pdf.text(isPlanning ? "Saldo(H/H)" : "Nível Esf.", col7, currentY+5); 
+                pdf.text("Bit", col4, currentY+5);
+                pdf.text("Comp(m)", col5, currentY+5);
+                pdf.text("Status", col6, currentY+5);
+                pdf.text("Isolamento", col7, currentY+5);
+                pdf.text("Suportes", col8, currentY+5);
+                pdf.text(isPlanning ? "Saldo(H)" : "Nível", col9, currentY+5); 
                 pdf.setFont(undefined, 'normal'); 
                 currentY += 10; 
             }
@@ -1201,6 +1362,29 @@ function AppContent() {
             const b = statusRgb ? parseInt(statusRgb[3], 16) : 184;
             const insLabel = INSULATION_LABELS[pipe.insulationStatus || 'NONE'];
             
+            const entry = Object.entries(PIPE_DIAMETERS).find(([_, v]) => Math.abs(v - pipe.diameter) < 0.001);
+            const bitLabel = entry ? entry[0] : `${(pipe.diameter * 39.37).toFixed(1)}"`;
+
+            let supportsTotal = 0;
+            let supportsInstalled = 0;
+            let hasModernSupports = false;
+            if (pipe.accessories) {
+                pipe.accessories.forEach(a => {
+                    const isPipeInstalled = pipe.status === 'MOUNTED' || pipe.status === 'WELDED' || pipe.status === 'HYDROTEST';
+                    const isInstalled = a.status === AccessoryStatus.MOUNTED || isPipeInstalled;
+                    if (a.type === 'SUPPORT') {
+                        hasModernSupports = true;
+                        supportsTotal += 1;
+                        if (isInstalled) supportsInstalled += 1;
+                    }
+                });
+            }
+            if (pipe.supports && !hasModernSupports) {
+                supportsTotal += (pipe.supports.total || 0);
+                const isPipeInstalled = pipe.status === 'MOUNTED' || pipe.status === 'WELDED' || pipe.status === 'HYDROTEST';
+                supportsInstalled += isPipeInstalled ? (pipe.supports.total || 0) : (pipe.supports.installed || 0);
+            }
+
             let hh = 0;
             const pipingF = PIPING_REMAINING_FACTOR[pipe.status] || 0;
             const insF = INSULATION_REMAINING_FACTOR[pipe.insulationStatus || 'NONE'] || 0;
@@ -1221,25 +1405,27 @@ function AppContent() {
             pdf.setFontSize(7); 
             pdf.text(pipe.id, col1, currentY); 
             pdf.text(pipe.spoolId || '-', col2, currentY); 
-            pdf.text(pipe.name.substring(0, 22), col3, currentY); 
-            pdf.text((pipe.length || 0).toFixed(2), col4, currentY);
+            pdf.text(pipe.name.substring(0, 18), col3, currentY); 
+            pdf.text(bitLabel, col4, currentY);
+            pdf.text((pipe.length || 0).toFixed(2), col5, currentY);
             
             // Badge de Status
             pdf.setFillColor(r, g, b); 
-            pdf.roundedRect(col5-1, currentY-3, pdf.getTextWidth(statusLabel)+4, 5, 1, 1, 'F'); 
+            pdf.roundedRect(col6-1, currentY-3, pdf.getTextWidth(statusLabel)+4, 5, 1, 1, 'F'); 
             pdf.setTextColor(255); 
             pdf.setFont(undefined, 'bold'); 
-            pdf.text(statusLabel, col5+1, currentY);
+            pdf.text(statusLabel, col6+1, currentY);
             
             pdf.setTextColor(0); 
             pdf.setFont(undefined, 'normal'); 
-            pdf.text(insLabel, col6, currentY); 
+            pdf.text(insLabel, col7, currentY); 
+            pdf.text(`${supportsInstalled}/${supportsTotal}`, col8, currentY);
             
             if (isPlanning) { 
-                pdf.text(((hh || 0).toFixed(2)) + " h", col7, currentY); 
+                pdf.text(((hh || 0).toFixed(1)) + "h", col9, currentY); 
             } else { 
                 const esf = pipe.planningFactors?.accessType === 'NONE' ? 'NÍVEL 0' : (pipe.planningFactors?.accessType || 'NÍVEL 0'); 
-                pdf.text(esf, col7, currentY); 
+                pdf.text(esf, col9, currentY); 
             }
             
             pdf.setDrawColor(230); 
@@ -1499,22 +1685,29 @@ function AppContent() {
         />
         
         <main className="flex-1 relative overflow-hidden flex">
-            {/* EXPORT CONTAINER HIDDEN */}
-            <div className="absolute left-[-9999px] top-0">
+            {/* EXPORT CONTAINER HIDDEN - Melhorado para captura (Problema 1) */}
+            <div style={{ 
+                position: 'fixed', 
+                left: '-9999px', 
+                top: '0', 
+                width: '1920px', 
+                zIndex: -2000,
+                pointerEvents: 'none'
+            }}>
                 <ExportContainer 
                     viewMode={viewMode}
                     reportStats={pdfExportStats || reportStats}
                     sceneScreenshot={sceneScreenshot}
                     secondaryImage={secondaryImage}
                     mapImage={mapImage}
-                    projectClient={projectClient}
-                    projectLocation={projectLocation}
+                    projectClient={selectedProjectIds.length > 0 ? "CONSOLIDADO (MÚLTIPLOS PROJETOS)" : projectClient}
+                    projectLocation={selectedProjectIds.length > 0 ? "CONSOLIDADO" : projectLocation}
                     activityDate={activityDate}
-                    pipes={pipes}
+                    pipes={aggregatedData.pipes}
                     prodSettings={prodSettings}
                     startDate={activityDate}
-                    dailyProduction={dailyProduction}
-                    annotations={annotations}
+                    dailyProduction={aggregatedData.dailyProduction}
+                    annotations={aggregatedData.annotations}
                     deadlineDate={deadlineDate}
                 />
             </div>
@@ -1573,7 +1766,7 @@ function AppContent() {
                         </div>
                     </div>
                 </div>
-                {viewMode === 'dashboard' && (<div className="absolute inset-0 z-50 bg-slate-950/95 backdrop-blur-sm overflow-y-auto p-4 animate-in fade-in"><div className="max-w-[1600px] mx-auto h-full"><Dashboard pipes={aggregatedData.pipes} annotations={aggregatedData.annotations} onExportPDF={handleExportPDF} isExporting={isExporting} secondaryImage={secondaryImage} onUploadSecondary={setSecondaryImage} mapImage={mapImage} onUploadMap={setMapImage} sceneScreenshot={sceneScreenshot} onSelectPipe={handleSelectPipe} selectedIds={selectedIds} onSetSelection={handleSetSelection} prodSettings={prodSettings} startDate={activityDate} deadlineDate={deadlineDate} savedProjects={savedProjects} selectedProjectIds={selectedProjectIds} onSetSelectedProjectIds={setSelectedProjectIds} dailyProduction={dailyProduction} onUpdateDailyProduction={setDailyProduction} onOpenDailyProduction={() => setIsDailyProductionModalOpen(true)} /></div></div>)}
+                {viewMode === 'dashboard' && (<div className="absolute inset-0 z-50 bg-slate-950/95 backdrop-blur-sm overflow-y-auto p-4 animate-in fade-in"><div className="max-w-[1600px] mx-auto h-full"><Dashboard pipes={aggregatedData.pipes} annotations={aggregatedData.annotations} onExportPDF={handleExportPDF} isExporting={isExporting} secondaryImage={secondaryImage} onUploadSecondary={setSecondaryImage} mapImage={mapImage} onUploadMap={setMapImage} sceneScreenshot={sceneScreenshot} onSelectPipe={handleSelectPipe} selectedIds={selectedIds} onSetSelection={handleSetSelection} prodSettings={prodSettings} startDate={activityDate} deadlineDate={deadlineDate} savedProjects={savedProjects} selectedProjectIds={selectedProjectIds} onSetSelectedProjectIds={setSelectedProjectIds} dailyProduction={aggregatedData.dailyProduction} onUpdateDailyProduction={setDailyProduction} onOpenDailyProduction={() => setIsDailyProductionModalOpen(true)} /></div></div>)}
             </div>
             {selectedPipes.length > 0 && !isDrawing && !pastePreview && (
                 <div className="w-96 relative z-20 shadow-2xl border-l border-slate-700">

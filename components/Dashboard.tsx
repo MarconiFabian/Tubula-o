@@ -269,8 +269,17 @@ const Dashboard: React.FC<DashboardProps> = ({
         // Days since start to today (for actual distribution)
         const daysSinceStart = Math.max(1, Math.floor((today.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
 
-        let cumulativePlanned = 0;
-        let cumulativeActualMeters = 0;
+        const initialExecutedMeters = currentPipes
+            .filter(p => {
+                const d = p.welderInfo?.weldDate || todayStr;
+                return d < startStr;
+            })
+            .reduce((acc, p) => {
+                const pipingDone = 1 - (PIPING_REMAINING_FACTOR[p.status] ?? 1);
+                return acc + (p.length * pipingDone);
+            }, 0);
+
+        let cumulativeActualMeters = initialExecutedMeters;
 
         for (let i = 0; i <= plotDays; i++) {
             const d = new Date(start);
@@ -285,9 +294,12 @@ const Dashboard: React.FC<DashboardProps> = ({
                 const dpForDate = dailyProduction.find(d => d.date === dateStr);
                 if (dpForDate) {
                     cumulativeActualMeters += dpForDate.pipeMeters;
+                }
+                
+                if (dailyProduction.length > 0) {
                     actual = totalLengthValue > 0 ? parseFloat((cumulativeActualMeters / totalLengthValue * 100).toFixed(1)) : 0;
                 } else {
-                    // Fallback to linear if no data in table for this past date
+                    // Fallback to linear if no data in table at all
                     const linearFactor = daysSinceStart > 0 ? Math.min(i / daysSinceStart, 1) : 1;
                     actual = parseFloat((linearFactor * totalProgressPct).toFixed(2));
                 }

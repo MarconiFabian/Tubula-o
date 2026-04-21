@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Ruler, Wrench, Shield, Timer, Calendar, Cuboid, Image as ImageIcon, Package, MapPin, TrendingUp, BarChart3, AlertCircle, Users } from 'lucide-react';
+import { Ruler, Wrench, Shield, Timer, Calendar, Cuboid, Image as ImageIcon, Package, MapPin, TrendingUp, BarChart3, AlertCircle, Users, Activity } from 'lucide-react';
 import { PipeSegment, Annotation, PipeStatus, InsulationStatus, ProductivitySettings } from '../types';
 import { STATUS_LABELS, STATUS_COLORS, INSULATION_LABELS, INSULATION_COLORS, ALL_STATUSES, ALL_INSULATION_STATUSES, PIPING_REMAINING_FACTOR, INSULATION_REMAINING_FACTOR } from '../constants';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell, ReferenceDot } from 'recharts';
@@ -63,6 +63,7 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
     const today = new Date(todayStr + 'T12:00:00');
     
     let plotDays = reportStats.daysNeeded || 30;
+    if (plotDays < 7) plotDays = 30; // Sensible default for S-Curve if calculation is 0 or too small
     if (deadlineDate) {
         const end = new Date(deadlineDate + 'T12:00:00');
         const diffTime = end.getTime() - start.getTime();
@@ -72,8 +73,7 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
     // Days since start to today (for actual distribution)
     const daysSinceStart = Math.max(1, Math.floor((today.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
 
-    let cumulativePlanned = 0;
-    let cumulativeActualMeters = 0;
+    let cumulativeActualMeters = initialCumulativeActual;
 
     for (let i = 0; i <= plotDays; i++) {
         const d = new Date(start);
@@ -87,9 +87,12 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
             const dpForDate = dailyProduction.find(d => d.date === dateStr);
             if (dpForDate) {
                 cumulativeActualMeters += dpForDate.pipeMeters;
+            }
+            
+            if (dailyProduction.length > 0) {
                 actual = totalLengthValue > 0 ? (cumulativeActualMeters / totalLengthValue * 100) : 0;
             } else {
-                // Fallback to linear if no data in table for this past date
+                // Fallback to linear if no data in table at all
                 const linearFactor = daysSinceStart > 0 ? Math.min(i / daysSinceStart, 1) : 1;
                 actual = parseFloat((linearFactor * totalProgressPct).toFixed(2));
             }
@@ -125,7 +128,7 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
     }
 
     return data;
-  }, [pipes, startDate, reportStats.daysNeeded]);
+  }, [pipes, startDate, reportStats.daysNeeded, dailyProduction, reportStats.totalLength]);
 
   const effortData = useMemo(() => {
     return ALL_STATUSES.map(status => {
@@ -140,7 +143,7 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
   }, [pipes]);
 
   return (
-    <div id="composed-dashboard-export" style={{ position: 'absolute', top: '-20000px', left: 0, width: '1920px', backgroundColor: '#0f172a', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', color: '#f1f5f9' }}>
+    <div id="composed-dashboard-export" style={{ width: '1920px', backgroundColor: '#0f172a', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', color: '#f1f5f9' }}>
       {/* PAGE 1: OVERVIEW & TRACKING */}
       <div id="export-page-1" style={{ padding: '60px', minHeight: '1350px', display: 'flex', flexDirection: 'column', gap: '40px', backgroundColor: '#0f172a', width: '1920px' }}>
         <div className="flex justify-between items-start pb-6" style={{ borderBottom: '1px solid #334155' }}>
@@ -154,22 +157,27 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
         </div>
 
         <div className="grid grid-cols-5 gap-6">
-            <div className="p-6 rounded-2xl flex flex-col items-center" style={{ backgroundColor: 'rgba(30, 41, 59, 0.4)', border: '1px solid #334155' }}>
+            <div className="p-6 rounded-2xl flex flex-col items-center" style={{ backgroundColor: '#1e293b', border: '1px solid #334155' }}>
+            <Cuboid style={{ color: '#fbbf24', marginBottom: '8px' }} size={32} />
+            <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#64748b' }}>Total Spools</span>
+            <div className="text-4xl font-bold" style={{ color: '#ffffff' }}>{reportStats?.total || 0}</div>
+            </div>
+            <div className="p-6 rounded-2xl flex flex-col items-center" style={{ backgroundColor: '#1e293b', border: '1px solid #334155' }}>
             <Ruler style={{ color: '#60a5fa', marginBottom: '8px' }} size={32} />
             <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#64748b' }}>Total Metros</span>
             <div className="text-4xl font-bold" style={{ color: '#ffffff' }}>{(reportStats?.totalLength || 0).toFixed(2)}m</div>
             </div>
-            <div className="p-6 rounded-2xl flex flex-col items-center" style={{ backgroundColor: 'rgba(30, 41, 59, 0.4)', border: '1px solid #334155' }}>
+            <div className="p-6 rounded-2xl flex flex-col items-center" style={{ backgroundColor: '#1e293b', border: '1px solid #334155' }}>
             <Wrench style={{ color: '#93c5fd', marginBottom: '8px' }} size={32} />
             <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#64748b' }}>Saldo Piping</span>
             <div className="text-4xl font-bold" style={{ color: '#ffffff' }}>{(reportStats?.totalPipingHH || 0).toFixed(1)}h</div>
             </div>
-            <div className="p-6 rounded-2xl flex flex-col items-center" style={{ backgroundColor: 'rgba(30, 41, 59, 0.4)', border: '1px solid #334155' }}>
+            <div className="p-6 rounded-2xl flex flex-col items-center" style={{ backgroundColor: '#1e293b', border: '1px solid #334155' }}>
             <Shield style={{ color: '#c084fc', marginBottom: '8px' }} size={32} />
             <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#64748b' }}>Saldo Isolamento</span>
             <div className="text-4xl font-bold" style={{ color: '#ffffff' }}>{(reportStats?.totalInsulationHH || 0).toFixed(1)}h</div>
             </div>
-            <div className="p-6 rounded-2xl flex flex-col items-center" style={{ backgroundColor: 'rgba(30, 41, 59, 0.4)', border: '1px solid #334155' }}>
+            <div className="p-6 rounded-2xl flex flex-col items-center" style={{ backgroundColor: '#1e293b', border: '1px solid #334155' }}>
             <Timer style={{ color: '#d8b4fe', marginBottom: '8px' }} size={32} />
             <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#64748b' }}>Total Saldo</span>
             <div className="text-4xl font-bold" style={{ color: '#ffffff' }}>{(reportStats?.totalHH || 0).toFixed(1)}h</div>
@@ -177,14 +185,14 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
                 <div className="text-[10px] font-bold mt-1" style={{ color: '#94a3b8' }}>Inclui {(reportStats?.annotationHH || 0).toFixed(1)}h Apoio</div>
             )}
             </div>
-            <div className="p-6 rounded-2xl flex flex-col items-center" style={{ backgroundColor: 'rgba(30, 41, 59, 0.4)', border: '1px solid #334155' }}>
+            <div className="p-6 rounded-2xl flex flex-col items-center" style={{ backgroundColor: '#1e293b', border: '1px solid #334155' }}>
             <Calendar style={{ color: '#4ade80', marginBottom: '8px' }} size={32} />
             <div className="flex justify-between w-full items-center mb-1">
                 <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#64748b' }}>{deadlineDate ? 'Meta Diária' : 'Término'}</span>
                 <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#4ade80' }}>{progress.toFixed(1)}%</span>
             </div>
             <div className="text-3xl font-bold mt-1" style={{ color: deadlineDate ? '#d8b4fe' : '#4ade80' }}>{deadlineDate ? deadlineDate.split('-').reverse().join('/') : reportStats?.projectedEnd}</div>
-            <div className="flex flex-col gap-1 mt-3 w-full border-t border-slate-700 pt-3">
+            <div className="flex flex-col gap-1 mt-3 w-full pt-3" style={{ borderTop: '1px solid #334155' }}>
                 <div className="flex justify-between text-[10px] font-bold uppercase" style={{ color: '#94a3b8' }}>
                     <span>Dias {deadlineDate ? 'Úteis' : 'Necessários'}:</span>
                     <span style={{ color: '#ffffff' }}>{deadlineDate ? reportStats?.deadlineStats?.daysUntilDeadline : reportStats?.daysNeeded} dias</span>
@@ -197,110 +205,14 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
                     <span>Saldo Isolamento:</span>
                     <span style={{ color: '#ffffff' }}>{reportStats?.insulationRemainingLength.toFixed(1)}m</span>
                 </div>
-                <div className="flex justify-between text-[10px] font-bold uppercase mt-1 pt-1 border-t border-slate-800" style={{ color: '#60a5fa' }}>
-                    <span>Meta Tubulação:</span>
-                    <span>{deadlineDate ? reportStats?.deadlineStats?.requiredDailyPiping.toFixed(1) : reportStats?.currentDailyPiping.toFixed(1)}m/dia</span>
-                </div>
-                <div className="flex justify-between text-[10px] font-bold uppercase" style={{ color: '#fbbf24' }}>
-                    <span>Meta Isolamento:</span>
-                    <span>{deadlineDate ? reportStats?.deadlineStats?.requiredDailyInsulation.toFixed(1) : reportStats?.currentDailyInsulation.toFixed(1)}m/dia</span>
-                </div>
             </div>
             </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-6">
-            <div className="p-6 rounded-2xl flex flex-col gap-4" style={{ backgroundColor: 'rgba(30, 41, 59, 0.4)', border: '1px solid #334155' }}>
-                <div className="flex justify-between items-center border-b border-slate-700 pb-4">
-                    <h3 className="text-xl font-bold uppercase tracking-wider flex items-center gap-2" style={{ color: '#60a5fa' }}>
-                        <div className="w-3 h-3 rounded-full bg-blue-500"></div>
-                        Balanço de Tubulação
-                    </h3>
-                    <span className="text-blue-400 font-bold text-lg">{(reportStats?.pipingTotalLength || 0) > 0 ? (((reportStats?.pipingExecutedLength || 0) / reportStats.pipingTotalLength) * 100).toFixed(1) : 0}%</span>
-                </div>
-                <div className="grid grid-cols-3 gap-6">
-                    <div className="flex flex-col">
-                        <span className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">Total</span>
-                        <span className="text-3xl font-bold text-white font-mono">{(reportStats?.pipingTotalLength || 0).toFixed(2)}<span className="text-sm text-slate-500 ml-1">m</span></span>
-                    </div>
-                    <div className="flex flex-col">
-                        <span className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">Executado</span>
-                        <span className="text-3xl font-bold text-green-400 font-mono">{(reportStats?.pipingExecutedLength || 0).toFixed(2)}<span className="text-sm text-slate-500 ml-1">m</span></span>
-                        <div className="mt-2 space-y-1">
-                            <div className="flex justify-between text-[10px] font-mono text-slate-400">
-                                <span>Soldado:</span>
-                                <span className="text-white">{((reportStats?.pipeLengths?.['WELDED'] || 0) + (reportStats?.pipeLengths?.['HYDROTEST'] || 0)).toFixed(2)}m</span>
-                            </div>
-                            <div className="flex justify-between text-[10px] font-mono text-slate-400">
-                                <span>Testado:</span>
-                                <span className="text-white">{(reportStats?.pipeLengths?.['HYDROTEST'] || 0).toFixed(2)}m</span>
-                            </div>
-                        </div>
-                    </div>
-                    <div className="flex flex-col">
-                        <span className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">A Executar</span>
-                        <span className="text-3xl font-bold text-yellow-400 font-mono">{(reportStats?.pipingRemainingLength || 0).toFixed(2)}<span className="text-sm text-slate-500 ml-1">m</span></span>
-                        <div className="mt-2 space-y-1">
-                            <div className="flex justify-between text-[10px] font-mono text-slate-400">
-                                <span>P/ Soldar:</span>
-                                <span className="text-white">{((reportStats?.pipeLengths?.['PENDING'] || 0) + (reportStats?.pipeLengths?.['MOUNTED'] || 0)).toFixed(2)}m</span>
-                            </div>
-                            <div className="flex justify-between text-[10px] font-mono text-slate-400">
-                                <span>P/ Testar:</span>
-                                <span className="text-white">{((reportStats?.pipingTotalLength || 0) - (reportStats?.pipeLengths?.['HYDROTEST'] || 0)).toFixed(2)}m</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden mt-2">
-                    <div className="h-full bg-blue-500" style={{ width: `${(reportStats?.pipingTotalLength || 0) > 0 ? ((reportStats?.pipingExecutedLength || 0) / reportStats.pipingTotalLength) * 100 : 0}%` }}></div>
-                </div>
-            </div>
-
-            <div className="p-6 rounded-2xl flex flex-col gap-4" style={{ backgroundColor: 'rgba(30, 41, 59, 0.4)', border: '1px solid #334155' }}>
-                <div className="flex justify-between items-center border-b border-slate-700 pb-4">
-                    <h3 className="text-xl font-bold uppercase tracking-wider flex items-center gap-2" style={{ color: '#c084fc' }}>
-                        <div className="w-3 h-3 rounded-full bg-purple-500"></div>
-                        Balanço de Proteção Térmica
-                    </h3>
-                    <span className="text-purple-400 font-bold text-lg">{(reportStats?.insulationTotalLength || 0) > 0 ? (((reportStats?.insulationExecutedLength || 0) / reportStats.insulationTotalLength) * 100).toFixed(1) : 0}%</span>
-                </div>
-                <div className="grid grid-cols-3 gap-6">
-                    <div className="flex flex-col">
-                        <span className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">Total</span>
-                        <span className="text-3xl font-bold text-white font-mono">{(reportStats?.insulationTotalLength || 0).toFixed(2)}<span className="text-sm text-slate-500 ml-1">m</span></span>
-                    </div>
-                    <div className="flex flex-col">
-                        <span className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">Executado</span>
-                        <span className="text-3xl font-bold text-green-400 font-mono">{(reportStats?.insulationExecutedLength || 0).toFixed(2)}<span className="text-sm text-slate-500 ml-1">m</span></span>
-                        <div className="mt-2 space-y-1">
-                            <div className="flex justify-between text-[10px] font-mono text-slate-400">
-                                <span>Concluído:</span>
-                                <span className="text-white">{(reportStats?.insulationLengths?.['FINISHED'] || 0).toFixed(2)}m</span>
-                            </div>
-                        </div>
-                    </div>
-                    <div className="flex flex-col">
-                        <span className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">A Executar</span>
-                        <span className="text-3xl font-bold text-yellow-400 font-mono">{(reportStats?.insulationRemainingLength || 0).toFixed(2)}<span className="text-sm text-slate-500 ml-1">m</span></span>
-                        <div className="mt-2 space-y-1">
-                            <div className="flex justify-between text-[10px] font-mono text-slate-400">
-                                <span>P/ Concluir:</span>
-                                <span className="text-white">{((reportStats?.insulationTotalLength || 0) - (reportStats?.insulationLengths?.['FINISHED'] || 0)).toFixed(2)}m</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden mt-2">
-                    <div className="h-full bg-purple-500" style={{ width: `${(reportStats?.insulationTotalLength || 0) > 0 ? ((reportStats?.insulationExecutedLength || 0) / reportStats.insulationTotalLength) * 100 : 0}%` }}></div>
-                </div>
-            </div>
-        </div>
-
-        <div className="p-6 rounded-2xl flex flex-col gap-4" style={{ backgroundColor: 'rgba(30, 41, 59, 0.4)', border: '1px solid #334155' }}>
-            <div className="flex justify-between items-center border-b border-slate-700 pb-4">
+        <div className="p-6 rounded-2xl flex flex-col gap-4" style={{ backgroundColor: '#1e293b', border: '1px solid #334155' }}>
+            <div className="flex justify-between items-center pb-4" style={{ borderBottom: '1px solid #334155' }}>
                 <h3 className="text-xl font-bold uppercase tracking-wider flex items-center gap-2" style={{ color: '#f59e0b' }}>
-                    <div className="w-3 h-3 rounded-full bg-amber-500"></div>
+                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#f59e0b' }}></div>
                     Acessórios e Componentes
                 </h3>
                 <div className="flex gap-6">
@@ -338,7 +250,7 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
             <h3 className="text-xl font-bold uppercase tracking-wider flex items-center gap-2" style={{ color: '#cbd5e1' }}>
                 <Cuboid size={20}/> Vista Principal 3D
             </h3>
-            <div className="flex-1 rounded-xl relative overflow-hidden flex items-center justify-center p-2 min-h-[450px]" style={{ backgroundColor: 'rgba(30, 41, 59, 0.5)', border: '1px solid #334155' }}>
+            <div className="flex-1 rounded-xl relative overflow-hidden flex items-center justify-center p-2 min-h-[400px]" style={{ backgroundColor: '#1e293b', border: '1px solid #334155' }}>
                 {sceneScreenshot ? <img src={sceneScreenshot} className="w-full h-full object-cover rounded-lg" /> : <div style={{ color: '#475569' }} className="flex flex-col items-center"><Cuboid size={64} className="opacity-50"/><span>Sem Captura</span></div>}
             </div>
             </div>
@@ -346,21 +258,46 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
             <h3 className="text-xl font-bold uppercase tracking-wider flex items-center gap-2" style={{ color: '#cbd5e1' }}>
                 <ImageIcon size={20}/> Registro Fotográfico
             </h3>
-            <div className="flex-1 rounded-xl relative overflow-hidden flex items-center justify-center p-2 min-h-[450px]" style={{ backgroundColor: 'rgba(30, 41, 59, 0.5)', border: '1px solid #334155' }}>
+            <div className="flex-1 rounded-xl relative overflow-hidden flex items-center justify-center p-2 min-h-[400px]" style={{ backgroundColor: '#1e293b', border: '1px solid #334155' }}>
                 {secondaryImage ? <img src={secondaryImage} className="w-full h-full object-cover rounded-lg" /> : <div style={{ color: '#475569' }} className="flex flex-col items-center"><span>Sem Foto</span></div>}
             </div>
             </div>
-            <div className="flex flex-col gap-6">
+
+            <div className="flex flex-col gap-2 col-span-2">
+                <h3 className="text-xl font-bold uppercase tracking-wider flex items-center gap-2" style={{ color: '#22c55e' }}>
+                    <Activity size={20}/> Produção Diária de Solda (Metros)
+                </h3>
+                <div className="rounded-xl p-6 h-[200px]" style={{ backgroundColor: '#1e293b', border: '1px solid #334155' }}>
+                    <div className="flex items-end justify-around gap-2 h-full">
+                        {reportStats.sortedDailyProd && reportStats.sortedDailyProd.length > 0 ? reportStats.sortedDailyProd.slice(-15).map((day: any) => {
+                            const maxVal = Math.max(...reportStats.sortedDailyProd.map((d: any) => d.pipingMeters), 1);
+                            const height = (day.pipingMeters / maxVal) * 100;
+                            return (
+                                <div key={day.date} className="flex flex-col items-center flex-1 h-full justify-end">
+                                    <div className="w-full" style={{ height: `${Math.max(height, 5)}%`, backgroundColor: '#22c55e', opacity: 0.4, borderTop: '1px solid #22c55e' }}></div>
+                                    <span className="text-[10px] text-slate-500 font-mono uppercase text-center mt-2 tracking-tighter" style={{ color: '#64748b' }}>{day.date.split('-').slice(1).join('/')}</span>
+                                </div>
+                            )
+                        }) : (
+                            <div className="w-full h-full flex items-center justify-center border border-dashed border-slate-800 rounded" style={{ borderColor: '#1e293b' }}>
+                                <span className="text-sm font-mono text-slate-700 uppercase tracking-widest" style={{ color: '#334155' }}>Nenhum dado de produção registrado</span>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
+
+        <div className="flex flex-col gap-6 flex-1">
             <div className="flex flex-col gap-2">
                 <h3 className="text-xl font-bold uppercase tracking-wider" style={{ color: '#cbd5e1' }}>Dados da Obra</h3>
-                <div className="rounded-xl p-6" style={{ backgroundColor: 'rgba(30, 41, 59, 0.5)', border: '1px solid #334155' }}>
+                <div className="rounded-xl p-6" style={{ backgroundColor: '#1e293b', border: '1px solid #334155' }}>
                 <table className="w-full text-xl text-left">
                     <tbody>
-                    <tr style={{ borderBottom: '1px solid rgba(51, 65, 85, 0.5)' }}>
+                    <tr style={{ borderBottom: '1px solid #334155' }}>
                         <td className="py-3 font-bold uppercase w-1/3" style={{ color: '#94a3b8' }}>Cliente</td>
                         <td className="py-3 uppercase font-bold" style={{ color: '#60a5fa' }}>{projectClient}</td>
                     </tr>
-                    <tr style={{ borderBottom: '1px solid rgba(51, 65, 85, 0.5)' }}>
+                    <tr style={{ borderBottom: '1px solid #334155' }}>
                         <td className="py-3 font-bold uppercase" style={{ color: '#94a3b8' }}>Área/Setor</td>
                         <td className="py-3 uppercase font-medium" style={{ color: '#ffffff' }}>{projectLocation}</td>
                     </tr>
@@ -376,12 +313,12 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
                 <h3 className="text-xl font-bold uppercase tracking-wider flex items-center gap-2" style={{ color: '#cbd5e1' }}>
                 <Package size={20}/> Quantitativos (BOM)
                 </h3>
-                <div className="rounded-xl overflow-hidden" style={{ backgroundColor: 'rgba(30, 41, 59, 0.5)', border: '1px solid #334155' }}>
+                <div className="rounded-xl overflow-hidden" style={{ backgroundColor: '#1e293b', border: '1px solid #334155' }}>
                 <table className="w-full text-xl text-left">
-                    <thead style={{ backgroundColor: 'rgba(15, 23, 42, 0.8)', color: '#94a3b8' }} className="uppercase text-sm font-bold">
+                    <thead style={{ backgroundColor: '#0f172a', color: '#94a3b8' }} className="uppercase text-sm font-bold">
                     <tr><th className="p-4">Descrição Material</th><th className="p-4 text-right">Qtd.</th><th className="p-4 text-center">Unid.</th></tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-700/50">
+                    <tbody className="divide-y divide-slate-700/50" style={{ borderTop: '1px solid #334155' }}>
                     {Object.entries(reportStats.bom).map(([label, length]) => (
                         <tr key={label}>
                         <td className="p-4 font-medium" style={{ color: '#ffffff' }}>Tubo Aço Carbono <span style={{ color: '#60a5fa' }} className="font-bold">{label}</span></td>
@@ -394,57 +331,13 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
                 </div>
             </div>
             </div>
-            <div className="flex flex-col gap-6">
+            <div className="flex flex-col gap-6 flex-1">
             <div className="flex flex-col gap-2">
                 <h3 className="text-xl font-bold uppercase tracking-wider flex items-center gap-2" style={{ color: '#cbd5e1' }}>
                 <MapPin size={20}/> Localização em Planta
                 </h3>
-                <div className="rounded-xl p-2 min-h-[250px] relative overflow-hidden flex items-center justify-center" style={{ backgroundColor: 'rgba(30, 41, 59, 0.5)', border: '1px solid #334155' }}>
+                <div className="rounded-xl p-2 min-h-[250px] relative overflow-hidden flex items-center justify-center flex-1" style={{ backgroundColor: '#1e293b', border: '1px solid #334155' }}>
                 {mapImage ? <img src={mapImage} className="w-full h-full object-cover rounded-lg opacity-80" /> : <div style={{ color: '#475569' }}>Sem Mapa</div>}
-                </div>
-            </div>
-            <div className="flex flex-col gap-2">
-                <h3 className="text-xl font-bold uppercase tracking-wider" style={{ color: '#cbd5e1' }}>Status Físico de Obra</h3>
-                <div className="grid grid-cols-2 gap-4">
-                <div className="rounded-xl p-4 h-[250px] flex flex-col" style={{ backgroundColor: 'rgba(30, 41, 59, 0.5)', border: '1px solid #334155' }}>
-                    <div className="text-xs font-bold uppercase mb-2 text-center" style={{ color: '#60a5fa' }}>Montagem/Solda</div>
-                    <div className="flex-1 flex items-end justify-around gap-2">
-                    {ALL_STATUSES.map(status => {
-                        const h = (reportStats.pipeLengths?.[status] / Math.max(1, reportStats.pipingTotalLength)) * 100 || 0;
-                        const pct = reportStats.pipingTotalLength > 0 ? ((reportStats.pipeLengths?.[status] / reportStats.pipingTotalLength) * 100).toFixed(1) : "0.0";
-                        return (
-                        <div key={status} className="flex flex-col items-center flex-1 h-full justify-end">
-                            <span className="font-bold text-[10px]" style={{ color: '#ffffff' }}>{pct}%</span>
-                            <span className="font-bold text-[8px] mb-1" style={{ color: '#94a3b8' }}>{(reportStats.pipeLengths?.[status] || 0).toFixed(1)}m</span>
-                            <div className="w-full rounded-t-sm opacity-80 relative flex items-center justify-center" style={{ height: `${Math.max(h, 5)}%`, backgroundColor: STATUS_COLORS[status] }}>
-                                {parseFloat(pct) > 5 && <span className="absolute text-[8px] font-bold text-slate-900/50">{pct}%</span>}
-                            </div>
-                            <span className="text-[8px] font-bold uppercase text-center mt-1 truncate w-full" style={{ color: '#64748b' }}>{STATUS_LABELS[status].split(' ')[0]}</span>
-                        </div>
-                        )
-                    })}
-                    </div>
-                </div>
-                <div className="rounded-xl p-4 h-[250px] flex flex-col" style={{ backgroundColor: 'rgba(30, 41, 59, 0.5)', border: '1px solid #334155' }}>
-                    <div className="text-xs font-bold uppercase mb-2 text-center" style={{ color: '#c084fc' }}>Isolamento</div>
-                    <div className="flex-1 flex items-end justify-around gap-2">
-                    {ALL_INSULATION_STATUSES.map(status => {
-                        const h = (reportStats.insulationLengths?.[status] / Math.max(1, reportStats.insulationTotalLength)) * 100 || 0;
-                        const pct = reportStats.insulationTotalLength > 0 ? ((reportStats.insulationLengths?.[status] / reportStats.insulationTotalLength) * 100).toFixed(1) : "0.0";
-                        const c = INSULATION_COLORS[status] === 'transparent' ? '#475569' : INSULATION_COLORS[status];
-                        return (
-                        <div key={status} className="flex flex-col items-center flex-1 h-full justify-end">
-                            <span className="font-bold text-[10px]" style={{ color: '#ffffff' }}>{pct}%</span>
-                            <span className="font-bold text-[8px] mb-1" style={{ color: '#94a3b8' }}>{(reportStats.insulationLengths?.[status] || 0).toFixed(1)}m</span>
-                            <div className="w-full rounded-t-sm opacity-80 relative flex items-center justify-center" style={{ height: `${Math.max(h, 5)}%`, backgroundColor: c }}>
-                                {parseFloat(pct) > 5 && <span className="absolute text-[8px] font-bold text-slate-900/50">{pct}%</span>}
-                            </div>
-                            <span className="text-[8px] font-bold uppercase text-center mt-1 truncate w-full" style={{ color: '#64748b' }}>{INSULATION_LABELS[status].split(' ')[0]}</span>
-                        </div>
-                        )
-                    })}
-                    </div>
-                </div>
                 </div>
             </div>
             </div>
@@ -457,141 +350,167 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
 
       {/* PAGE 2: PLANNING & S-CURVE & HISTOGRAM & GANTT */}
       <div id="export-page-2" style={{ padding: '60px', minHeight: '2715px', display: 'flex', flexDirection: 'column', gap: '40px', backgroundColor: '#0f172a', width: '1920px' }}>
-        <div className="flex justify-between items-start pb-6" style={{ borderBottom: '1px solid #334155' }}>
-            <div>
-            <h1 className="text-6xl font-bold tracking-tight leading-none mb-2 uppercase" style={{ color: '#ffffff' }}>
-                CRONOGRAMA E PLANEJAMENTO 4D
-            </h1>
-            <p className="text-xl font-medium tracking-widest uppercase" style={{ color: '#94a3b8' }}>Análise de Produtividade, Curva de Avanço e Recursos</p>
+        <div className="flex justify-between items-center border-b border-slate-700 pb-4">
+            <h2 className="text-4xl font-black tracking-tighter" style={{ color: '#ffffff' }}>
+                DETALHAMENTO E PLANEJAMENTO
+            </h2>
+            <div className="text-right">
+                <div className="text-sm font-bold uppercase tracking-widest" style={{ color: '#60a5fa' }}>Isometrico Manager</div>
+                <div className="text-xs text-slate-500 font-mono" style={{ color: '#64748b' }}>Relatório de Performance v4.0</div>
             </div>
-            <div className="text-right text-2xl font-light tracking-[0.2em] uppercase" style={{ color: '#94a3b8' }}>Marconi Fabian - Isometrico Manager</div>
         </div>
 
         <div className="grid grid-cols-2 gap-6">
-            <div className="p-6 rounded-2xl flex flex-col gap-4" style={{ backgroundColor: 'rgba(30, 41, 59, 0.4)', border: '1px solid #334155' }}>
+            <div className="p-6 rounded-2xl flex flex-col gap-4" style={{ backgroundColor: '#1e293b', border: '1px solid #334155' }}>
                 <div className="flex justify-between items-center border-b border-slate-700 pb-4">
                     <h3 className="text-xl font-bold uppercase tracking-wider flex items-center gap-2" style={{ color: '#60a5fa' }}>
-                        <div className="w-3 h-3 rounded-full bg-blue-500"></div>
+                        <div className="w-3 h-3 rounded-full bg-blue-500" style={{ backgroundColor: '#3b82f6' }}></div>
                         Balanço de Tubulação
                     </h3>
-                    <span className="text-blue-400 font-bold text-lg">{reportStats.pipingTotalLength > 0 ? ((reportStats.pipingExecutedLength / reportStats.pipingTotalLength) * 100).toFixed(1) : 0}%</span>
+                    <span className="text-blue-400 font-bold text-lg" style={{ color: '#60a5fa' }}>{reportStats.pipingTotalLength > 0 ? ((reportStats.pipingExecutedLength / reportStats.pipingTotalLength) * 100).toFixed(1) : 0}%</span>
                 </div>
                 <div className="grid grid-cols-3 gap-6">
                     <div className="flex flex-col">
-                        <span className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">Total</span>
-                        <span className="text-3xl font-bold text-white font-mono">{reportStats.pipingTotalLength?.toFixed(2) || '0.00'}<span className="text-sm text-slate-500 ml-1">m</span></span>
+                        <span className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1" style={{ color: '#94a3b8' }}>Total</span>
+                        <span className="text-3xl font-bold text-white font-mono" style={{ color: '#ffffff' }}>{reportStats.pipingTotalLength?.toFixed(2) || '0.00'}<span className="text-sm text-slate-500 ml-1" style={{ color: '#64748b' }}>m</span></span>
                     </div>
                     <div className="flex flex-col">
-                        <span className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">Executado</span>
-                        <span className="text-3xl font-bold text-green-400 font-mono">{reportStats.pipingExecutedLength?.toFixed(2) || '0.00'}<span className="text-sm text-slate-500 ml-1">m</span></span>
+                        <span className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1" style={{ color: '#94a3b8' }}>Executado</span>
+                        <span className="text-3xl font-bold text-green-400 font-mono" style={{ color: '#4ade80' }}>{reportStats.pipingExecutedLength?.toFixed(2) || '0.00'}<span className="text-sm text-slate-500 ml-1" style={{ color: '#64748b' }}>m</span></span>
                         <div className="mt-2 space-y-1">
-                            <div className="flex justify-between text-[10px] font-mono text-slate-400">
+                            <div className="flex justify-between text-[10px] font-mono text-slate-400" style={{ color: '#94a3b8' }}>
                                 <span>Soldado:</span>
-                                <span className="text-white">{((reportStats.pipeLengths?.['WELDED'] || 0) + (reportStats.pipeLengths?.['HYDROTEST'] || 0)).toFixed(2)}m</span>
+                                <span className="text-white" style={{ color: '#ffffff' }}>{((reportStats.pipeLengths?.['WELDED'] || 0) + (reportStats.pipeLengths?.['HYDROTEST'] || 0)).toFixed(2)}m</span>
                             </div>
-                            <div className="flex justify-between text-[10px] font-mono text-slate-400">
+                            <div className="flex justify-between text-[10px] font-mono text-slate-400" style={{ color: '#94a3b8' }}>
                                 <span>Testado:</span>
-                                <span className="text-white">{(reportStats.pipeLengths?.['HYDROTEST'] || 0).toFixed(2)}m</span>
+                                <span className="text-white" style={{ color: '#ffffff' }}>{(reportStats.pipeLengths?.['HYDROTEST'] || 0).toFixed(2)}m</span>
                             </div>
                         </div>
                     </div>
                     <div className="flex flex-col">
-                        <span className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">A Executar</span>
-                        <span className="text-3xl font-bold text-yellow-400 font-mono">{reportStats.pipingRemainingLength?.toFixed(2) || '0.00'}<span className="text-sm text-slate-500 ml-1">m</span></span>
+                        <span className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1" style={{ color: '#94a3b8' }}>A Executar</span>
+                        <span className="text-3xl font-bold text-yellow-400 font-mono" style={{ color: '#facc15' }}>{reportStats.pipingRemainingLength?.toFixed(2) || '0.00'}<span className="text-sm text-slate-500 ml-1" style={{ color: '#64748b' }}>m</span></span>
                         <div className="mt-2 space-y-1">
-                            <div className="flex justify-between text-[10px] font-mono text-slate-400">
+                            <div className="flex justify-between text-[10px] font-mono text-slate-400" style={{ color: '#94a3b8' }}>
                                 <span>P/ Soldar:</span>
-                                <span className="text-white">{((reportStats.pipeLengths?.['PENDING'] || 0) + (reportStats.pipeLengths?.['MOUNTED'] || 0)).toFixed(2)}m</span>
+                                <span className="text-white" style={{ color: '#ffffff' }}>{((reportStats.pipeLengths?.['PENDING'] || 0) + (reportStats.pipeLengths?.['MOUNTED'] || 0)).toFixed(2)}m</span>
                             </div>
-                            <div className="flex justify-between text-[10px] font-mono text-slate-400">
+                            <div className="flex justify-between text-[10px] font-mono text-slate-400" style={{ color: '#94a3b8' }}>
                                 <span>P/ Testar:</span>
-                                <span className="text-white">{(reportStats.pipingTotalLength - (reportStats.pipeLengths?.['HYDROTEST'] || 0)).toFixed(2)}m</span>
+                                <span className="text-white" style={{ color: '#ffffff' }}>{(reportStats.pipingTotalLength - (reportStats.pipeLengths?.['HYDROTEST'] || 0)).toFixed(2)}m</span>
                             </div>
                         </div>
                     </div>
                 </div>
-                <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden mt-2">
-                    <div className="h-full bg-blue-500" style={{ width: `${reportStats.pipingTotalLength > 0 ? (reportStats.pipingExecutedLength / reportStats.pipingTotalLength) * 100 : 0}%` }}></div>
+                <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden mt-2" style={{ backgroundColor: '#1e293b' }}>
+                    <div className="h-full bg-blue-500" style={{ width: `${reportStats.pipingTotalLength > 0 ? (reportStats.pipingExecutedLength / reportStats.pipingTotalLength) * 100 : 0}%`, backgroundColor: '#3b82f6' }}></div>
                 </div>
             </div>
 
-            <div className="p-6 rounded-2xl flex flex-col gap-4" style={{ backgroundColor: 'rgba(30, 41, 59, 0.4)', border: '1px solid #334155' }}>
+            <div className="p-6 rounded-2xl flex flex-col gap-4" style={{ backgroundColor: '#1e293b', border: '1px solid #334155' }}>
                 <div className="flex justify-between items-center border-b border-slate-700 pb-4">
                     <h3 className="text-xl font-bold uppercase tracking-wider flex items-center gap-2" style={{ color: '#c084fc' }}>
-                        <div className="w-3 h-3 rounded-full bg-purple-500"></div>
+                        <div className="w-3 h-3 rounded-full bg-purple-500" style={{ backgroundColor: '#a855f7' }}></div>
                         Balanço de Proteção Térmica
                     </h3>
-                    <span className="text-purple-400 font-bold text-lg">{reportStats.insulationTotalLength > 0 ? ((reportStats.insulationExecutedLength / reportStats.insulationTotalLength) * 100).toFixed(1) : 0}%</span>
+                    <span className="text-purple-400 font-bold text-lg" style={{ color: '#c084fc' }}>{reportStats.insulationTotalLength > 0 ? ((reportStats.insulationExecutedLength / reportStats.insulationTotalLength) * 100).toFixed(1) : 0}%</span>
                 </div>
                 <div className="grid grid-cols-3 gap-6">
                     <div className="flex flex-col">
-                        <span className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">Total</span>
-                        <span className="text-3xl font-bold text-white font-mono">{reportStats.insulationTotalLength?.toFixed(2) || '0.00'}<span className="text-sm text-slate-500 ml-1">m</span></span>
+                        <span className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1" style={{ color: '#94a3b8' }}>Total</span>
+                        <span className="text-3xl font-bold text-white font-mono" style={{ color: '#ffffff' }}>{reportStats.insulationTotalLength?.toFixed(2) || '0.00'}<span className="text-sm text-slate-500 ml-1" style={{ color: '#64748b' }}>m</span></span>
                     </div>
                     <div className="flex flex-col">
-                        <span className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">Executado</span>
-                        <span className="text-3xl font-bold text-green-400 font-mono">{reportStats.insulationExecutedLength?.toFixed(2) || '0.00'}<span className="text-sm text-slate-500 ml-1">m</span></span>
+                        <span className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1" style={{ color: '#94a3b8' }}>Executado</span>
+                        <span className="text-3xl font-bold text-green-400 font-mono" style={{ color: '#4ade80' }}>{reportStats.insulationExecutedLength?.toFixed(2) || '0.00'}<span className="text-sm text-slate-500 ml-1" style={{ color: '#64748b' }}>m</span></span>
                         <div className="mt-2 space-y-1">
-                            <div className="flex justify-between text-[10px] font-mono text-slate-400">
+                            <div className="flex justify-between text-[10px] font-mono text-slate-400" style={{ color: '#94a3b8' }}>
                                 <span>Concluído:</span>
-                                <span className="text-white">{reportStats.insulationLengths?.['FINISHED']?.toFixed(2) || '0.00'}m</span>
+                                <span className="text-white" style={{ color: '#ffffff' }}>{reportStats.insulationLengths?.['FINISHED']?.toFixed(2) || '0.00'}m</span>
                             </div>
                         </div>
                     </div>
                     <div className="flex flex-col">
-                        <span className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">A Executar</span>
-                        <span className="text-3xl font-bold text-yellow-400 font-mono">{reportStats.insulationRemainingLength?.toFixed(2) || '0.00'}<span className="text-sm text-slate-500 ml-1">m</span></span>
+                        <span className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1" style={{ color: '#94a3b8' }}>A Executar</span>
+                        <span className="text-3xl font-bold text-yellow-400 font-mono" style={{ color: '#facc15' }}>{reportStats.insulationRemainingLength?.toFixed(2) || '0.00'}<span className="text-sm text-slate-500 ml-1" style={{ color: '#64748b' }}>m</span></span>
                         <div className="mt-2 space-y-1">
-                            <div className="flex justify-between text-[10px] font-mono text-slate-400">
+                            <div className="flex justify-between text-[10px] font-mono text-slate-400" style={{ color: '#94a3b8' }}>
                                 <span>P/ Concluir:</span>
-                                <span className="text-white">{(reportStats.insulationTotalLength - (reportStats.insulationLengths?.['FINISHED'] || 0)).toFixed(2)}m</span>
+                                <span className="text-white" style={{ color: '#ffffff' }}>{(reportStats.insulationTotalLength - (reportStats.insulationLengths?.['FINISHED'] || 0)).toFixed(2)}m</span>
                             </div>
                         </div>
                     </div>
                 </div>
-                <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden mt-2">
-                    <div className="h-full bg-purple-500" style={{ width: `${reportStats.insulationTotalLength > 0 ? (reportStats.insulationExecutedLength / reportStats.insulationTotalLength) * 100 : 0}%` }}></div>
+                <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden mt-2" style={{ backgroundColor: '#1e293b' }}>
+                    <div className="h-full bg-purple-500" style={{ width: `${reportStats.insulationTotalLength > 0 ? (reportStats.insulationExecutedLength / reportStats.insulationTotalLength) * 100 : 0}%`, backgroundColor: '#a855f7' }}></div>
                 </div>
             </div>
         </div>
 
         <div className="grid grid-cols-12 gap-8">
             <div className="col-span-8 flex flex-col gap-6">
-                <div className="bg-slate-900/50 rounded-2xl p-8 border border-slate-800 flex flex-col gap-6 shadow-2xl">
+                <div className="rounded-2xl p-8 border flex flex-col gap-6 shadow-2xl" style={{ backgroundColor: '#0f172a80', borderColor: '#1e293b' }}>
                     <h3 className="text-2xl font-bold uppercase tracking-widest flex items-center gap-3" style={{ color: '#60a5fa' }}>
                         <TrendingUp size={28}/> Curva S de Produção (Acumulado Metros)
                     </h3>
-                    <div style={{ width: '100%', height: '500px' }}>
-                        <ResponsiveContainer width="100%" height="100%">
-                            <AreaChart data={sCurveData}>
-                                <defs>
-                                    <linearGradient id="colorPlannedExp" x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.2}/>
-                                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
-                                    </linearGradient>
-                                    <linearGradient id="colorActualExp" x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="5%" stopColor="#22c55e" stopOpacity={0.2}/>
-                                        <stop offset="95%" stopColor="#22c55e" stopOpacity={0}/>
-                                    </linearGradient>
-                                    <linearGradient id="colorAutoExp" x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.2}/>
-                                        <stop offset="95%" stopColor="#f59e0b" stopOpacity={0}/>
-                                    </linearGradient>
-                                </defs>
-                                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-                                <XAxis dataKey="date" stroke="#475569" fontSize={14} tickLine={false} axisLine={false} />
-                                <YAxis stroke="#475569" fontSize={14} tickLine={false} axisLine={false} tickFormatter={(value) => `${value}%`} domain={[0, 100]} />
-                                <Area type="monotone" dataKey="planned" stroke="#3b82f6" strokeWidth={4} fillOpacity={1} fill="url(#colorPlannedExp)" dot={false} strokeDasharray="5 5" />
-                                <Area type="monotone" dataKey="autoProgress" stroke="#f59e0b" strokeWidth={4} fillOpacity={1} fill="url(#colorAutoExp)" dot={{ r: 4, fill: '#f59e0b' }} />
-                                <Area type="monotone" dataKey="actual" stroke="#22c55e" strokeWidth={4} fillOpacity={1} fill="url(#colorActualExp)" dot={{ r: 6, fill: '#22c55e' }} />
-                                
-                                {/* Today Reference Line */}
-                                <ReferenceDot 
-                                    x={sCurveData.find(d => d.isLastActual)?.date} 
-                                    y={0} 
-                                    r={0} 
-                                    label={{ position: 'top', value: 'HOJE', fill: '#ef4444', fontSize: 14, fontWeight: 'bold' }} 
+                    <div style={{ width: '1200px', height: '400px', backgroundColor: '#1e293b', borderRadius: '12px', padding: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        {sCurveData && sCurveData.length > 1 ? (
+                            <AreaChart data={sCurveData} width={1160} height={360} margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
+                                <XAxis 
+                                    dataKey="date" 
+                                    stroke="#94a3b8" 
+                                    fontSize={12} 
+                                    tickLine={false} 
+                                    axisLine={false} 
+                                    tick={{ fill: '#94a3b8' }}
                                 />
+                                <YAxis 
+                                    stroke="#94a3b8" 
+                                    fontSize={12} 
+                                    tickLine={false} 
+                                    axisLine={false} 
+                                    tickFormatter={(value) => `${value}%`} 
+                                    domain={[0, 100]}
+                                    tick={{ fill: '#94a3b8' }}
+                                />
+                                <Area 
+                                    type="monotone" 
+                                    dataKey="planned" 
+                                    stroke="#3b82f6" 
+                                    strokeWidth={4} 
+                                    fill="#3b82f6" 
+                                    fillOpacity={0.1} 
+                                    dot={false} 
+                                    strokeDasharray="5 5" 
+                                    isAnimationActive={false} 
+                                />
+                                <Area 
+                                    type="monotone" 
+                                    dataKey="actual" 
+                                    stroke="#22c55e" 
+                                    strokeWidth={4} 
+                                    fill="#22c55e" 
+                                    fillOpacity={0.1} 
+                                    dot={{ r: 6, fill: '#22c55e', strokeWidth: 0 }} 
+                                    isAnimationActive={false} 
+                                />
+                                
+                                {(() => {
+                                    const lastActual = sCurveData.find(d => d.isLastActual);
+                                    if (lastActual) {
+                                        return (
+                                            <ReferenceDot 
+                                                x={lastActual.date} 
+                                                y={0} 
+                                                r={0} 
+                                                label={{ position: 'top', value: 'HOJE', fill: '#ef4444', fontSize: 12, fontWeight: 'bold' }} 
+                                            />
+                                        );
+                                    }
+                                    return null;
+                                })()}
 
                                 {sCurveData.filter(d => d.milestone).map((d, idx) => (
                                     <ReferenceDot 
@@ -601,41 +520,105 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
                                         r={6} 
                                         fill="#3b82f6" 
                                         stroke="#fff" 
-                                        label={{ value: d.milestone, position: 'top', fill: '#3b82f6', fontSize: 12, fontWeight: 'bold' }} 
-                                    />
-                                ))}
-                                {sCurveData.filter(d => d.isLastActual && d.actual !== null).map((d, idx) => (
-                                    <ReferenceDot 
-                                        key={`actual-${idx}`} 
-                                        x={d.date} 
-                                        y={d.actual} 
-                                        r={8} 
-                                        fill="#22c55e" 
-                                        stroke="#fff" 
-                                        strokeWidth={2}
-                                        label={{ value: `${d.actual}%`, position: 'top', fill: '#22c55e', fontSize: 14, fontWeight: 'bold' }} 
+                                        label={{ value: d.milestone, position: 'top', fill: '#3b82f6', fontSize: 10, fontWeight: 'bold' }} 
                                     />
                                 ))}
                             </AreaChart>
-                        </ResponsiveContainer>
+                        ) : (
+                            <div className="text-slate-500 font-mono uppercase tracking-widest">Aguardando dados da curva...</div>
+                        )}
                     </div>
-                    <div className="flex justify-center gap-12 mt-4">
-                        <div className="flex items-center gap-3">
-                            <div className="w-6 h-6 bg-blue-500 rounded-full" style={{ border: '2px dashed #fff' }}></div>
-                            <span className="text-xl font-bold uppercase tracking-wider" style={{ color: '#3b82f6' }}>Previsto (Azul)</span>
+                </div>
+
+                <div className="rounded-2xl p-8 border flex flex-col gap-6 shadow-2xl" style={{ backgroundColor: '#0f172a80', borderColor: '#1e293b' }}>
+                    <h3 className="text-2xl font-bold uppercase tracking-widest flex items-center gap-3" style={{ color: '#10b981' }}>
+                        <Activity size={28}/> Dashboard de Performance (KPIs)
+                    </h3>
+                    <div className="grid grid-cols-5 gap-4">
+                        <div className="p-6 rounded-xl border border-slate-700" style={{ backgroundColor: '#1e293b' }}>
+                            <div className="text-xs font-bold text-slate-500 uppercase mb-1" style={{ color: '#64748b' }}>Avanço Real</div>
+                            <div className="text-4xl font-bold text-emerald-400" style={{ color: '#10b981' }}>{(reportStats?.progress || 0).toFixed(1)}%</div>
                         </div>
-                        <div className="flex items-center gap-3">
-                            <div className="w-6 h-6 bg-amber-500 rounded-full"></div>
-                            <span className="text-xl font-bold uppercase tracking-wider" style={{ color: '#f59e0b' }}>Automático</span>
+                        <div className="p-6 rounded-xl border border-slate-700" style={{ backgroundColor: '#1e293b' }}>
+                            <div className="text-xs font-bold text-slate-500 uppercase mb-1" style={{ color: '#64748b' }}>Desvio (Gap)</div>
+                            {(() => {
+                                const todayData = sCurveData.find(d => d.isLastActual);
+                                const gap = (todayData?.actual || 0) - (todayData?.planned || 0);
+                                return (
+                                    <div className="text-4xl font-bold" style={{ color: gap >= 0 ? '#10b981' : '#f87171' }}>
+                                        {gap > 0 ? '+' : ''}{gap.toFixed(1)}%
+                                    </div>
+                                );
+                            })()}
                         </div>
-                        <div className="flex items-center gap-3">
-                            <div className="w-6 h-6 bg-green-500 rounded-full"></div>
-                            <span className="text-xl font-bold uppercase tracking-wider" style={{ color: '#22c55e' }}>Realizado</span>
+                        <div className="p-6 rounded-xl border border-slate-700" style={{ backgroundColor: '#1e293b' }}>
+                            <div className="text-xs font-bold text-slate-500 uppercase mb-1" style={{ color: '#64748b' }}>H/H por Metro</div>
+                            <div className="text-4xl font-bold text-white" style={{ color: '#ffffff' }}>{( (reportStats?.totalHH || 0) / Math.max(1, reportStats?.totalLength || 1)).toFixed(2)}</div>
+                        </div>
+                        <div className="p-6 rounded-xl border border-slate-700" style={{ backgroundColor: '#1e293b' }}>
+                            <div className="text-xs font-bold text-slate-500 uppercase mb-1" style={{ color: '#64748b' }}>Dias p/ Término</div>
+                            <div className="text-4xl font-bold text-amber-400" style={{ color: '#f59e0b' }}>{reportStats?.daysNeeded || 0}</div>
+                        </div>
+                        <div className="p-6 rounded-xl border border-slate-700" style={{ backgroundColor: '#1e293b' }}>
+                            <div className="text-xs font-bold text-slate-500 uppercase mb-1" style={{ color: '#64748b' }}>Produção Total</div>
+                            <div className="text-2xl font-bold text-white" style={{ color: '#ffffff' }}>{(reportStats?.pipingExecutedLength + reportStats?.insulationExecutedLength).toFixed(1)}m</div>
+                        </div>
+                    </div>
+
+                    <div className="mt-4 grid grid-cols-2 gap-6">
+                        <div className="p-6 rounded-xl border border-slate-700" style={{ backgroundColor: '#1e293b' }}>
+                            <h4 className="text-sm font-bold text-slate-400 uppercase mb-4 flex items-center gap-2" style={{ color: '#94a3b8' }}>
+                                <Activity size={16} /> Histórico Recente de Execução
+                            </h4>
+                            <div className="space-y-3">
+                                {reportStats.sortedDailyProd && reportStats.sortedDailyProd.slice(-5).reverse().map((day: any, idx: number) => (
+                                    <div key={idx} className="flex justify-between items-center p-3 rounded border border-slate-800" style={{ backgroundColor: '#0f172a', borderColor: '#1e293b' }}>
+                                        <div className="text-sm font-mono text-slate-300" style={{ color: '#cbd5e1' }}>{day.date.split('-').reverse().join('/')}</div>
+                                        <div className="flex gap-6">
+                                            <div className="flex flex-col items-end">
+                                                <span className="text-[10px] text-blue-400 uppercase font-bold" style={{ color: '#60a5fa' }}>Tubo</span>
+                                                <span className="text-sm font-bold text-white" style={{ color: '#ffffff' }}>{day.pipingMeters.toFixed(1)}m</span>
+                                            </div>
+                                            <div className="flex flex-col items-end">
+                                                <span className="text-[10px] text-amber-400 uppercase font-bold" style={{ color: '#f59e0b' }}>Isol.</span>
+                                                <span className="text-sm font-bold text-white" style={{ color: '#ffffff' }}>{day.insulationMeters.toFixed(1)}m</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                        <div className="p-6 rounded-xl border border-slate-700" style={{ backgroundColor: '#1e293b' }}>
+                            <h4 className="text-sm font-bold text-slate-400 uppercase mb-4 flex items-center gap-2" style={{ color: '#94a3b8' }}>
+                                <TrendingUp size={16} /> Metas Diárias (Saldo)
+                            </h4>
+                            <div className="flex flex-col gap-6 justify-center h-full">
+                                <div className="flex items-center gap-4">
+                                    <div className="w-14 h-14 rounded-full flex items-center justify-center border border-blue-500/20" style={{ backgroundColor: '#1e293b', borderColor: '#3b82f6' }}>
+                                        <Wrench size={24} className="text-blue-400" style={{ color: '#60a5fa' }} />
+                                    </div>
+                                    <div>
+                                        <div className="text-xs font-mono text-slate-400 uppercase" style={{ color: '#94a3b8' }}>Tubulação</div>
+                                        <div className="text-2xl font-bold text-white" style={{ color: '#ffffff' }}>{(reportStats?.pipingRemainingLength || 0).toFixed(1)}m</div>
+                                        <div className="text-xs font-bold text-blue-400 uppercase" style={{ color: '#60a5fa' }}>Meta: {(reportStats?.deadlineStats?.requiredDailyPiping || reportStats?.currentDailyPiping || 0).toFixed(1)}m/dia</div>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-4">
+                                    <div className="w-14 h-14 rounded-full flex items-center justify-center border border-amber-500/20" style={{ backgroundColor: '#1e293b', borderColor: '#f59e0b' }}>
+                                        <Shield size={24} className="text-amber-400" style={{ color: '#f59e0b' }} />
+                                    </div>
+                                    <div>
+                                        <div className="text-xs font-mono text-slate-400 uppercase" style={{ color: '#94a3b8' }}>Isolamento</div>
+                                        <div className="text-2xl font-bold text-white" style={{ color: '#ffffff' }}>{(reportStats?.insulationRemainingLength || 0).toFixed(1)}m</div>
+                                        <div className="text-xs font-bold text-amber-400 uppercase" style={{ color: '#f59e0b' }}>Meta: {(reportStats?.deadlineStats?.requiredDailyInsulation || reportStats?.currentDailyInsulation || 0).toFixed(1)}m/dia</div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                <div className="bg-slate-900/50 rounded-2xl p-8 border border-slate-800 flex flex-col gap-6 shadow-2xl">
+                <div className="rounded-2xl p-8 border flex flex-col gap-6 shadow-2xl" style={{ backgroundColor: '#0f172a80', borderColor: '#1e293b' }}>
                     <h3 className="text-2xl font-bold uppercase tracking-widest flex items-center gap-3" style={{ color: '#a855f7' }}>
                         <BarChart3 size={28}/> Distribuição de Esforço por Status
                     </h3>
@@ -722,26 +705,26 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
             </div>
 
             <div className="col-span-4 flex flex-col gap-8">
-                <div className="bg-slate-900/50 rounded-2xl p-8 border border-slate-800 flex flex-col gap-6 shadow-2xl">
+                <div className="rounded-2xl p-8 border flex flex-col gap-6 shadow-2xl" style={{ backgroundColor: '#0f172a80', borderColor: '#1e293b' }}>
                     <h3 className="text-2xl font-bold uppercase tracking-widest flex items-center gap-3" style={{ color: '#eab308' }}>
                         <AlertCircle size={28}/> Alertas de Gestão
                     </h3>
                     <div className="flex flex-col gap-6">
                         {(reportStats?.totalHH || 0) > 500 && (
-                            <div className="p-6 rounded-xl border border-red-500/20" style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)' }}>
+                            <div className="p-6 rounded-xl border" style={{ backgroundColor: '#450a0a', borderColor: '#ef444433' }}>
                                 <p className="text-xl text-red-200 leading-relaxed font-medium">
                                     <span className="font-bold text-red-400">CRÍTICO:</span> Volume de saldo H/H elevado ({(reportStats?.totalHH || 0).toFixed(1)}h). Recomenda-se reforço de equipe imediato.
                                 </p>
                             </div>
                         )}
                         {reportStats?.deadlineStats && !reportStats.deadlineStats.isFeasible && (
-                            <div className="p-6 rounded-xl border border-red-500/20" style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)' }}>
+                            <div className="p-6 rounded-xl border" style={{ backgroundColor: '#450a0a', borderColor: '#ef444433' }}>
                                 <p className="text-xl text-red-200 leading-relaxed font-medium">
                                     <span className="font-bold text-red-400">ALERTA DE PRAZO:</span> A meta de {deadlineDate?.split('-').reverse().join('/')} é inviável com a capacidade atual. Necessário aumento de {(reportStats.deadlineStats.ratio - 100).toFixed(0)}% na produtividade.
                                 </p>
                             </div>
                         )}
-                        <div className="p-6 rounded-xl border border-blue-500/20" style={{ backgroundColor: 'rgba(59, 130, 246, 0.1)' }}>
+                        <div className="p-6 rounded-xl border" style={{ backgroundColor: '#172554', borderColor: '#3b82f633' }}>
                             <p className="text-xl text-blue-200 leading-relaxed font-medium">
                                 <span className="font-bold text-blue-400">INFO:</span> {reportStats?.deadlineStats ? (
                                     <>Produtividade diária necessária para o prazo ({reportStats.deadlineStats.daysUntilDeadline} dias úteis): <span className="text-white">{reportStats.deadlineStats.requiredDailyPiping.toFixed(2)}m (Tubo)</span> e <span className="text-white">{reportStats.deadlineStats.requiredDailyInsulation.toFixed(2)}m (Isolamento)</span>.</>
@@ -750,7 +733,7 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
                                 )}
                             </p>
                         </div>
-                        <div className="p-6 rounded-xl border border-purple-500/20" style={{ backgroundColor: 'rgba(168, 85, 247, 0.1)' }}>
+                        <div className="p-6 rounded-xl border" style={{ backgroundColor: '#3b0764', borderColor: '#a855f733' }}>
                             <p className="text-xl text-purple-200 leading-relaxed font-medium">
                                 <span className="font-bold text-purple-400">ESTRATÉGIA:</span> Foco em frentes de soldagem para liberação de frentes de isolamento térmico.
                             </p>
@@ -758,59 +741,33 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
                     </div>
                 </div>
 
-                <div className="bg-slate-900/50 rounded-2xl p-8 border border-slate-800 flex flex-col gap-6 shadow-2xl flex-1">
-                    <h3 className="text-2xl font-bold uppercase tracking-widest flex items-center gap-3" style={{ color: '#4ade80' }}>
-                        <Timer size={28}/> Métricas de Desempenho
-                    </h3>
-                    <div className="flex flex-col gap-8 mt-4">
-                        <div className="flex justify-between items-center border-b border-slate-800 pb-4">
-                            <span className="text-xl font-bold text-slate-400 uppercase">Progresso Global</span>
-                            <span className="text-4xl font-bold text-green-400 font-mono">{(reportStats?.progress || 0).toFixed(1)}%</span>
-                        </div>
-                        <div className="flex justify-between items-center border-b border-slate-800 pb-4">
-                            <span className="text-xl font-bold text-slate-400 uppercase">H/H por Metro</span>
-                            <span className="text-4xl font-bold text-white font-mono">{( (reportStats?.totalHH || 0) / Math.max(1, reportStats?.totalLength || 1)).toFixed(2)}</span>
-                        </div>
-                        <div className="flex justify-between items-center border-b border-slate-800 pb-4">
-                            <span className="text-xl font-bold text-slate-400 uppercase">Dias para Término (Est.)</span>
-                            <span className="text-4xl font-bold text-yellow-400 font-mono">{reportStats?.daysNeeded || 0}</span>
-                        </div>
-                        {reportStats?.deadlineStats && (
-                            <div className="flex justify-between items-center border-b border-slate-800 pb-4">
-                                <span className="text-xl font-bold text-blue-400 uppercase">Dias Disponíveis (Meta)</span>
-                                <span className="text-4xl font-bold text-blue-400 font-mono">{reportStats.deadlineStats.daysUntilDeadline}</span>
-                            </div>
-                        )}
-                    </div>
-                </div>
+
             </div>
         </div>
 
         <div className="flex flex-col gap-8 flex-1 mt-8">
-            <div className="bg-slate-900/50 rounded-2xl p-8 border border-slate-800 flex flex-col gap-6 shadow-2xl">
+            <div className="rounded-2xl p-8 border flex flex-col gap-6 shadow-2xl" style={{ backgroundColor: '#0f172a80', borderColor: '#1e293b' }}>
                 <div className="flex justify-between items-center mb-6">
                     <h3 className="text-2xl font-bold uppercase tracking-widest flex items-center gap-3" style={{ color: '#f97316' }}>
                         <Users size={28}/> Histograma de Recursos (Equipes Necessárias)
                     </h3>
                 </div>
-                <div style={{ width: '100%', height: '400px' }}>
-                    <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={sCurveData}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-                            <XAxis dataKey="date" stroke="#475569" fontSize={14} tickLine={false} axisLine={false} />
-                            <YAxis stroke="#475569" fontSize={14} tickLine={false} axisLine={false} />
-                            <Bar dataKey="planned" fill="#f97316" radius={[4, 4, 0, 0]} opacity={0.6}>
-                                {sCurveData.map((entry, index) => (
-                                    <Cell key={`cell-${index}`} fill={reportStats.deadlineStats?.isFeasible ? '#3b82f6' : '#ef4444'} />
-                                ))}
-                            </Bar>
-                        </BarChart>
-                    </ResponsiveContainer>
+                <div style={{ width: '1800px', height: '400px' }}>
+                    <BarChart data={sCurveData} width={1800} height={400}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+                        <XAxis dataKey="date" stroke="#475569" fontSize={14} tickLine={false} axisLine={false} />
+                        <YAxis stroke="#475569" fontSize={14} tickLine={false} axisLine={false} />
+                        <Bar dataKey="planned" fill="#f97316" radius={[4, 4, 0, 0]} opacity={0.6} isAnimationActive={false}>
+                            {sCurveData.map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={reportStats.deadlineStats?.isFeasible ? '#3b82f6' : '#ef4444'} />
+                            ))}
+                        </Bar>
+                    </BarChart>
                 </div>
             </div>
 
-            <div className="bg-slate-900/50 rounded-2xl p-8 border border-slate-800 flex flex-col gap-6 shadow-2xl flex-1">
-                <h3 className="text-2xl font-bold uppercase tracking-widest flex items-center gap-3 border-b border-slate-800 pb-6" style={{ color: '#22d3ee' }}>
+            <div className="rounded-2xl p-8 border flex flex-col gap-6 shadow-2xl flex-1" style={{ backgroundColor: '#0f172a80', borderColor: '#1e293b' }}>
+                <h3 className="text-2xl font-bold uppercase tracking-widest flex items-center gap-3 border-b pb-6" style={{ color: '#22d3ee', borderColor: '#1e293b' }}>
                     <Calendar size={28}/> Cronograma de Execução (Gantt Simplificado)
                 </h3>
                 <div className="space-y-4 overflow-y-auto" style={{ maxHeight: '600px' }}>
@@ -825,14 +782,15 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
                         
                         return (
                             <div key={p.id} className="flex items-center gap-6 group">
-                                <div className="w-48 text-lg font-mono text-slate-400 truncate">{p.spoolId || p.name}</div>
-                                <div className="flex-1 bg-slate-800 h-10 rounded relative overflow-hidden">
+                                <div className="w-48 text-lg font-mono text-slate-400 truncate" style={{ color: '#94a3b8' }}>{p.spoolId || p.name}</div>
+                                <div className="flex-1 h-10 rounded relative overflow-hidden" style={{ backgroundColor: '#1e293b' }}>
                                     <div 
-                                        className={`absolute h-full transition-all duration-500 ${isDone ? 'bg-green-500/40' : 'bg-blue-500/40'}`}
+                                        className="absolute h-full transition-all duration-500"
                                         style={{ 
                                             left: `${(idx * 3) % 60}%`, 
                                             width: `${Math.max(10, progressPercent)}%`,
-                                            opacity: isDone ? 1 : 0.6
+                                            opacity: isDone ? 1 : 0.6,
+                                            backgroundColor: isDone ? '#22c55e66' : '#3b82f666'
                                         }}
                                     >
                                         <div className="h-full w-full flex items-center px-4">
