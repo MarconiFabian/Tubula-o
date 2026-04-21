@@ -26,11 +26,8 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
 }) => {
   const progress = useMemo(() => {
       const pipingTotalLength = pipes.reduce((acc, p) => acc + (p.length || 0), 0);
-      const completedWeight = pipes.reduce((acc, p) => {
-          const pipingDone = 1 - (PIPING_REMAINING_FACTOR[p.status] ?? 1);
-          return acc + (p.length * pipingDone);
-      }, 0);
-      return pipingTotalLength > 0 ? (completedWeight / pipingTotalLength) * 100 : 0;
+      const pipingWeldedLength = pipes.filter(p => p.status === 'WELDED' || p.status === 'HYDROTEST' || p.status === 'FINISHED').reduce((acc, p) => acc + (p.length || 0), 0);
+      return pipingTotalLength > 0 ? (pipingWeldedLength / pipingTotalLength) * 100 : 0;
   }, [pipes]);
 
   const sCurveData = useMemo(() => {
@@ -47,15 +44,13 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
             return d < startStr;
         })
         .reduce((acc, p) => {
-            const pipingDone = 1 - (PIPING_REMAINING_FACTOR[p.status] ?? 1);
-            return acc + (p.length * pipingDone);
+            const isWelded = p.status === 'WELDED' || p.status === 'HYDROTEST' || p.status === 'FINISHED';
+            return acc + (isWelded ? p.length : 0);
         }, 0);
 
     // 1. Calculate Total Executed so far (from all pipes)
-    const totalExecutedMeters = pipes.reduce((acc, p) => {
-        const pipingDone = 1 - (PIPING_REMAINING_FACTOR[p.status] ?? 1);
-        return acc + (p.length * pipingDone);
-    }, 0);
+    const pipingWeldedLength = pipes.filter(p => p.status === 'WELDED' || p.status === 'HYDROTEST' || p.status === 'FINISHED').reduce((acc, p) => acc + (p.length || 0), 0);
+    const totalExecutedMeters = pipingWeldedLength;
     const totalProgressPct = totalLengthValue > 0 ? (totalExecutedMeters / totalLengthValue * 100) : 0;
 
     // 2. Dates and Duration
@@ -217,14 +212,17 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
                 </h3>
                 <div className="flex gap-6">
                     <span className="text-amber-400 font-bold text-lg">Suportes: {reportStats?.componentStats?.supports?.installed || 0}/{reportStats?.componentStats?.supports?.total || 0}</span>
+                    <span className="text-emerald-400 font-bold text-lg">Curvas: {reportStats?.componentStats?.curves?.welded || 0}/{reportStats?.componentStats?.curves?.total || 0}</span>
                 </div>
             </div>
-            <div className="grid grid-cols-1 gap-8 mt-4">
+            <div className="grid grid-cols-2 gap-8 mt-4">
                 {[
-                    { id: 'supports', label: 'Suportes', color: '#f97316' }
+                    { id: 'supports', label: 'Suportes', color: '#f97316', installedKey: 'installed' },
+                    { id: 'curves', label: 'Curvas', color: '#10b981', installedKey: 'welded' }
                 ].filter(comp => reportStats?.componentStats?.[comp.id] && (reportStats.componentStats[comp.id]?.total || 0) > 0).map(comp => {
                     const data = reportStats?.componentStats?.[comp.id];
-                    const pct = (data?.total || 0) > 0 ? ((data?.installed || 0) / (data?.total || 1)) * 100 : 0;
+                    const installedCount = data?.[comp.installedKey] || 0;
+                    const pct = (data?.total || 0) > 0 ? (installedCount / (data?.total || 1)) * 100 : 0;
                     return (
                         <div key={comp.id} className="flex flex-col gap-3">
                             <div className="flex justify-between items-center">
@@ -232,9 +230,9 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
                                 <span className="text-sm font-mono text-white font-bold">{pct.toFixed(0)}%</span>
                             </div>
                             <div className="flex items-end gap-2">
-                                <span className="text-3xl font-bold text-white font-mono">{data?.installed || 0}</span>
+                                <span className="text-3xl font-bold text-white font-mono">{installedCount}</span>
                                 <span className="text-sm text-slate-500 mb-1">/ {data?.total || 0}</span>
-                                <span className="text-xs text-amber-500 font-bold ml-auto mb-1">FALTA: {(data?.total || 0) - (data?.installed || 0)}</span>
+                                <span className="text-xs text-amber-500 font-bold ml-auto mb-1 uppercase tracking-tighter">FALTA MONTAR: {(data?.total || 0) - installedCount}</span>
                             </div>
                             <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
                                 <div className="h-full transition-all duration-1000" style={{ width: `${pct}%`, backgroundColor: comp.color }}></div>
@@ -447,6 +445,84 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
                 </div>
             </div>
         </div>
+
+        <div className="grid grid-cols-2 gap-6">
+            <div className="p-6 rounded-2xl flex flex-col gap-4" style={{ backgroundColor: '#1e293b', border: '1px solid #334155' }}>
+                <div className="flex justify-between items-center border-b border-slate-700 pb-4">
+                    <h3 className="text-xl font-bold uppercase tracking-wider flex items-center gap-2" style={{ color: '#f59e0b' }}>
+                        <div className="w-3 h-3 rounded-full bg-amber-500" style={{ backgroundColor: '#f59e0b' }}></div>
+                        Suportagem (Unidades)
+                    </h3>
+                    <span className="text-amber-400 font-bold text-lg" style={{ color: '#f59e0b' }}>{reportStats?.componentStats?.supports?.total > 0 ? ((reportStats.componentStats.supports.installed / reportStats.componentStats.supports.total) * 100).toFixed(1) : 0}%</span>
+                </div>
+                <div className="grid grid-cols-3 gap-6">
+                    <div className="flex flex-col">
+                        <span className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1" style={{ color: '#94a3b8' }}>Total</span>
+                        <span className="text-3xl font-bold text-white font-mono" style={{ color: '#ffffff' }}>{reportStats?.componentStats?.supports?.total || 0}</span>
+                    </div>
+                    <div className="flex flex-col">
+                        <span className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1" style={{ color: '#94a3b8' }}>Montados</span>
+                        <span className="text-3xl font-bold text-green-400 font-mono" style={{ color: '#4ade80' }}>{reportStats?.componentStats?.supports?.installed || 0}</span>
+                    </div>
+                    <div className="flex flex-col">
+                        <span className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1" style={{ color: '#94a3b8' }}>Pendente</span>
+                        <span className="text-3xl font-bold text-yellow-400 font-mono" style={{ color: '#facc15' }}>{(reportStats?.componentStats?.supports?.total || 0) - (reportStats?.componentStats?.supports?.installed || 0)}</span>
+                    </div>
+                </div>
+            </div>
+
+            <div className="p-6 rounded-2xl flex flex-col gap-4" style={{ backgroundColor: '#1e293b', border: '1px solid #334155' }}>
+                <div className="flex justify-between items-center border-b border-slate-700 pb-4">
+                    <h3 className="text-xl font-bold uppercase tracking-wider flex items-center gap-2" style={{ color: '#10b981' }}>
+                        <div className="w-3 h-3 rounded-full bg-emerald-500" style={{ backgroundColor: '#10b981' }}></div>
+                        Curvas (Unidades)
+                    </h3>
+                    <span className="text-emerald-400 font-bold text-lg" style={{ color: '#10b981' }}>{reportStats?.componentStats?.curves?.total > 0 ? ((reportStats.componentStats.curves.welded / reportStats.componentStats.curves.total) * 100).toFixed(1) : 0}%</span>
+                </div>
+                <div className="grid grid-cols-3 gap-6">
+                    <div className="flex flex-col">
+                        <span className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1" style={{ color: '#94a3b8' }}>Total</span>
+                        <span className="text-3xl font-bold text-white font-mono" style={{ color: '#ffffff' }}>{reportStats?.componentStats?.curves?.total || 0}</span>
+                    </div>
+                    <div className="flex flex-col">
+                        <span className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1" style={{ color: '#94a3b8' }}>Montadas</span>
+                        <span className="text-3xl font-bold text-orange-400 font-mono" style={{ color: '#fb923c' }}>{reportStats?.componentStats?.curves?.mounted || 0}</span>
+                    </div>
+                    <div className="flex flex-col">
+                        <span className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1" style={{ color: '#94a3b8' }}>Soldadas</span>
+                        <span className="text-3xl font-bold text-emerald-400 font-mono" style={{ color: '#10b981' }}>{reportStats?.componentStats?.curves?.welded || 0}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {/* Rastreamento de Curvas por Grau no PDF */}
+        {reportStats?.componentStats?.curvesByDegree && Object.keys(reportStats.componentStats.curvesByDegree).length > 0 && (
+            <div className="p-6 rounded-2xl flex flex-col gap-4 mb-6" style={{ backgroundColor: '#1e293b', border: '1px solid #334155' }}>
+                <h3 className="text-xl font-bold uppercase tracking-wider flex items-center gap-2 border-b border-slate-700 pb-4" style={{ color: '#3b82f6' }}>
+                    <TrendingUp size={24} className="text-blue-500" style={{ color: '#3b82f6' }} />
+                    Detalhamento de Curvas por Grau
+                </h3>
+                <div className="grid grid-cols-4 gap-4 bg-slate-900/50 p-3 rounded-lg text-xs font-bold uppercase" style={{ color: '#64748b', backgroundColor: '#0f172a' }}>
+                    <div>Grau</div>
+                    <div>Total</div>
+                    <div>Montadas</div>
+                    <div>Soldadas</div>
+                </div>
+                <div className="flex flex-col divide-y divide-slate-800">
+                    {Object.entries(reportStats.componentStats.curvesByDegree)
+                        .sort((a,b) => parseInt(b[0]) - parseInt(a[0]))
+                        .map(([degree, counts]: [string, any]) => (
+                        <div key={degree} className="grid grid-cols-4 gap-4 p-3 text-sm font-bold items-center">
+                            <div className="text-white" style={{ color: '#ffffff' }}>{degree}°</div>
+                            <div className="text-slate-400" style={{ color: '#94a3b8' }}>{counts.total}</div>
+                            <div className="text-orange-400" style={{ color: '#fb923c' }}>{counts.mounted}</div>
+                            <div className="text-emerald-400" style={{ color: '#10b981' }}>{counts.welded}</div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        )}
 
         <div className="grid grid-cols-12 gap-8">
             <div className="col-span-8 flex flex-col gap-6">

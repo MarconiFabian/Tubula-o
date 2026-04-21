@@ -322,11 +322,34 @@ const SupportVisual = ({ pos, dir, actualUp, pipeDiameter, status }: { pos: THRE
     }
 };
 
+const CurveVisual = ({ pos, pipeDiameter, status }: { pos: THREE.Vector3, pipeDiameter: number, status: AccessoryStatus }) => {
+    const isMounted = status === AccessoryStatus.MOUNTED || status === AccessoryStatus.WELDED;
+    const isWelded = status === AccessoryStatus.WELDED;
+    
+    return (
+        <group position={pos}>
+            <mesh>
+                <sphereGeometry args={[pipeDiameter + 0.08, 16, 16]} />
+                <meshStandardMaterial 
+                    color={isWelded ? "#10b981" : isMounted ? "#f59e0b" : "#475569"} 
+                    emissive={isWelded ? "#059669" : "#000000"}
+                    emissiveIntensity={isWelded ? 0.5 : 0}
+                />
+            </mesh>
+            {isWelded && (
+                <mesh rotation={[Math.PI/2, 0, 0]}>
+                    <torusGeometry args={[pipeDiameter + 0.12, 0.02, 8, 32]} />
+                    <meshStandardMaterial color="#10b981" />
+                </mesh>
+            )}
+        </group>
+    );
+};
+
 const ComponentMarkers = ({ pipe }: { pipe: PipeSegment }) => {
     const start = new THREE.Vector3(pipe.start.x, pipe.start.y, pipe.start.z);
     const end = new THREE.Vector3(pipe.end.x, pipe.end.y, pipe.end.z);
     const dir = new THREE.Vector3().subVectors(end, start).normalize();
-    const length = start.distanceTo(end);
     const up = new THREE.Vector3(0, 1, 0);
     const right = new THREE.Vector3().crossVectors(dir, up).normalize();
     if (right.lengthSq() < 0.001) right.set(1, 0, 0);
@@ -335,11 +358,12 @@ const ComponentMarkers = ({ pipe }: { pipe: PipeSegment }) => {
     const markers: React.ReactNode[] = [];
 
     // Renderizar Suportes (Estruturas metálicas abaixo do tubo)
-    if (pipe.supports && pipe.supports.total > 0) {
+    if (pipe.supports && pipe.supports.total > 0 && (!pipe.accessories || !pipe.accessories.some(a => a.type === 'SUPPORT'))) {
+        const isPipeInstalled = pipe.status === 'MOUNTED' || pipe.status === 'WELDED' || pipe.status === 'HYDROTEST';
         for (let i = 0; i < pipe.supports.total; i++) {
             const t = (i + 1) / (pipe.supports.total + 1);
             const pos = new THREE.Vector3().lerpVectors(start, end, t);
-            const isMounted = i < pipe.supports.installed;
+            const isInstalled = i < (pipe.supports.installed || 0) || isPipeInstalled;
             markers.push(
                 <SupportVisual 
                     key={`support-${pipe.id}-${i}`} 
@@ -347,7 +371,7 @@ const ComponentMarkers = ({ pipe }: { pipe: PipeSegment }) => {
                     dir={dir} 
                     actualUp={actualUp} 
                     pipeDiameter={pipe.diameter} 
-                    status={isMounted ? AccessoryStatus.MOUNTED : AccessoryStatus.PENDING} 
+                    status={isInstalled ? AccessoryStatus.MOUNTED : AccessoryStatus.PENDING} 
                 />
             );
         }
@@ -367,6 +391,15 @@ const ComponentMarkers = ({ pipe }: { pipe: PipeSegment }) => {
                         actualUp={actualUp} 
                         pipeDiameter={pipe.diameter} 
                         status={acc.status} 
+                    />
+                );
+            } else if (acc.type === 'CURVE') {
+                markers.push(
+                    <CurveVisual
+                        key={`acc-${acc.id}`}
+                        pos={pos}
+                        pipeDiameter={pipe.diameter}
+                        status={acc.status}
                     />
                 );
             }

@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { PipeSegment, PipeStatus, InsulationStatus, PlanningFactors, ProductivitySettings, AccessoryType, AccessoryStatus } from '../types';
 import { STATUS_LABELS, STATUS_COLORS, ALL_STATUSES, INSULATION_LABELS, INSULATION_COLORS, ALL_INSULATION_STATUSES, PIPING_REMAINING_FACTOR, INSULATION_REMAINING_FACTOR, HOURS_PER_DAY } from '../constants';
-import { X, CheckCircle, AlertCircle, FileText, Trash2, Shield, Wrench, Layers, MapPin, Timer, Truck, Construction, Users, ArrowUpCircle, Calendar, Moon, ShieldAlert, Clock, Activity, Settings2, Sliders, Info, Percent, ZapOff, HardHat, Copy, BarChart3, Flag, Package, Zap, CheckSquare, Check, CircleDot, MousePointer2 } from 'lucide-react';
+import { X, CheckCircle, AlertCircle, FileText, Trash2, Shield, Wrench, Layers, MapPin, Timer, Truck, Construction, Users, ArrowUpCircle, Calendar, Moon, ShieldAlert, Clock, Activity, Settings2, Sliders, Info, Percent, ZapOff, HardHat, Copy, BarChart3, Flag, Package, Zap, CheckSquare, Check, CircleDot, MousePointer2, ChevronRight } from 'lucide-react';
 import PlanningReportModal from './PlanningReportModal';
 import { getWorkingEndDate, calculatePipeHH } from '../utils/planning';
 
@@ -644,9 +644,10 @@ const Sidebar: React.FC<SidebarProps> = ({
                     <label className="text-[10px] font-bold text-slate-500 uppercase mb-1 block flex items-center gap-2">
                         <MousePointer2 size={14}/> Posicionamento Manual
                     </label>
-                    <div className="grid grid-cols-1 gap-2">
+                    <div className="grid grid-cols-2 gap-2">
                         {[
-                            { id: 'SUPPORT', label: 'Suporte', icon: <Wrench size={12}/> }
+                            { id: 'SUPPORT', label: 'Suporte', icon: <Wrench size={12}/> },
+                            { id: 'CURVE', label: 'Curva', icon: <ChevronRight size={12} className="rotate-45" /> }
                         ].map(type => (
                             <button 
                                 key={type.id}
@@ -674,24 +675,49 @@ const Sidebar: React.FC<SidebarProps> = ({
                             </div>
                             <div className="max-h-60 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
                                 {singlePipe.accessories.map(acc => (
-                                    <div key={acc.id} className={`flex items-center justify-between p-2.5 rounded-xl border transition-all ${acc.status === AccessoryStatus.MOUNTED ? 'bg-emerald-900/20 border-emerald-500/30' : 'bg-slate-950/40 border-slate-800'}`}>
+                                    <div key={acc.id} className={`flex items-center justify-between p-2.5 rounded-xl border transition-all ${acc.status === AccessoryStatus.WELDED ? 'bg-emerald-900/40 border-emerald-400/50' : acc.status === AccessoryStatus.MOUNTED ? 'bg-amber-900/20 border-amber-500/30' : 'bg-slate-950/40 border-slate-800'}`}>
                                         <div className="flex items-center gap-3">
-                                            <div className={`w-2 h-2 rounded-full shadow-sm ${acc.status === AccessoryStatus.MOUNTED ? 'bg-emerald-500 shadow-emerald-500/50' : 'bg-slate-600'}`}></div>
+                                            <div className={`w-2 h-2 rounded-full shadow-sm ${acc.status === AccessoryStatus.WELDED ? 'bg-emerald-400 shadow-emerald-400/50 animate-pulse' : acc.status === AccessoryStatus.MOUNTED ? 'bg-amber-500 shadow-amber-500/50' : 'bg-slate-600'}`}></div>
                                             <div className="flex flex-col">
-                                                <span className={`text-[10px] font-black uppercase tracking-tight ${acc.status === AccessoryStatus.MOUNTED ? 'text-emerald-400' : 'text-slate-300'}`}>{acc.type}</span>
-                                                <span className="text-[8px] text-slate-500 font-bold">POSIÇÃO: {(acc.offset * 100).toFixed(0)}%</span>
+                                                <div className="flex items-center gap-1">
+                                                    <span className={`text-[10px] font-black uppercase tracking-tight ${acc.status === AccessoryStatus.WELDED ? 'text-emerald-400' : acc.status === AccessoryStatus.MOUNTED ? 'text-amber-400' : 'text-slate-300'}`}>{acc.type === 'CURVE' ? 'CURVA' : 'SUPORTE'}</span>
+                                                    {acc.type === 'CURVE' && (
+                                                        <select 
+                                                            value={acc.degree || 90}
+                                                            onChange={(e) => onUpdateSingle({
+                                                                ...singlePipe,
+                                                                accessories: singlePipe.accessories?.map(a => a.id === acc.id ? { ...a, degree: parseInt(e.target.value) } : a)
+                                                            })}
+                                                            className="bg-slate-900 border border-slate-700 text-[9px] text-white rounded px-1 py-0.5 outline-none focus:border-blue-500 font-bold ml-1"
+                                                        >
+                                                            <option value={90}>90°</option>
+                                                            <option value={45}>45°</option>
+                                                            <option value={22}>22.5°</option>
+                                                            <option value={11}>11.25°</option>
+                                                        </select>
+                                                    )}
+                                                    {acc.status === AccessoryStatus.WELDED && <Zap size={8} className="text-emerald-400" />}
+                                                </div>
+                                                <span className="text-[8px] text-slate-500 font-bold uppercase">POS: {(acc.offset * 100).toFixed(0)}% • {acc.status === AccessoryStatus.PENDING ? 'Pendente' : acc.status === AccessoryStatus.MOUNTED ? 'Montado' : 'Soldado'}</span>
                                             </div>
                                         </div>
-                                        <div className="flex items-center gap-2">
+                                        <div className="flex items-center gap-1.5">
                                             <button 
-                                                onClick={() => onUpdateSingle({
-                                                    ...singlePipe,
-                                                    accessories: singlePipe.accessories?.map(a => a.id === acc.id ? { ...a, status: a.status === AccessoryStatus.MOUNTED ? AccessoryStatus.PENDING : AccessoryStatus.MOUNTED } : a)
-                                                })}
-                                                title={acc.status === AccessoryStatus.MOUNTED ? "Marcar como Pendente" : "Marcar como Montado"}
-                                                className={`p-1.5 rounded-lg transition-all ${acc.status === AccessoryStatus.MOUNTED ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-900/20' : 'bg-slate-800 text-slate-500 hover:bg-slate-700'}`}
+                                                onClick={() => {
+                                                    let nextStatus = AccessoryStatus.PENDING;
+                                                    if (acc.status === AccessoryStatus.PENDING) nextStatus = AccessoryStatus.MOUNTED;
+                                                    else if (acc.status === AccessoryStatus.MOUNTED) nextStatus = AccessoryStatus.WELDED;
+                                                    else nextStatus = AccessoryStatus.PENDING;
+                                                    
+                                                    onUpdateSingle({
+                                                        ...singlePipe,
+                                                        accessories: singlePipe.accessories?.map(a => a.id === acc.id ? { ...a, status: nextStatus } : a)
+                                                    });
+                                                }}
+                                                title="Alternar Status (Pendente -> Montado -> Soldado)"
+                                                className={`p-1.5 rounded-lg transition-all ${acc.status === AccessoryStatus.WELDED ? 'bg-emerald-500 text-white shadow-lg' : acc.status === AccessoryStatus.MOUNTED ? 'bg-amber-500 text-white shadow-md' : 'bg-slate-800 text-slate-500 hover:bg-slate-700'}`}
                                             >
-                                                <Check size={14} />
+                                                {acc.status === AccessoryStatus.WELDED ? <CheckCircle size={14} /> : <Check size={14} />}
                                             </button>
                                             <button 
                                                 onClick={() => onUpdateSingle({

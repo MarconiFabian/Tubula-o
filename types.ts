@@ -95,11 +95,12 @@ export interface PipeSegment {
   accessories?: Accessory[];
 }
 
-export type AccessoryType = 'SUPPORT';
+export type AccessoryType = 'SUPPORT' | 'CURVE';
 
 export enum AccessoryStatus {
   PENDING = 'PENDING',
-  MOUNTED = 'MOUNTED'
+  MOUNTED = 'MOUNTED',
+  WELDED = 'WELDED'
 }
 
 export interface Accessory {
@@ -108,6 +109,7 @@ export interface Accessory {
   offset: number; // 0 to 1 along the pipe
   status: AccessoryStatus;
   name?: string;
+  degree?: number; // For curves: 90, 45, etc.
 }
 
 export enum AnnotationType {

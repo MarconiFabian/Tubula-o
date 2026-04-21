@@ -2,6 +2,9 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { flushSync } from 'react-dom';
 import * as THREE from 'three';
+
+const STATUS_PRIORITY: Record<string, number> = { 'PENDING': 0, 'MOUNTED': 1, 'WELDED': 2, 'HYDROTEST': 3, 'FINISHED': 4 };
+const getStatusPriority = (s: string) => STATUS_PRIORITY[s] || 0;
 import Scene from './components/3d/Scene';
 import Dashboard from './components/Dashboard';
 import Sidebar from './components/Sidebar';
@@ -191,7 +194,8 @@ function AppContent() {
           id: Math.random().toString(36).substr(2, 9),
           type,
           offset,
-          status: AccessoryStatus.PENDING
+          status: AccessoryStatus.PENDING,
+          ...(type === 'CURVE' ? { degree: 90 } : {})
         };
         return {
           ...p,
@@ -406,8 +410,83 @@ function AppContent() {
       const projectedEnd = getWorkingEndDate(new Date(activityDate + 'T12:00:00'), daysNeeded, prodSettings.globalConfig.workOnWeekends).toLocaleDateString('pt-BR');
 
       const componentStats = {
-          supports: { total: 0, installed: 0 }
+          supports: { total: 0, installed: 0 },
+          curves: { total: 0, mounted: 0, welded: 0 },
+          curvesByDegree: {} as Record<number, { total: number, mounted: number, welded: number }>
       };
+
+      // 1. Calculate automatic curves (elbows) from topology
+      const connections: Record<string, { point: THREE.Vector3, pipes: { pipe: PipeSegment, vector: THREE.Vector3 }[] }> = {};
+      const getCoordKey = (v: {x: number, y: number, z: number}) => 
+          `${Math.round(v.x * 20)},${Math.round(v.y * 20)},${Math.round(v.z * 20)}`; // 5cm tolerance
+
+      aggregatedData.pipes.forEach(p => {
+          const startKey = getCoordKey(p.start);
+          const endKey = getCoordKey(p.end);
+          
+          const startVec = new THREE.Vector3(p.start.x, p.start.y, p.start.z);
+          const endVec = new THREE.Vector3(p.end.x, p.end.y, p.end.z);
+          
+          const dirFromStart = endVec.clone().sub(startVec).normalize();
+          const dirFromEnd = startVec.clone().sub(endVec).normalize();
+
+          if (!connections[startKey]) connections[startKey] = { point: startVec, pipes: [] };
+          connections[startKey].pipes.push({ pipe: p, vector: dirFromStart });
+          
+          if (!connections[endKey]) connections[endKey] = { point: endVec, pipes: [] };
+          connections[endKey].pipes.push({ pipe: p, vector: dirFromEnd });
+      });
+
+      Object.values(connections).forEach(node => {
+          // Filtrar duplicatas para evitar erro de contagem no consolidado
+          // Projetos consolidados adicionam prefixos aos IDs. Extraímos o ID original para deduzir se é o mesmo trecho físico.
+          const uniquePipeMap = new Map<string, { pipe: PipeSegment, vector: THREE.Vector3 }>();
+          node.pipes.forEach(p => {
+              const baseId = p.pipe.id.includes('-') ? p.pipe.id.split('-').slice(1).join('-') : p.pipe.id;
+              // Priorizar o status mais avançado se houver duplicata
+              const existing = uniquePipeMap.get(baseId);
+              if (!existing || getStatusPriority(p.pipe.status) > getStatusPriority(existing.pipe.status)) {
+                  uniquePipeMap.set(baseId, p);
+              }
+          });
+          const uniquePipes = Array.from(uniquePipeMap.values());
+
+          if (uniquePipes.length === 2) {
+              const p1 = uniquePipes[0];
+              const p2 = uniquePipes[1];
+              
+              const dot = p1.vector.dot(p2.vector);
+              const angleRadians = Math.acos(Math.max(-1, Math.min(1, dot)));
+              const angleDegrees = Math.round(180 - (angleRadians * (180 / Math.PI)));
+              
+              if (angleDegrees >= 1) { // It's an elbow/curve
+                  const deg = angleDegrees;
+                  if (!componentStats.curvesByDegree[deg]) {
+                      componentStats.curvesByDegree[deg] = { total: 0, mounted: 0, welded: 0 };
+                  }
+                  
+                  componentStats.curves.total += 1;
+                  componentStats.curvesByDegree[deg].total += 1;
+                  
+                  const isP1Mounted = p1.pipe.status === 'MOUNTED' || p1.pipe.status === 'WELDED' || p1.pipe.status === 'HYDROTEST';
+                  const isP2Mounted = p2.pipe.status === 'MOUNTED' || p2.pipe.status === 'WELDED' || p2.pipe.status === 'HYDROTEST';
+                  const isP1Welded = p1.pipe.status === 'WELDED' || p1.pipe.status === 'HYDROTEST';
+                  const isP2Welded = p2.pipe.status === 'WELDED' || p2.pipe.status === 'HYDROTEST';
+                  
+                  const isMounted = isP1Mounted && isP2Mounted;
+                  const isWelded = isP1Welded && isP2Welded;
+                  
+                  if (isMounted) {
+                      componentStats.curves.mounted += 1;
+                      componentStats.curvesByDegree[deg].mounted += 1;
+                  }
+                  if (isWelded) {
+                      componentStats.curves.welded += 1;
+                      componentStats.curvesByDegree[deg].welded += 1;
+                  }
+              }
+          }
+      });
 
       aggregatedData.pipes.forEach(p => {
           const length = p.length || 0;
@@ -447,11 +526,32 @@ function AppContent() {
           if (p.accessories) {
               p.accessories.forEach(a => {
                   const isPipeInstalled = p.status === 'MOUNTED' || p.status === 'WELDED' || p.status === 'HYDROTEST';
-                  const isInstalled = a.status === AccessoryStatus.MOUNTED || isPipeInstalled;
+                  const isPipeWelded = p.status === 'WELDED' || p.status === 'HYDROTEST';
+                  
                   if (a.type === 'SUPPORT') {
                       hasModernSupports = true;
+                      const isInstalled = a.status === AccessoryStatus.MOUNTED || a.status === AccessoryStatus.WELDED || isPipeInstalled;
                       componentStats.supports.total += 1;
                       if (isInstalled) componentStats.supports.installed += 1;
+                  } else if (a.type === 'CURVE') {
+                      const deg = a.degree || 90;
+                      if (!componentStats.curvesByDegree[deg]) {
+                          componentStats.curvesByDegree[deg] = { total: 0, mounted: 0, welded: 0 };
+                      }
+                      
+                      componentStats.curves.total += 1;
+                      componentStats.curvesByDegree[deg].total += 1;
+                      
+                      const isMounted = a.status === AccessoryStatus.MOUNTED || a.status === AccessoryStatus.WELDED || isPipeInstalled;
+                      const isWelded = a.status === AccessoryStatus.WELDED || isPipeWelded;
+                      if (isMounted) {
+                          componentStats.curves.mounted += 1;
+                          componentStats.curvesByDegree[deg].mounted += 1;
+                      }
+                      if (isWelded) {
+                          componentStats.curves.welded += 1;
+                          componentStats.curvesByDegree[deg].welded += 1;
+                      }
                   }
               });
           }
@@ -963,7 +1063,7 @@ function AppContent() {
         const annotationsToExport = selectedIds.length > 0 ? aggregatedData.annotations.filter(a => selectedIds.includes(a.id)) : aggregatedData.annotations;
 
         // Recalcular estatísticas para a seleção (ou usar as globais se for tudo)
-        let exportStats = reportStats;
+        let exportStats: any = reportStats;
         
         if (selectedIds.length > 0) {
             let totalPipingHH = 0;
@@ -980,7 +1080,9 @@ function AppContent() {
             ALL_INSULATION_STATUSES.forEach(s => insulationLengths[s] = 0);
 
             const componentStats = {
-                supports: { total: 0, installed: 0 }
+                supports: { total: 0, installed: 0 },
+                curves: { total: 0, mounted: 0, welded: 0 },
+                curvesByDegree: {} as Record<number, { total: number, mounted: number, welded: number }>
             };
 
             pipesToExport.forEach(p => {
@@ -1006,11 +1108,32 @@ function AppContent() {
                 if (p.accessories) {
                     p.accessories.forEach(a => {
                         const isPipeInstalled = p.status === 'MOUNTED' || p.status === 'WELDED' || p.status === 'HYDROTEST';
-                        const isInstalled = a.status === AccessoryStatus.MOUNTED || isPipeInstalled;
+                        const isPipeWelded = p.status === 'WELDED' || p.status === 'HYDROTEST';
+                        
                         if (a.type === 'SUPPORT') {
                             hasModernSupports = true;
+                            const isInstalled = a.status === AccessoryStatus.MOUNTED || a.status === AccessoryStatus.WELDED || isPipeInstalled;
                             componentStats.supports.total += 1;
                             if (isInstalled) componentStats.supports.installed += 1;
+                        } else if (a.type === 'CURVE') {
+                            const deg = a.degree || 90;
+                            if (!componentStats.curvesByDegree[deg]) {
+                                componentStats.curvesByDegree[deg] = { total: 0, mounted: 0, welded: 0 };
+                            }
+                            
+                            componentStats.curves.total += 1;
+                            componentStats.curvesByDegree[deg].total += 1;
+                            
+                            const isMounted = a.status === AccessoryStatus.MOUNTED || a.status === AccessoryStatus.WELDED || isPipeInstalled;
+                            const isWelded = a.status === AccessoryStatus.WELDED || isPipeWelded;
+                            if (isMounted) {
+                                componentStats.curves.mounted += 1;
+                                componentStats.curvesByDegree[deg].mounted += 1;
+                            }
+                            if (isWelded) {
+                                componentStats.curves.welded += 1;
+                                componentStats.curvesByDegree[deg].welded += 1;
+                            }
                         }
                     });
                 }

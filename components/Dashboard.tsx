@@ -1,5 +1,9 @@
 
 import React, { useMemo, useRef, useState } from 'react';
+import * as THREE from 'three';
+
+const STATUS_PRIORITY: Record<string, number> = { 'PENDING': 0, 'MOUNTED': 1, 'WELDED': 2, 'HYDROTEST': 3, 'FINISHED': 4 };
+const getStatusPriority = (s: string) => STATUS_PRIORITY[s] || 0;
 import { PipeSegment, ProductivitySettings, Annotation, DailyProduction, AccessoryStatus } from '../types';
 import { ProjectData } from '../utils/db';
 import { STATUS_COLORS, STATUS_LABELS, ALL_STATUSES, INSULATION_COLORS, INSULATION_LABELS, ALL_INSULATION_STATUSES, PIPING_REMAINING_FACTOR, INSULATION_REMAINING_FACTOR, HOURS_PER_DAY } from '../constants';
@@ -88,6 +92,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     const pipingTotalLength = currentPipes.reduce((acc, p) => acc + (p?.length || 0), 0);
     const pipingRemainingLength = currentPipes.reduce((acc, p) => acc + (p?.length || 0) * (PIPING_REMAINING_FACTOR[p.status] ?? 1), 0);
     const pipingExecutedLength = pipingTotalLength - pipingRemainingLength;
+    const pipingWeldedLength = currentPipes.filter(p => p.status === 'WELDED' || p.status === 'HYDROTEST' || p.status === 'FINISHED').reduce((acc, p) => acc + (p?.length || 0), 0);
 
     const insulationPipes = currentPipes.filter(p => p.insulationStatus && p.insulationStatus !== 'NONE');
     const insulationTotalLength = insulationPipes.reduce((acc, p) => acc + (p?.length || 0), 0);
@@ -146,8 +151,7 @@ const Dashboard: React.FC<DashboardProps> = ({
             insulationMeters: meters.insulation
         }));
 
-    const completedWeight = (pipeLengths['WELDED'] * 0.8) + (pipeLengths['HYDROTEST'] * 1.0) + (pipeLengths['MOUNTED'] * 0.3);
-    const progress = pipingTotalLength > 0 ? parseFloat(((completedWeight / pipingTotalLength) * 100).toFixed(1)) : 0;
+    const progress = pipingTotalLength > 0 ? parseFloat(((pipingWeldedLength / pipingTotalLength) * 100).toFixed(1)) : 0;
 
     // Planning Data for S-Curve and Projected End
     const totalHH = currentPipes.reduce((acc, p) => {
@@ -249,10 +253,7 @@ const Dashboard: React.FC<DashboardProps> = ({
         const totalLengthValue = totalLength;
         
         // 1. Calculate Total Executed so far (from all pipes)
-        const totalExecutedMeters = currentPipes.reduce((acc, p) => {
-            const pipingDone = 1 - (PIPING_REMAINING_FACTOR[p.status] ?? 1);
-            return acc + (p.length * pipingDone);
-        }, 0);
+        const totalExecutedMeters = pipingWeldedLength;
         const totalProgressPct = totalLengthValue > 0 ? (totalExecutedMeters / totalLengthValue * 100) : 0;
 
         // 2. Dates and Duration
@@ -342,20 +343,115 @@ const Dashboard: React.FC<DashboardProps> = ({
     const currentDailyInsulation = daysNeeded > 0 ? insulationRemainingLength / daysNeeded : 0;
 
     const componentStats = {
-        supports: { total: 0, installed: 0 }
+        supports: { total: 0, installed: 0 },
+        curves: { total: 0, mounted: 0, welded: 0 },
+        curvesByDegree: {} as Record<number, { total: number, mounted: number, welded: number }>
     };
 
+    // 1. Calculate automatic curves (elbows) from topology
+    const connections: Record<string, { point: THREE.Vector3, pipes: { pipe: PipeSegment, vector: THREE.Vector3 }[] }> = {};
+    const getCoordKey = (v: {x: number, y: number, z: number}) => 
+        `${Math.round(v.x * 20)},${Math.round(v.y * 20)},${Math.round(v.z * 20)}`; // 5cm tolerance
+
+    currentPipes.forEach(p => {
+        const startKey = getCoordKey(p.start);
+        const endKey = getCoordKey(p.end);
+        
+        const startVec = new THREE.Vector3(p.start.x, p.start.y, p.start.z);
+        const endVec = new THREE.Vector3(p.end.x, p.end.y, p.end.z);
+        
+        const dirFromStart = endVec.clone().sub(startVec).normalize();
+        const dirFromEnd = startVec.clone().sub(endVec).normalize();
+
+        if (!connections[startKey]) connections[startKey] = { point: startVec, pipes: [] };
+        connections[startKey].pipes.push({ pipe: p, vector: dirFromStart });
+        
+        if (!connections[endKey]) connections[endKey] = { point: endVec, pipes: [] };
+        connections[endKey].pipes.push({ pipe: p, vector: dirFromEnd });
+    });
+
+    Object.values(connections).forEach(node => {
+        // Filtrar duplicatas para evitar erro de contagem no consolidado
+        const uniquePipeMap = new Map<string, { pipe: PipeSegment, vector: THREE.Vector3 }>();
+        node.pipes.forEach(p => {
+            const baseId = p.pipe.id.includes('-') ? p.pipe.id.split('-').slice(1).join('-') : p.pipe.id;
+            const existing = uniquePipeMap.get(baseId);
+            if (!existing || getStatusPriority(p.pipe.status) > getStatusPriority(existing.pipe.status)) {
+                uniquePipeMap.set(baseId, p);
+            }
+        });
+        const uniquePipes = Array.from(uniquePipeMap.values());
+
+        if (uniquePipes.length === 2) {
+            const p1 = uniquePipes[0];
+            const p2 = uniquePipes[1];
+            
+            const dot = p1.vector.dot(p2.vector);
+            const angleRadians = Math.acos(Math.max(-1, Math.min(1, dot)));
+            const angleDegrees = Math.round(180 - (angleRadians * (180 / Math.PI)));
+            
+            if (angleDegrees >= 1) { // It's an elbow/curve
+                const deg = angleDegrees;
+                if (!componentStats.curvesByDegree[deg]) {
+                    componentStats.curvesByDegree[deg] = { total: 0, mounted: 0, welded: 0 };
+                }
+                
+                componentStats.curves.total += 1;
+                componentStats.curvesByDegree[deg].total += 1;
+                
+                const isP1Mounted = p1.pipe.status === 'MOUNTED' || p1.pipe.status === 'WELDED' || p1.pipe.status === 'HYDROTEST';
+                const isP2Mounted = p2.pipe.status === 'MOUNTED' || p2.pipe.status === 'WELDED' || p2.pipe.status === 'HYDROTEST';
+                const isP1Welded = p1.pipe.status === 'WELDED' || p1.pipe.status === 'HYDROTEST';
+                const isP2Welded = p2.pipe.status === 'WELDED' || p2.pipe.status === 'HYDROTEST';
+                
+                const isMounted = isP1Mounted && isP2Mounted;
+                const isWelded = isP1Welded && isP2Welded;
+                
+                if (isMounted) {
+                    componentStats.curves.mounted += 1;
+                    componentStats.curvesByDegree[deg].mounted += 1;
+                }
+                if (isWelded) {
+                    componentStats.curves.welded += 1;
+                    componentStats.curvesByDegree[deg].welded += 1;
+                }
+            }
+        }
+    });
+
+    // 2. Count manual accessories
     currentPipes.forEach(p => {
         // Count accessories (modern way)
         let hasModernSupports = false;
         if (p.accessories) {
             p.accessories.forEach(a => {
                 const isPipeInstalled = p.status === 'MOUNTED' || p.status === 'WELDED' || p.status === 'HYDROTEST';
-                const isInstalled = a.status === AccessoryStatus.MOUNTED || isPipeInstalled;
+                const isPipeWelded = p.status === 'WELDED' || p.status === 'HYDROTEST';
+                
                 if (a.type === 'SUPPORT') {
+                    const isInstalled = a.status === AccessoryStatus.MOUNTED || a.status === AccessoryStatus.WELDED || isPipeInstalled;
                     hasModernSupports = true;
                     componentStats.supports.total += 1;
                     if (isInstalled) componentStats.supports.installed += 1;
+                } else if (a.type === 'CURVE') {
+                    const deg = a.degree || 90;
+                    if (!componentStats.curvesByDegree[deg]) {
+                        componentStats.curvesByDegree[deg] = { total: 0, mounted: 0, welded: 0 };
+                    }
+                    
+                    componentStats.curves.total += 1;
+                    componentStats.curvesByDegree[deg].total += 1;
+                    
+                    const isMounted = a.status === AccessoryStatus.MOUNTED || a.status === AccessoryStatus.WELDED || isPipeInstalled;
+                    const isWelded = a.status === AccessoryStatus.WELDED || isPipeWelded;
+                    if (isMounted) {
+                        componentStats.curves.mounted += 1;
+                        componentStats.curvesByDegree[deg].mounted += 1;
+                    }
+                    if (isWelded) {
+                        componentStats.curves.welded += 1;
+                        componentStats.curvesByDegree[deg].welded += 1;
+                    }
                 }
             });
         }
@@ -376,7 +472,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     const avgPipingAchieved = daysElapsed > 0 ? pipingExecutedLength / daysElapsed : 0;
     const avgInsulationAchieved = daysElapsed > 0 ? insulationExecutedLength / daysElapsed : 0;
 
-    return { totalLength, totalPipes, pipeCounts, pipeLengths, insulationCounts, insulationLengths, bom, progress, sortedDailyProd, sCurveData, totalHH: finalTotalHH, annotationHH, annotationBreakdown, totalTeams: avgTeams, projectedEnd, daysNeeded, deadlineStats, pipingTotalLength, pipingRemainingLength, pipingExecutedLength, insulationTotalLength, insulationRemainingLength, insulationExecutedLength, componentStats, currentDailyPiping, currentDailyInsulation, daysElapsed, avgPipingAchieved, avgInsulationAchieved };
+    return { totalLength, totalPipes, pipeCounts, pipeLengths, insulationCounts, insulationLengths, bom, progress, sortedDailyProd, sCurveData, totalHH: finalTotalHH, annotationHH, annotationBreakdown, totalTeams: avgTeams, projectedEnd, daysNeeded, deadlineStats, pipingTotalLength, pipingRemainingLength, pipingExecutedLength, pipingWeldedLength, insulationTotalLength, insulationRemainingLength, insulationExecutedLength, componentStats, currentDailyPiping, currentDailyInsulation, daysElapsed, avgPipingAchieved, avgInsulationAchieved };
   }, [pipes, annotations, startDate, prodSettings, deadlineDate]);
 
   const filteredPipes = useMemo(() => {
@@ -499,7 +595,7 @@ const Dashboard: React.FC<DashboardProps> = ({
       {(activeTab === 'overview' || exportMode) && (
         <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-6">
             {/* DESTAQUE DE EXECUÇÃO - MÉTRICAS CRÍTICAS */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 <div className="bg-slate-900 border-2 border-blue-500/30 p-6 rounded-2xl shadow-[0_0_20px_rgba(59,130,246,0.15)] flex flex-col gap-4 relative overflow-hidden">
                     <div className="absolute -right-4 -top-4 opacity-10"><Ruler size={120} className="text-blue-500" /></div>
                     <div className="flex items-center gap-3">
@@ -508,20 +604,20 @@ const Dashboard: React.FC<DashboardProps> = ({
                     </div>
                     <div className="grid grid-cols-3 gap-4 relative z-10">
                         <div className="flex flex-col">
-                            <span className="text-slate-500 text-[10px] font-black uppercase tracking-tighter mb-1">Total Projeto</span>
+                            <span className="text-slate-500 text-[10px] font-black uppercase tracking-tighter mb-1">Projetado</span>
                             <span className="text-3xl font-black text-white font-mono tracking-tighter">{(stats.pipingTotalLength || 0).toFixed(1)}<span className="text-xs text-slate-500 ml-1">m</span></span>
                         </div>
                         <div className="flex flex-col">
-                            <span className="text-emerald-500 text-[10px] font-black uppercase tracking-tighter mb-1">Executado</span>
-                            <span className="text-3xl font-black text-emerald-400 font-mono tracking-tighter">{(stats.pipingExecutedLength || 0).toFixed(1)}<span className="text-xs text-slate-500 ml-1">m</span></span>
+                            <span className="text-amber-500 text-[10px] font-black uppercase tracking-tighter mb-1">Falta Montar</span>
+                            <span className="text-3xl font-black text-amber-400 font-mono tracking-tighter">{(stats.pipingTotalLength - stats.pipingWeldedLength).toFixed(1)}<span className="text-xs text-slate-500 ml-1">m</span></span>
                         </div>
                         <div className="flex flex-col">
-                            <span className="text-amber-500 text-[10px] font-black uppercase tracking-tighter mb-1">Falta Executar</span>
-                            <span className="text-3xl font-black text-amber-400 font-mono tracking-tighter">{(stats.pipingRemainingLength || 0).toFixed(1)}<span className="text-xs text-slate-500 ml-1">m</span></span>
+                            <span className="text-emerald-500 text-[10px] font-black uppercase tracking-tighter mb-1">Montado</span>
+                            <span className="text-3xl font-black text-emerald-400 font-mono tracking-tighter">{(stats.pipingWeldedLength || 0).toFixed(1)}<span className="text-xs text-slate-500 ml-1">m</span></span>
                         </div>
                     </div>
                     <div className="w-full h-3 bg-slate-800 rounded-full overflow-hidden border border-slate-700">
-                        <div className="h-full bg-gradient-to-r from-blue-600 to-blue-400 shadow-[0_0_10px_rgba(59,130,246,0.4)]" style={{ width: `${stats.pipingTotalLength > 0 ? (stats.pipingExecutedLength / stats.pipingTotalLength) * 100 : 0}%` }}></div>
+                        <div className="h-full bg-gradient-to-r from-blue-600 to-blue-400 shadow-[0_0_10px_rgba(59,130,246,0.4)]" style={{ width: `${stats.pipingTotalLength > 0 ? (stats.pipingWeldedLength / stats.pipingTotalLength) * 100 : 0}%` }}></div>
                     </div>
                 </div>
 
@@ -533,20 +629,45 @@ const Dashboard: React.FC<DashboardProps> = ({
                     </div>
                     <div className="grid grid-cols-3 gap-4 relative z-10">
                         <div className="flex flex-col">
-                            <span className="text-slate-500 text-[10px] font-black uppercase tracking-tighter mb-1">Total Projeto</span>
+                            <span className="text-slate-500 text-[10px] font-black uppercase tracking-tighter mb-1">Projetado</span>
                             <span className="text-3xl font-black text-white font-mono tracking-tighter">{stats?.componentStats?.supports?.total || 0}</span>
                         </div>
                         <div className="flex flex-col">
-                            <span className="text-emerald-500 text-[10px] font-black uppercase tracking-tighter mb-1">Montados</span>
-                            <span className="text-3xl font-black text-emerald-400 font-mono tracking-tighter">{stats?.componentStats?.supports?.installed || 0}</span>
+                            <span className="text-amber-500 text-[10px] font-black uppercase tracking-tighter mb-1">Falta Montar</span>
+                            <span className="text-3xl font-black text-amber-500 font-mono tracking-tighter">{(stats?.componentStats?.supports?.total || 0) - (stats?.componentStats?.supports?.installed || 0)}</span>
                         </div>
                         <div className="flex flex-col">
-                            <span className="text-amber-500 text-[10px] font-black uppercase tracking-tighter mb-1">Falta Montar</span>
-                            <span className="text-3xl font-black text-amber-400 font-mono tracking-tighter">{(stats?.componentStats?.supports?.total || 0) - (stats?.componentStats?.supports?.installed || 0)}</span>
+                            <span className="text-emerald-500 text-[10px] font-black uppercase tracking-tighter mb-1">Montado</span>
+                            <span className="text-3xl font-black text-emerald-400 font-mono tracking-tighter">{stats?.componentStats?.supports?.installed || 0}</span>
                         </div>
                     </div>
                     <div className="w-full h-3 bg-slate-800 rounded-full overflow-hidden border border-slate-700">
                         <div className="h-full bg-gradient-to-r from-amber-600 to-amber-400 shadow-[0_0_10px_rgba(245,158,11,0.4)]" style={{ width: `${(stats?.componentStats?.supports?.total || 0) > 0 ? ((stats?.componentStats?.supports?.installed || 0) / stats.componentStats.supports.total) * 100 : 0}%` }}></div>
+                    </div>
+                </div>
+
+                <div className="bg-slate-900 border-2 border-emerald-500/30 p-6 rounded-2xl shadow-[0_0_20px_rgba(16,185,129,0.15)] flex flex-col gap-4 relative overflow-hidden">
+                    <div className="absolute -right-4 -top-4 opacity-10"><TrendingUp size={120} className="text-emerald-500" /></div>
+                    <div className="flex items-center gap-3">
+                        <div className="w-3 h-3 rounded-full bg-emerald-500 shadow-[0_0_12px_rgba(16,185,129,0.6)]"></div>
+                        <h2 className="text-lg font-black text-white uppercase tracking-widest font-mono">Curvas (Unidades)</h2>
+                    </div>
+                    <div className="grid grid-cols-3 gap-4 relative z-10">
+                        <div className="flex flex-col">
+                            <span className="text-slate-500 text-[10px] font-black uppercase tracking-tighter mb-1">Projetado</span>
+                            <span className="text-3xl font-black text-white font-mono tracking-tighter">{stats?.componentStats?.curves?.total || 0}</span>
+                        </div>
+                        <div className="flex flex-col">
+                            <span className="text-amber-500 text-[10px] font-black uppercase tracking-tighter mb-1">Falta Montar</span>
+                            <span className="text-3xl font-black text-amber-500 font-mono tracking-tighter">{(stats?.componentStats?.curves?.total || 0) - (stats?.componentStats?.curves?.welded || 0)}</span>
+                        </div>
+                        <div className="flex flex-col">
+                            <span className="text-emerald-500 text-[10px] font-black uppercase tracking-tighter mb-1">Montado</span>
+                            <span className="text-3xl font-black text-emerald-400 font-mono tracking-tighter">{stats?.componentStats?.curves?.welded || 0}</span>
+                        </div>
+                    </div>
+                    <div className="w-full h-3 bg-slate-800 rounded-full overflow-hidden border border-slate-700">
+                        <div className="h-full bg-gradient-to-r from-emerald-600 to-blue-500 shadow-[0_0_10px_rgba(16,185,129,0.4)]" style={{ width: `${(stats?.componentStats?.curves?.total || 0) > 0 ? ((stats?.componentStats?.curves?.welded || 0) / stats.componentStats.curves.total) * 100 : 0}%` }}></div>
                     </div>
                 </div>
             </div>
@@ -594,16 +715,16 @@ const Dashboard: React.FC<DashboardProps> = ({
                             <div className="w-2 h-2 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)]"></div>
                             <span className="text-slate-400 text-xs font-mono uppercase tracking-widest font-bold">Balanço de Tubulação</span>
                         </div>
-                        <span className="text-blue-400 font-mono text-xs font-bold">{stats.pipingTotalLength > 0 ? ((stats.pipingExecutedLength / stats.pipingTotalLength) * 100).toFixed(1) : 0}%</span>
+                        <span className="text-blue-400 font-mono text-xs font-bold">{stats.pipingTotalLength > 0 ? ((stats.pipingWeldedLength / stats.pipingTotalLength) * 100).toFixed(1) : 0}%</span>
                     </div>
                     <div className="grid grid-cols-3 gap-4">
                         <div className="flex flex-col">
-                            <span className="text-slate-500 text-[10px] font-mono uppercase tracking-widest mb-1">Total</span>
+                            <span className="text-slate-500 text-[10px] font-mono uppercase tracking-widest mb-1">Projetado</span>
                             <span className="text-xl font-bold text-white font-mono">{(stats.pipingTotalLength || 0).toFixed(1)}<span className="text-[10px] text-slate-500 ml-1">m</span></span>
                         </div>
                         <div className="flex flex-col">
-                            <span className="text-slate-500 text-[10px] font-mono uppercase tracking-widest mb-1">Executado</span>
-                            <span className="text-xl font-bold text-green-400 font-mono">{(stats.pipingExecutedLength || 0).toFixed(1)}<span className="text-[10px] text-slate-500 ml-1">m</span></span>
+                            <span className="text-slate-500 text-[10px] font-mono uppercase tracking-widest mb-1">Montado</span>
+                            <span className="text-xl font-bold text-green-400 font-mono">{(stats.pipingWeldedLength || 0).toFixed(1)}<span className="text-[10px] text-slate-500 ml-1">m</span></span>
                             <div className="mt-2 space-y-1">
                                 <div className="flex justify-between text-[8px] font-mono text-slate-400">
                                     <span>Soldado:</span>
@@ -616,8 +737,8 @@ const Dashboard: React.FC<DashboardProps> = ({
                             </div>
                         </div>
                         <div className="flex flex-col">
-                            <span className="text-slate-500 text-[10px] font-mono uppercase tracking-widest mb-1">A Executar</span>
-                            <span className="text-xl font-bold text-yellow-400 font-mono">{(stats.pipingRemainingLength || 0).toFixed(1)}<span className="text-[10px] text-slate-500 ml-1">m</span></span>
+                            <span className="text-slate-500 text-[10px] font-mono uppercase tracking-widest mb-1">Falta Montar</span>
+                            <span className="text-xl font-bold text-yellow-400 font-mono">{(stats.pipingTotalLength - stats.pipingWeldedLength).toFixed(1)}<span className="text-[10px] text-slate-500 ml-1">m</span></span>
                             <div className="mt-2 space-y-1">
                                 <div className="flex justify-between text-[8px] font-mono text-slate-400">
                                     <span>P/ Soldar:</span>
@@ -631,7 +752,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                         </div>
                     </div>
                     <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden mt-2">
-                        <div className="h-full bg-blue-500" style={{ width: `${stats.pipingTotalLength > 0 ? (stats.pipingExecutedLength / stats.pipingTotalLength) * 100 : 0}%` }}></div>
+                        <div className="h-full bg-blue-500" style={{ width: `${stats.pipingTotalLength > 0 ? (stats.pipingWeldedLength / stats.pipingTotalLength) * 100 : 0}%` }}></div>
                     </div>
                 </div>
 
@@ -1570,6 +1691,56 @@ const Dashboard: React.FC<DashboardProps> = ({
                         </tbody>
                     </table>
                  </div>
+            </div>
+
+            {/* Rastreamento de Curvas */}
+            <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-xl overflow-hidden shadow-2xl">
+                <div className="bg-slate-950 p-4 border-b border-slate-800 flex items-center gap-3">
+                    <TrendingUp size={16} className="text-emerald-500" />
+                    <h3 className="text-[10px] font-mono font-bold text-white uppercase tracking-widest">Rastreamento de Curvas por Grau</h3>
+                </div>
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse font-mono">
+                         <thead className="bg-slate-950/50 text-slate-500 uppercase text-[8px] font-black tracking-tighter">
+                            <tr>
+                                <th className="p-4 border-b border-slate-800">Grau da Curva</th>
+                                <th className="p-4 border-b border-slate-800">Projetado</th>
+                                <th className="p-4 border-b border-slate-800">Falta Montar</th>
+                                <th className="p-4 border-b border-slate-800">Montado</th>
+                                <th className="p-4 border-b border-slate-800">Progresso (%)</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-800/30 text-[10px]">
+                            {Object.entries(stats.componentStats.curvesByDegree || {})
+                                .sort((a,b) => parseInt(b[0]) - parseInt(a[0]))
+                                .map(([degree, counts]) => {
+                                    const progress = counts.total > 0 ? (counts.welded / counts.total) * 100 : 0;
+                                    return (
+                                        <tr key={degree} className="hover:bg-slate-800/20 transition-colors">
+                                            <td className="p-4 font-bold text-white">{degree}°</td>
+                                            <td className="p-4 text-slate-400 font-bold tabular-nums">{counts.total}</td>
+                                            <td className="p-4 text-amber-400 font-bold tabular-nums">{counts.total - counts.welded}</td>
+                                            <td className="p-4 text-emerald-400 font-bold tabular-nums">{counts.welded}</td>
+                                            <td className="p-4">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden min-w-[60px]">
+                                                        <div className="h-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]" style={{ width: `${progress}%` }}></div>
+                                                    </div>
+                                                    <span className="text-[9px] font-black text-emerald-400 w-8">{progress.toFixed(0)}%</span>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    );
+                                })
+                            }
+                            {Object.keys(stats.componentStats.curvesByDegree || {}).length === 0 && (
+                                <tr>
+                                    <td colSpan={5} className="p-8 text-center text-slate-600 italic text-[10px]">Nenhuma curva posicionada no projeto.</td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
             </div>
          </div>
       )}
