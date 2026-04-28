@@ -154,6 +154,20 @@ export interface ProjectCalendar {
   exceptions: CalendarException[];
 }
 
+export interface FinancialSettings {
+  pipingUnitPrice: number;       // R$ per meter
+  insulationUnitPrice: number;   // R$ per meter
+  supportUnitPrice: number;      // R$ per unit
+  currency: string;             // Default "R$"
+}
+
+export interface FinancialStats {
+  pipingValue: { total: number; executed: number };
+  insulationValue: { total: number; executed: number };
+  supportValue: { total: number; executed: number };
+  totalValue: { total: number; executed: number };
+}
+
 export interface ProjectStats {
   totalLength: number;
   installedLength: number;

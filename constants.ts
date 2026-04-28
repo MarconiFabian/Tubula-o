@@ -108,4 +108,11 @@ export const INSULATION_REMAINING_FACTOR: Record<string, number> = {
     'FINISHED': 0.0    // 0% a fazer
 };
 
+export const DEFAULT_FINANCIAL_SETTINGS = {
+  pipingUnitPrice: 0,
+  insulationUnitPrice: 0,
+  supportUnitPrice: 0,
+  currency: 'R$'
+};
+
 export const INITIAL_PIPES: PipeSegment[] = [];

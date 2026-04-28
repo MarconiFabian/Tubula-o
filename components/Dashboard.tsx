@@ -4,10 +4,10 @@ import * as THREE from 'three';
 
 const STATUS_PRIORITY: Record<string, number> = { 'PENDING': 0, 'MOUNTED': 1, 'WELDED': 2, 'HYDROTEST': 3, 'FINISHED': 4 };
 const getStatusPriority = (s: string) => STATUS_PRIORITY[s] || 0;
-import { PipeSegment, ProductivitySettings, Annotation, DailyProduction, AccessoryStatus } from '../types';
+import { PipeSegment, ProductivitySettings, Annotation, DailyProduction, AccessoryStatus, FinancialSettings, FinancialStats } from '../types';
 import { ProjectData } from '../utils/db';
-import { STATUS_COLORS, STATUS_LABELS, ALL_STATUSES, INSULATION_COLORS, INSULATION_LABELS, ALL_INSULATION_STATUSES, PIPING_REMAINING_FACTOR, INSULATION_REMAINING_FACTOR, HOURS_PER_DAY } from '../constants';
-import { Activity, FileDown, Upload, Image as ImageIcon, Map as MapIcon, Layers, Shield, Ruler, Package, AlertCircle, Search, Filter, ClipboardList, UserCog, Calendar, CheckSquare, TrendingUp, Timer, Users, Target, BarChart3, Database, ChevronDown, Check, Zap, Calculator, LayoutDashboard, Wrench, History } from 'lucide-react';
+import { STATUS_COLORS, STATUS_LABELS, ALL_STATUSES, INSULATION_COLORS, INSULATION_LABELS, ALL_INSULATION_STATUSES, PIPING_REMAINING_FACTOR, INSULATION_REMAINING_FACTOR, HOURS_PER_DAY, DEFAULT_FINANCIAL_SETTINGS } from '../constants';
+import { Activity, FileDown, Upload, Image as ImageIcon, Map as MapIcon, Layers, Shield, Ruler, Package, AlertCircle, Search, Filter, ClipboardList, UserCog, Calendar, CheckSquare, TrendingUp, Timer, Users, Target, BarChart3, Database, ChevronDown, Check, Zap, Calculator, LayoutDashboard, Wrench, History, DollarSign, Wallet, Edit3, X } from 'lucide-react';
 import ProjectTimeline from './ProjectTimeline';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area, ReferenceDot, BarChart, Bar, Cell, ComposedChart } from 'recharts';
 import { getWorkingEndDate, getWorkingDaysBetween } from '../utils/planning';
@@ -35,6 +35,8 @@ interface DashboardProps {
   dailyProduction?: DailyProduction[];
   onUpdateDailyProduction?: (dp: DailyProduction[]) => void;
   onOpenDailyProduction?: () => void;
+  financialSettings?: FinancialSettings;
+  onUpdateFinancialSettings?: (settings: FinancialSettings) => void;
 }
 
 type TabType = 'overview' | 'tracking' | 'planning';
@@ -61,12 +63,15 @@ const Dashboard: React.FC<DashboardProps> = ({
     onSetSelectedProjectIds,
     dailyProduction = [],
     onUpdateDailyProduction,
-    onOpenDailyProduction
+    onOpenDailyProduction,
+    financialSettings = DEFAULT_FINANCIAL_SETTINGS,
+    onUpdateFinancialSettings
 }) => {
     const [activeTab, setActiveTab] = useState<TabType>('overview');
     const [searchTerm, setSearchTerm] = useState('');
     const [statusFilter, setStatusFilter] = useState<string>('ALL');
     const [showProjectSelector, setShowProjectSelector] = useState(false);
+    const [showFinancialConfig, setShowFinancialConfig] = useState(false);
 
   const secInputRef = useRef<HTMLInputElement>(null);
   const mapInputRef = useRef<HTMLInputElement>(null);
@@ -92,7 +97,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     const pipingTotalLength = currentPipes.reduce((acc, p) => acc + (p?.length || 0), 0);
     const pipingRemainingLength = currentPipes.reduce((acc, p) => acc + (p?.length || 0) * (PIPING_REMAINING_FACTOR[p.status] ?? 1), 0);
     const pipingExecutedLength = pipingTotalLength - pipingRemainingLength;
-    const pipingWeldedLength = currentPipes.filter(p => p.status === 'WELDED' || p.status === 'HYDROTEST' || p.status === 'FINISHED').reduce((acc, p) => acc + (p?.length || 0), 0);
+    const pipingWeldedLength = currentPipes.filter(p => p.status === 'WELDED' || p.status === 'HYDROTEST').reduce((acc, p) => acc + (p?.length || 0), 0);
 
     const insulationPipes = currentPipes.filter(p => p.insulationStatus && p.insulationStatus !== 'NONE');
     const insulationTotalLength = insulationPipes.reduce((acc, p) => acc + (p?.length || 0), 0);
@@ -129,7 +134,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     // Daily Productivity Calculation
     const dailyProd: Record<string, { piping: number; insulation: number }> = {};
     currentPipes.forEach(p => {
-        const pipingCompleted = ['WELDED', 'HYDROTEST', 'FINISHED'].includes(p.status);
+        const pipingCompleted = ['WELDED', 'HYDROTEST'].includes(p.status);
         const insulationCompleted = p.insulationStatus === 'FINISHED';
         
         const date = p.welderInfo?.weldDate || todayStr;
@@ -472,8 +477,17 @@ const Dashboard: React.FC<DashboardProps> = ({
     const avgPipingAchieved = daysElapsed > 0 ? pipingExecutedLength / daysElapsed : 0;
     const avgInsulationAchieved = daysElapsed > 0 ? insulationExecutedLength / daysElapsed : 0;
 
-    return { totalLength, totalPipes, pipeCounts, pipeLengths, insulationCounts, insulationLengths, bom, progress, sortedDailyProd, sCurveData, totalHH: finalTotalHH, annotationHH, annotationBreakdown, totalTeams: avgTeams, projectedEnd, daysNeeded, deadlineStats, pipingTotalLength, pipingRemainingLength, pipingExecutedLength, pipingWeldedLength, insulationTotalLength, insulationRemainingLength, insulationExecutedLength, componentStats, currentDailyPiping, currentDailyInsulation, daysElapsed, avgPipingAchieved, avgInsulationAchieved };
-  }, [pipes, annotations, startDate, prodSettings, deadlineDate]);
+    const financialStats: FinancialStats = {
+        pipingValue: { total: pipingTotalLength * (financialSettings?.pipingUnitPrice || 0), executed: pipingWeldedLength * (financialSettings?.pipingUnitPrice || 0) },
+        insulationValue: { total: insulationTotalLength * (financialSettings?.insulationUnitPrice || 0), executed: insulationExecutedLength * (financialSettings?.insulationUnitPrice || 0) },
+        supportValue: { total: componentStats.supports.total * (financialSettings?.supportUnitPrice || 0), executed: componentStats.supports.installed * (financialSettings?.supportUnitPrice || 0) },
+        totalValue: { total: 0, executed: 0 }
+    };
+    financialStats.totalValue.total = financialStats.pipingValue.total + financialStats.insulationValue.total + financialStats.supportValue.total;
+    financialStats.totalValue.executed = financialStats.pipingValue.executed + financialStats.insulationValue.executed + financialStats.supportValue.executed;
+
+    return { totalLength, totalPipes, pipeCounts, pipeLengths, insulationCounts, insulationLengths, bom, progress, sortedDailyProd, sCurveData, totalHH: finalTotalHH, annotationHH, annotationBreakdown, totalTeams: avgTeams, projectedEnd, daysNeeded, deadlineStats, pipingTotalLength, pipingRemainingLength, pipingExecutedLength, pipingWeldedLength, insulationTotalLength, insulationRemainingLength, insulationExecutedLength, componentStats, currentDailyPiping, currentDailyInsulation, daysElapsed, avgPipingAchieved, avgInsulationAchieved, financialStats };
+  }, [pipes, annotations, startDate, prodSettings, deadlineDate, financialSettings]);
 
   const filteredPipes = useMemo(() => {
       return pipes.filter(p => {
@@ -668,6 +682,80 @@ const Dashboard: React.FC<DashboardProps> = ({
                     </div>
                     <div className="w-full h-3 bg-slate-800 rounded-full overflow-hidden border border-slate-700">
                         <div className="h-full bg-gradient-to-r from-emerald-600 to-blue-500 shadow-[0_0_10px_rgba(16,185,129,0.4)]" style={{ width: `${(stats?.componentStats?.curves?.total || 0) > 0 ? ((stats?.componentStats?.curves?.welded || 0) / stats.componentStats.curves.total) * 100 : 0}%` }}></div>
+                    </div>
+                </div>
+            </div>
+
+            {/* SEÇÃO FINANCEIRA */}
+            <div className="bg-slate-900 border-2 border-emerald-500/20 p-6 rounded-2xl shadow-xl flex flex-col gap-6 relative overflow-hidden group">
+                <div className="absolute -right-10 -top-10 opacity-5 group-hover:opacity-10 transition-opacity"><DollarSign size={200} className="text-emerald-500" /></div>
+                
+                <div className="flex items-center justify-between relative z-10">
+                    <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-emerald-500/20 flex items-center justify-center border border-emerald-500/30 shadow-[0_0_15px_rgba(16,185,129,0.2)]">
+                            <Wallet size={20} className="text-emerald-400" />
+                        </div>
+                        <div>
+                            <h2 className="text-xl font-black text-white uppercase tracking-widest font-mono">Resumo Financeiro</h2>
+                            <p className="text-slate-500 text-[10px] font-mono uppercase tracking-widest">Valorização da Execução em Tempo Real</p>
+                        </div>
+                    </div>
+                    
+                    {!exportMode && (
+                        <button 
+                            onClick={() => setShowFinancialConfig(true)}
+                            className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 py-2 rounded-lg border border-slate-700 transition-all font-mono text-[10px] uppercase tracking-widest"
+                        >
+                            <Edit3 size={14} /> Configurar Preços
+                        </button>
+                    )}
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 relative z-10">
+                    <div className="bg-slate-950/50 p-4 rounded-xl border border-slate-800/50">
+                        <span className="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-1 block">Tubulação</span>
+                        <div className="flex flex-col">
+                            <span className="text-2xl font-black text-white font-mono">{financialSettings.currency} {stats.financialStats.pipingValue.executed.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                            <div className="flex justify-between items-center mt-1">
+                                <span className="text-[10px] text-slate-500 font-mono">Projetado: {financialSettings.currency} {stats.financialStats.pipingValue.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                                <span className="text-[10px] text-amber-500/80 font-black font-mono">Restante: {financialSettings.currency} {(stats.financialStats.pipingValue.total - stats.financialStats.pipingValue.executed).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div className="bg-slate-950/50 p-4 rounded-xl border border-slate-800/50">
+                        <span className="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-1 block">Proteção Térmica</span>
+                        <div className="flex flex-col">
+                            <span className="text-2xl font-black text-white font-mono">{financialSettings.currency} {stats.financialStats.insulationValue.executed.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                            <div className="flex justify-between items-center mt-1">
+                                <span className="text-[10px] text-slate-500 font-mono">Projetado: {financialSettings.currency} {stats.financialStats.insulationValue.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                                <span className="text-[10px] text-amber-500/80 font-black font-mono">Restante: {financialSettings.currency} {(stats.financialStats.insulationValue.total - stats.financialStats.insulationValue.executed).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="bg-slate-950/50 p-4 rounded-xl border border-slate-800/50">
+                        <span className="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-1 block">Suportes</span>
+                        <div className="flex flex-col">
+                            <span className="text-2xl font-black text-white font-mono">{financialSettings.currency} {stats.financialStats.supportValue.executed.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                            <div className="flex justify-between items-center mt-1">
+                                <span className="text-[10px] text-slate-500 font-mono">Projetado: {financialSettings.currency} {stats.financialStats.supportValue.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                                <span className="text-[10px] text-amber-500/80 font-black font-mono">Restante: {financialSettings.currency} {(stats.financialStats.supportValue.total - stats.financialStats.supportValue.executed).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="bg-emerald-500/10 p-4 rounded-xl border border-emerald-500/20 shadow-lg shadow-emerald-500/5">
+                        <span className="text-emerald-500 text-[10px] font-black uppercase tracking-widest mb-1 block italic text-emerald-400/80">Total Executado</span>
+                        <div className="flex flex-col">
+                            <span className="text-3xl font-black text-emerald-400 font-mono">{financialSettings.currency} {stats.financialStats.totalValue.executed.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                            <div className="flex items-center justify-between mt-1">
+                                <span className="text-[10px] text-slate-400 font-mono">Budget: {financialSettings.currency} {stats.financialStats.totalValue.total.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}</span>
+                                <div className="bg-amber-500/20 px-2 py-0.5 rounded border border-amber-500/30">
+                                    <span className="text-[9px] text-amber-400 font-black font-mono uppercase">Saldo: {financialSettings.currency} {(stats.financialStats.totalValue.total - stats.financialStats.totalValue.executed).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1743,6 +1831,74 @@ const Dashboard: React.FC<DashboardProps> = ({
                 </div>
             </div>
          </div>
+      )}
+
+      {showFinancialConfig && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-md" onClick={() => setShowFinancialConfig(false)}></div>
+            <div className="bg-slate-900 border border-slate-700 w-full max-w-md rounded-2xl shadow-2xl relative overflow-hidden animate-in zoom-in-95 duration-200">
+                <div className="bg-emerald-600/10 p-6 border-b border-slate-800 flex justify-between items-center">
+                    <div className="flex items-center gap-3">
+                        <DollarSign className="text-emerald-500" size={24} />
+                        <h3 className="text-xl font-black text-white uppercase tracking-widest font-mono">Configuração Financeira</h3>
+                    </div>
+                    <button onClick={() => setShowFinancialConfig(false)} className="text-slate-500 hover:text-white transition-colors"><X size={24} /></button>
+                </div>
+                
+                <div className="p-8 space-y-6">
+                    <div className="space-y-4">
+                        <div>
+                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 block font-mono">Preço por Metro de Tubulação (R$/m)</label>
+                            <div className="relative">
+                                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-600 font-mono">{financialSettings.currency}</span>
+                                <input 
+                                    type="number" 
+                                    value={financialSettings.pipingUnitPrice} 
+                                    onChange={(e) => onUpdateFinancialSettings?.({ ...financialSettings, pipingUnitPrice: parseFloat(e.target.value) || 0 })}
+                                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-12 py-3 text-white font-mono focus:ring-2 focus:ring-emerald-500 outline-none transition-all placeholder:text-slate-700" 
+                                    placeholder="0.00"
+                                />
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 block font-mono">Preço por Metro de Proteção Térmica (R$/m)</label>
+                            <div className="relative">
+                                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-600 font-mono">{financialSettings.currency}</span>
+                                <input 
+                                    type="number" 
+                                    value={financialSettings.insulationUnitPrice} 
+                                    onChange={(e) => onUpdateFinancialSettings?.({ ...financialSettings, insulationUnitPrice: parseFloat(e.target.value) || 0 })}
+                                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-12 py-3 text-white font-mono focus:ring-2 focus:ring-emerald-500 outline-none transition-all placeholder:text-slate-700" 
+                                    placeholder="0.00"
+                                />
+                            </div>
+                        </div>
+
+                        <div>
+                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 block font-mono">Preço por Unidade de Suporte (R$/un)</label>
+                            <div className="relative">
+                                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-600 font-mono">{financialSettings.currency}</span>
+                                <input 
+                                    type="number" 
+                                    value={financialSettings.supportUnitPrice} 
+                                    onChange={(e) => onUpdateFinancialSettings?.({ ...financialSettings, supportUnitPrice: parseFloat(e.target.value) || 0 })}
+                                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-12 py-3 text-white font-mono focus:ring-2 focus:ring-emerald-500 outline-none transition-all placeholder:text-slate-700" 
+                                    placeholder="0.00"
+                                />
+                            </div>
+                        </div>
+                    </div>
+
+                    <button 
+                        onClick={() => setShowFinancialConfig(false)}
+                        className="w-full bg-emerald-600 hover:bg-emerald-500 text-white py-4 rounded-xl font-black uppercase tracking-widest shadow-lg shadow-emerald-600/20 transition-all font-mono active:scale-95"
+                    >
+                        Salvar e Aplicar
+                    </button>
+                </div>
+            </div>
+        </div>
       )}
 
     </div>

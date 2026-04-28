@@ -26,7 +26,7 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
 }) => {
   const progress = useMemo(() => {
       const pipingTotalLength = pipes.reduce((acc, p) => acc + (p.length || 0), 0);
-      const pipingWeldedLength = pipes.filter(p => p.status === 'WELDED' || p.status === 'HYDROTEST' || p.status === 'FINISHED').reduce((acc, p) => acc + (p.length || 0), 0);
+      const pipingWeldedLength = pipes.filter(p => p.status === 'WELDED' || p.status === 'HYDROTEST').reduce((acc, p) => acc + (p.length || 0), 0);
       return pipingTotalLength > 0 ? (pipingWeldedLength / pipingTotalLength) * 100 : 0;
   }, [pipes]);
 
@@ -44,12 +44,12 @@ export const ExportContainer: React.FC<ExportContainerProps> = ({
             return d < startStr;
         })
         .reduce((acc, p) => {
-            const isWelded = p.status === 'WELDED' || p.status === 'HYDROTEST' || p.status === 'FINISHED';
+            const isWelded = p.status === 'WELDED' || p.status === 'HYDROTEST';
             return acc + (isWelded ? p.length : 0);
         }, 0);
 
     // 1. Calculate Total Executed so far (from all pipes)
-    const pipingWeldedLength = pipes.filter(p => p.status === 'WELDED' || p.status === 'HYDROTEST' || p.status === 'FINISHED').reduce((acc, p) => acc + (p.length || 0), 0);
+    const pipingWeldedLength = pipes.filter(p => p.status === 'WELDED' || p.status === 'HYDROTEST').reduce((acc, p) => acc + (p.length || 0), 0);
     const totalExecutedMeters = pipingWeldedLength;
     const totalProgressPct = totalLengthValue > 0 ? (totalExecutedMeters / totalLengthValue * 100) : 0;
 

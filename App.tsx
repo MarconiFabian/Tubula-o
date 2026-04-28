@@ -13,9 +13,9 @@ import { ExportContainer } from './components/ExportContainer';
 import { DatabaseModal } from './components/DatabaseModal';
 import { auth, onAuthStateChanged } from './firebase';
 import { saveProjectToDB, getAllProjects, deleteProjectFromDB, ProjectData } from './utils/db';
-import { INITIAL_PIPES, STATUS_LABELS, STATUS_COLORS, INSULATION_LABELS, PIPE_DIAMETERS, AVAILABLE_DIAMETERS, ALL_STATUSES, ALL_INSULATION_STATUSES, INSULATION_COLORS, BASE_PRODUCTIVITY, DIFFICULTY_WEIGHTS, PIPING_REMAINING_FACTOR, INSULATION_REMAINING_FACTOR, HOURS_PER_DAY, DEFAULT_PROD_SETTINGS } from './constants';
-import { PipeSegment, PipeStatus, Annotation, AnnotationType, Accessory, AccessoryType, AccessoryStatus, ProductivitySettings, DailyProduction, ProjectCalendar } from './types';
-import { LayoutDashboard, Cuboid, PenTool, XCircle, FileDown, Save, FolderOpen, FilePlus, Loader2, MapPin, Database, Undo, Redo, Wrench, Grid as GridIcon, CircleDot, MousePointer2, Ruler, Calendar, Lock, LogOut, ChevronRight, Copy, ClipboardPaste, Activity, Package, AlertCircle, Image as ImageIcon, Shield, Building2, Timer, FileCode, X, HelpCircle, FileSpreadsheet, Trash2 } from 'lucide-react';
+import { INITIAL_PIPES, STATUS_LABELS, STATUS_COLORS, INSULATION_LABELS, PIPE_DIAMETERS, AVAILABLE_DIAMETERS, ALL_STATUSES, ALL_INSULATION_STATUSES, INSULATION_COLORS, BASE_PRODUCTIVITY, DIFFICULTY_WEIGHTS, PIPING_REMAINING_FACTOR, INSULATION_REMAINING_FACTOR, HOURS_PER_DAY, DEFAULT_PROD_SETTINGS, DEFAULT_FINANCIAL_SETTINGS } from './constants';
+import { PipeSegment, PipeStatus, Annotation, AnnotationType, Accessory, AccessoryType, AccessoryStatus, ProductivitySettings, DailyProduction, ProjectCalendar, FinancialSettings } from './types';
+import { LayoutDashboard, Cuboid, PenTool, XCircle, FileDown, Save, FolderOpen, FilePlus, Loader2, MapPin, Database, Undo, Redo, Wrench, Grid as GridIcon, CircleDot, MousePointer2, Ruler, Calendar, Lock, LogOut, ChevronRight, Copy, ClipboardPaste, Activity, Package, AlertCircle, Image as ImageIcon, Shield, Building2, Timer, FileCode, X, HelpCircle, FileSpreadsheet, Trash2, DollarSign, Wallet } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
 import * as XLSX from 'xlsx';
@@ -168,6 +168,17 @@ function AppContent() {
 
   const [prodSettings, setProdSettings] = useState<ProductivitySettings>(DEFAULT_PROD_SETTINGS);
   
+  const [financialSettings, setFinancialSettings] = useState<FinancialSettings>(() => {
+    try {
+        const saved = safeStorage.getItem('iso-manager-financial');
+        return saved ? JSON.parse(saved) : DEFAULT_FINANCIAL_SETTINGS;
+    } catch { return DEFAULT_FINANCIAL_SETTINGS; }
+  });
+
+  useEffect(() => {
+    safeStorage.setItem('iso-manager-financial', JSON.stringify(financialSettings));
+  }, [financialSettings]);
+
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [viewMode, setViewMode] = useState<'3d' | 'dashboard' | 'planning'>('3d'); 
   const [isDrawing, setIsDrawing] = useState(false);
@@ -514,7 +525,7 @@ function AppContent() {
           }
 
           // Daily Productivity
-          const pipingCompleted = ['WELDED', 'HYDROTEST', 'FINISHED'].includes(p.status);
+          const pipingCompleted = ['WELDED', 'HYDROTEST'].includes(p.status);
           const insulationCompleted = p.insulationStatus === 'FINISHED';
           const date = p.welderInfo?.weldDate || todayStr;
           if (!dailyProd[date]) dailyProd[date] = { piping: 0, insulation: 0 };
@@ -1889,7 +1900,7 @@ function AppContent() {
                         </div>
                     </div>
                 </div>
-                {viewMode === 'dashboard' && (<div className="absolute inset-0 z-50 bg-slate-950/95 backdrop-blur-sm overflow-y-auto p-4 animate-in fade-in"><div className="max-w-[1600px] mx-auto h-full"><Dashboard pipes={aggregatedData.pipes} annotations={aggregatedData.annotations} onExportPDF={handleExportPDF} isExporting={isExporting} secondaryImage={secondaryImage} onUploadSecondary={setSecondaryImage} mapImage={mapImage} onUploadMap={setMapImage} sceneScreenshot={sceneScreenshot} onSelectPipe={handleSelectPipe} selectedIds={selectedIds} onSetSelection={handleSetSelection} prodSettings={prodSettings} startDate={activityDate} deadlineDate={deadlineDate} savedProjects={savedProjects} selectedProjectIds={selectedProjectIds} onSetSelectedProjectIds={setSelectedProjectIds} dailyProduction={aggregatedData.dailyProduction} onUpdateDailyProduction={setDailyProduction} onOpenDailyProduction={() => setIsDailyProductionModalOpen(true)} /></div></div>)}
+                {viewMode === 'dashboard' && (<div className="absolute inset-0 z-50 bg-slate-950/95 backdrop-blur-sm overflow-y-auto p-4 animate-in fade-in"><div className="max-w-[1600px] mx-auto h-full"><Dashboard pipes={aggregatedData.pipes} annotations={aggregatedData.annotations} onExportPDF={handleExportPDF} isExporting={isExporting} secondaryImage={secondaryImage} onUploadSecondary={setSecondaryImage} mapImage={mapImage} onUploadMap={setMapImage} sceneScreenshot={sceneScreenshot} onSelectPipe={handleSelectPipe} selectedIds={selectedIds} onSetSelection={handleSetSelection} prodSettings={prodSettings} startDate={activityDate} deadlineDate={deadlineDate} savedProjects={savedProjects} selectedProjectIds={selectedProjectIds} onSetSelectedProjectIds={setSelectedProjectIds} dailyProduction={aggregatedData.dailyProduction} onUpdateDailyProduction={setDailyProduction} onOpenDailyProduction={() => setIsDailyProductionModalOpen(true)} financialSettings={financialSettings} onUpdateFinancialSettings={setFinancialSettings} /></div></div>)}
             </div>
             {selectedPipes.length > 0 && !isDrawing && !pastePreview && (
                 <div className="w-96 relative z-20 shadow-2xl border-l border-slate-700">
