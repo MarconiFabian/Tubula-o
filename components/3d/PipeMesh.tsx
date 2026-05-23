@@ -74,6 +74,32 @@ const PipeMesh: React.FC<PipeMeshProps> = ({ data, isSelected, trimStart = 0, tr
                     opacity={opacity}
                 />
             </mesh>
+
+            {/* Thicker, stronger red wireframe outline and volume layer for selected segments */}
+            {isSelected && (
+              <>
+                <mesh position={position} rotation={rotation}>
+                  <cylinderGeometry args={[data.diameter / 2 + 0.03, data.diameter / 1.99 + 0.03, geometryLength + 0.02, 16]} />
+                  <meshBasicMaterial
+                    color="#ef4444"
+                    wireframe
+                    transparent
+                    opacity={0.9}
+                    depthWrite={false}
+                  />
+                </mesh>
+                <mesh position={position} rotation={rotation}>
+                  <cylinderGeometry args={[data.diameter / 2 + 0.025, data.diameter / 2 + 0.025, geometryLength + 0.01, 16]} />
+                  <meshBasicMaterial
+                    color="#f87171"
+                    transparent
+                    opacity={0.25}
+                    side={THREE.DoubleSide}
+                    depthWrite={false}
+                  />
+                </mesh>
+              </>
+            )}
             
             {/* Thermal Protection Layer */}
             {hasInsulation && (

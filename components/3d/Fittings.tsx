@@ -153,6 +153,32 @@ export const Fittings: React.FC<FittingsProps> = ({ pipes, connections, onSelect
                 />
               </mesh>
 
+              {/* Red wireframe outline and volume for selected curved elbows */}
+              {isSelected && (
+                <>
+                  <mesh>
+                    <tubeGeometry args={[curve, 32, p1.pipe.diameter / 2 + 0.03, 24, false]} />
+                    <meshBasicMaterial
+                      color="#ef4444"
+                      wireframe
+                      transparent
+                      opacity={0.9}
+                      depthWrite={false}
+                    />
+                  </mesh>
+                  <mesh>
+                    <tubeGeometry args={[curve, 32, p1.pipe.diameter / 2 + 0.025, 24, false]} />
+                    <meshBasicMaterial
+                      color="#f87171"
+                      transparent
+                      opacity={0.25}
+                      side={THREE.DoubleSide}
+                      depthWrite={false}
+                    />
+                  </mesh>
+                </>
+              )}
+
               {/* Detalhe visual de solda nas pontas da curva para realismo */}
               <mesh position={startPt} quaternion={new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0), p1.vector)}>
                  <torusGeometry args={[p1.pipe.diameter/2 + 0.005, 0.015, 8, 24]} />
